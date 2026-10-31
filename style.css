@@ -137,6 +137,10 @@ button{font:inherit;color:inherit}
 .card .face .x{flex:1;opacity:.9}
 .card .face .p{align-self:flex-end;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px}
 .card.token{background:linear-gradient(160deg,#5a4a2a,#2e2617);border-color:#6b5a35}
+/* a face-down card (disguise): a card back, brown with an oval */
+.card.facedown{background:radial-gradient(ellipse 38% 46% at 50% 50%,#8a5a2b 0 55%,#3b2412 57% 100%);border-color:#2a1a0d}
+.card.facedown .face .n,.card.facedown .face .t{color:#f3e2c4}
+.card.facedown .face .x{color:#f3e2c4;opacity:1}
 /* hover lifts only on devices that really hover: on touch screens :hover sticks after a tap */
 @media (hover:hover){.card:hover{transform:translateY(-3px)}}
 .card.tapped{transform:rotate(90deg);margin:0 calc((var(--ch) - var(--cw))/2)}

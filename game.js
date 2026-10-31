@@ -203,7 +203,7 @@
 
   function cardEl(c, { zoom = false, detached = false } = {}) {
     const el = document.createElement("div");
-    el.className = "card" + (c.tapped && !zoom ? " tapped" : "") + (c.token ? " token" : "");
+    el.className = "card" + (c.tapped && !zoom ? " tapped" : "") + (c.token ? " token" : "") + (c.faceDown ? " facedown" : "");
     el.dataset.id = c.id || "";
     el.setAttribute("role", "button");
     el.setAttribute("aria-label", c.name);
@@ -215,7 +215,11 @@
       `<div class="n"></div><div class="t"></div><div class="x"></div>` + (c.pt ? `<div class="p"></div>` : "");
     face.querySelector(".n").textContent = c.name;
     face.querySelector(".t").textContent = c.type || "";
-    face.querySelector(".x").textContent = E.textOf(c);
+    // a face-down card: you may look at your own (CR 708.5), never at the opponent's
+    const mine = state && state.player.battlefield.includes(c);
+    face.querySelector(".x").textContent = c.faceDown
+      ? `Ward {2}. A face-down 2/2.` + (mine && c.hidden ? ` It's your ${c.hidden.name}` + (c.hidden.disguise ? `: turn it face up for ${c.hidden.disguise}.` : ".") : "")
+      : E.textOf(c);
     if (c.pt) face.querySelector(".p").textContent = c.pt;
     el.appendChild(face);
 
@@ -284,7 +288,7 @@
 
     // Tokens keep the text face: looking them up by name can return an unrelated card
     // (e.g. "Treasure" isn't a unique card name). Give a token an explicit `image` to show art.
-    if (c.token && !c.image) return el;
+    if ((c.token && !c.image) || c.faceDown) return el;          // (a face-down card shows its card back)
 
     const img = new Image();
     img.alt = "";
@@ -421,14 +425,14 @@
     // your hand, plus Adventure cards waiting in exile (their creature can still be cast)
     const hand = p.player.hand;
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
-    const adventures = p.player.exile.filter((c) => c.onAdventure);
+    const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable);
     const flashbacks = p.player.graveyard.filter((c) => c.flashback);
     fill($("hand"), [...hand, ...adventures, ...flashbacks]);
     const mark = (c, label) => {
       const el = document.querySelector(`#hand .card[data-id="${c.id}"]`);
       if (el) { el.classList.add("adventure"); el.append(Object.assign(document.createElement("div"), { className: "attachchip", textContent: label })); }
     };
-    adventures.forEach((c) => mark(c, "On an adventure (exile)"));
+    adventures.forEach((c) => mark(c, c.playable ? "Exiled: you may play it this turn" : "On an adventure (exile)"));
     flashbacks.forEach((c) => mark(c, `Flashback ${c.flashback.cost} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
       (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} with flashback` : "");
@@ -561,6 +565,7 @@
     return c ? c.name : null;
   };
   function stackSource(x) {
+    if (x.kind === "spell" && x.a.faceDown) return { id: x.card.id, name: "Face-down spell", type: "Creature", pt: "2/2", faceDown: true, hidden: x.card };
     if (x.kind === "spell") return x.card.faces ? { ...x.card, ...x.card.faces[x.a.face || 0], id: x.card.id } : x.card;
     const id = x.kind === "trigger" ? x.srcId : x.id;
     const here = [...state.player.battlefield, ...state.opponent.battlefield, ...state.player.graveyard, ...state.opponent.graveyard,
@@ -746,7 +751,7 @@
     if (casting && casting.trigger) return;                   // a trigger or scry is waiting for you
     cancelCast();
     clearAttackers();
-    casting = { card, face: from.zone === "exile" ? 0 : card.faces ? undefined : null, results: [], picks: [] };
+    casting = { card, face: from.zone === "exile" && card.onAdventure ? 0 : card.faces ? undefined : null, results: [], picks: [] };
     el.classList.add("selected", "casting");
     nextChoice();
   });
@@ -802,7 +807,27 @@
       if (usable.length === 1) casting.face = usable[0][0];
       else return askChoice(`${card.name}: which side?`, usable.map(([i, f]) => [i, E.isLand(f) ? `Play ${f.name} (land)` : `Cast ${f.name}`]), again("face"));
     }
+    // disguise: cast it normally, or face down for {3} (a 2/2 with ward {2}: no targets, nothing else to choose)
+    if (card.disguise && casting.faceDown === undefined) {
+      const down = !E.check(state, { type: "cast", id: card.id, faceDown: true });
+      const normal = !E.check(state, { type: "cast", id: card.id });
+      if (down && !normal) casting.faceDown = true;
+      else if (down) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, "Cast it face down for {3} (disguise)"]], again("faceDown"));
+      else casting.faceDown = false;
+    }
+    if (casting.faceDown) return finishChoice(undefined);
     const f = faceNow();
+    // collect evidence (an optional additional cost): which cards from your graveyard to exile, or none
+    if (f.evidence && casting.evidence === undefined) {
+      const base0 = { type: "cast", id: card.id, face: casting.face ?? undefined };
+      const name = (id) => (state.player.graveyard.find((c) => c.id === id) || {}).name || id;
+      const opts = E.evidenceOptions(state, f.evidence).filter((l) => !E.check(state, { ...base0, evidence: l }))
+        .map((l) => [l, `Collect evidence: exile ${l.map(name).join(" + ")}`]);
+      if (!E.check(state, base0)) opts.push([null, "Don't collect evidence"]);
+      if (!opts.length) { cancelCast(); return rulesNote(E.check(state, base0) || "You can't cast that."); }
+      if (opts.length === 1) casting.evidence = opts[0][0];
+      else return askChoice(`${f.name}: collect evidence ${f.evidence}?`, opts, again("evidence"));
+    }
     if (E.isLand(f)) {
       const a = { type: "play", id: card.id, face: casting.face ?? undefined };
       // "As this land enters, you may pay N life. If you don't, it enters tapped."
@@ -816,7 +841,7 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
-    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined });
+    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined });
     if (why) { cancelCast(); return rulesNote(why); }
     const n = f.chooseCount || 1;
     if (f.modes && casting.mode == null) {
@@ -901,7 +926,7 @@
     // a permanent spell has no targets; its enters trigger asks for one after it resolves (CR 603.3d)
     if (!f.aura && /creature|artifact|enchantment|planeswalker|battle/i.test(f.type || "")) return [];
     const out = [];
-    E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined }).forEach((p, part) => {
+    E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined }).forEach((p, part) => {
       if (p.slots) p.slots.forEach((sl, slot) => out.push({ kind: sl.targets, filter: sl.filter, count: ONE, src: f, part, slot,
         label: f.name, which: sl.filter && sl.filter.controller === "you" ? "your creature" : sl.filter && sl.filter.controller === "opponent" ? "a creature you don't control" : null }));
       else if (p.targets) out.push({ kind: p.targets, filter: p.filter, count: p.count || ONE, src: f, part, label: f.name });
@@ -940,7 +965,7 @@
     const f = faceNow();
     const phases = casting.phases;
     if (!phases.length || phases[0].optional) return finishChoice(casting.results[0]);
-    const parts = E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined });
+    const parts = E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined });
     const perPart = parts.map((p, part) => {
       const mine = phases.map((ph, i) => (ph.part === part ? casting.results[i] : undefined)).filter((_, i) => phases[i].part === part);
       return p.slots ? mine : mine[0];
@@ -963,7 +988,7 @@
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
-      lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined };
+      lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);

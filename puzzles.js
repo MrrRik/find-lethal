@@ -515,7 +515,55 @@
       text: "As long as you control an artifact, this creature gets +1/+0 and has haste." },
     "Panicked Altisaur": { type: "Creature — Dinosaur", cost: "{4}{R}", pt: "4/5", kw: ["reach"],
       abilities: [{ tap: true, effect: { damage: 2, to: "opp" }, text: "{T}: 2 damage to each opponent" }],
-      text: "Reach. {T}: This creature deals 2 damage to each opponent." }
+      text: "Reach. {T}: This creature deals 2 damage to each opponent." },
+
+    // ---- Murders at Karlov Manor (MKM): disguise, suspect, investigate (Clues), collect evidence, Cases ----
+    // (disguise: the cost to turn it face up; a card on the battlefield with faceDown: true is face down)
+    "Clue": { ...JSON.parse(JSON.stringify(window.Engine.CLUE)), token: true },
+    "Convenient Target": { type: "Enchantment — Aura", cost: "{R}", aura: { targets: "creature", static: { pump: [1, 1] } },
+      etb: { suspect: true, to: "enchanted" },
+      text: "Enchant creature. When this Aura enters, suspect enchanted creature. (It has menace and can't block.) Enchanted creature gets +1/+1. {2}{R}: Return this card from your graveyard to your hand." },
+    "Alley Assailant": { type: "Creature — Vampire Rogue", cost: "{2}{B}", pt: "3/3", entersTapped: true, disguise: "{4}{B}{B}",
+      triggers: [{ on: "turnedFaceUp", self: true, effect: { lifeLoss: 3, to: "opp", gainLife: 3 } }],
+      text: "This creature enters tapped. Disguise {4}{B}{B} (You may cast this card face down for {3} as a 2/2 creature with ward {2}. Turn it face up any time for its disguise cost.) When this creature is turned face up, target opponent loses 3 life and you gain 3 life." },
+    "Case of the Gateway Express": { type: "Enchantment — Case", cost: "{1}{W}", etb: { eachDeals: 1 }, targets: "creature", targetFilter: { controller: "opponent" },
+      toSolve: { attackedCount: 3 }, static: { team: { pump: [1, 0] }, if: { solved: true } },
+      text: "When this Case enters, choose target creature you don't control. Each creature you control deals 1 damage to that creature. To solve — Three or more creatures attacked this turn. (If unsolved, solve at the beginning of your end step.) Solved — Creatures you control get +1/+0." },
+    "Bite Down on Crime": { type: "Sorcery", cost: "{3}{G}", evidence: 6, evidenceLess: 2,
+      slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature", filter: { controller: "opponent" } }], effect: { bite: true, pumpFirst: [2, 0] },
+      text: "As an additional cost to cast this spell, you may collect evidence 6. This spell costs {2} less to cast if evidence was collected. (To collect evidence 6, exile cards with total mana value 6 or greater from your graveyard.) Target creature you control gets +2/+0 until end of turn. It deals damage equal to its power to target creature you don't control." },
+    "Defenestrated Phantom": { type: "Creature — Spirit", cost: "{4}{W}{W}", pt: "4/3", kw: ["flying"], disguise: "{4}{W}",
+      text: "Flying. Disguise {4}{W} (You may cast this card face down for {3} as a 2/2 creature with ward {2}. Turn it face up any time for its disguise cost.)" },
+    "The Chase Is On": { type: "Instant", cost: "{2}{R}", targets: "creature", effect: { pump: [3, 0], grant: ["first strike"], investigate: 1 },
+      text: "Target creature gets +3/+0 and gains first strike until end of turn. Investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")" },
+    "Caught Red-Handed": { type: "Instant", cost: "{4}{R}", uncounterable: true, targets: "creature", effect: { steal: true, suspect: true },
+      text: "This spell can't be countered. (This includes by the ward ability.) Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn. Suspect it. (It has menace and can't block.)" },
+    "Wispdrinker Vampire": { type: "Creature — Vampire Rogue", cost: "{2}{W}{B}", pt: "2/4", kw: ["flying"],
+      triggers: [{ on: "enters", other: true, filter: { controller: "you", creature: true, maxPower: 2 }, effect: { lifeLoss: 1, to: "opp", gainLife: 1 } }],
+      abilities: [{ cost: "{5}{W}{B}", effect: { team: { grant: ["deathtouch", "lifelink"], filter: { maxPower: 2 } } }, text: "{5}{W}{B}: power 2 or less gain deathtouch and lifelink" }],
+      text: "Flying. Whenever another creature you control with power 2 or less enters, each opponent loses 1 life and you gain 1 life. {5}{W}{B}: Creatures you control with power 2 or less gain deathtouch and lifelink until end of turn." },
+    "Dog Walker": { type: "Creature — Human Citizen", cost: "{R}{W}", pt: "3/1", kw: ["vigilance"], disguise: "{R/W}{R/W}",
+      triggers: [{ on: "turnedFaceUp", self: true, effect: { create: { name: "Dog", type: "Token Creature — Dog", pt: "1/1", colors: ["W"], tapped: true, count: 2 } } }],
+      text: "Vigilance. Disguise {R/W}{R/W} (You may cast this card face down for {3} as a 2/2 creature with ward {2}. Turn it face up any time for its disguise cost.) When this creature is turned face up, create two tapped 1/1 white Dog creature tokens." },
+    "Granite Witness": { type: "Artifact Creature — Gargoyle Detective", cost: "{2}{W}{U}", pt: "3/2", kw: ["flying", "vigilance"], disguise: "{W/U}{W/U}",
+      triggers: [{ on: "turnedFaceUp", self: true, targets: "creature", effect: { tapOrUntap: true } }],
+      text: "Flying, vigilance. Disguise {W/U}{W/U} (You may cast this card face down for {3} as a 2/2 creature with ward {2}. Turn it face up any time for its disguise cost.) When this creature is turned face up, you may tap or untap target creature." },
+    "Bolrac-Clan Basher": { type: "Creature — Cyclops Warrior", cost: "{4}{R}{R}", pt: "3/2", kw: ["double strike", "trample"], disguise: "{3}{R}{R}",
+      text: "Double strike, trample. Disguise {3}{R}{R} (You may cast this card face down for {3} as a 2/2 creature with ward {2}. Turn it face up any time for its disguise cost.)" },
+    "Case of the Burning Masks": { type: "Enchantment — Case", cost: "{1}{R}{R}", etb: { damage: 3 }, targets: "opponent-creature",
+      toSolve: { damageSources: 3 },
+      abilities: [{ sacSelf: true, ifSolved: true, effect: { impulse: 3 }, text: "Solved — Sacrifice: exile the top three, play one this turn" }],
+      text: "When this Case enters, it deals 3 damage to target creature an opponent controls. To solve — Three or more sources you controlled dealt damage this turn. (If unsolved, solve at the beginning of your end step.) Solved — Sacrifice this Case: Exile the top three cards of your library. Choose one of them. You may play that card this turn." },
+    "Persuasive Interrogators": { type: "Creature — Gorgon Detective", cost: "{4}{B}{B}", pt: "5/6", etb: { investigate: 1 },
+      triggers: [{ on: "sacrificed", filter: { controller: "you", type: "Clue" }, effect: { poison: 2, to: "opp" } }],
+      text: "When this creature enters, investigate. Whenever you sacrifice a Clue, target opponent gets two poison counters. (A player with ten or more poison counters loses the game.)" },
+    "Crime Novelist": { type: "Creature — Goblin Bard", cost: "{2}{R}", pt: "1/3",
+      triggers: [{ on: "sacrificed", filter: { controller: "you", artifact: true }, effect: { counters: { "+1/+1": 1 }, self: true, addMana: "R" } }],
+      text: "Whenever you sacrifice an artifact, put a +1/+1 counter on this creature and add {R}." },
+    "Deduce": { type: "Instant", cost: "{1}{U}", effect: { draw: 1, investigate: 1 },
+      text: "Draw a card. Investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")" },
+    "Novice Inspector": { type: "Creature — Human Detective", cost: "{W}", pt: "1/2", etb: { investigate: 1 },
+      text: "When this creature enters, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")" }
   };
 
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
@@ -1090,6 +1138,150 @@ LETHAL: Idol of the Deep King ({2}{R}): 2 damage to Grizzly Bears (dies). Craft 
 RULES: Craft is sorcery speed; the Idol can craft the turn it enters (no {T} in the cost).
 WRONG LINES: The Idol's 2 damage to the face: the Bears block. The Map on the Giant: a counter, 4.
 UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= MURDERS AT KARLOV MANOR (set MKM) ======================= */
+  // Disguise (face-down 2/2s with ward 2), suspect, investigate and Clues, collect evidence, Cases
+  window.PUZZLES.push(
+    puzzle({
+      id: "mkm-01-prime-suspect", title: "Prime Suspect", set: "mkm", tier: "easy",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Convenient Target")], battlefield: [c("Hill Giant"), c("Gray Ogre"), c("Mountain")] },
+      explanation: "A suspected creature can't block. Put Convenient Target on the opponent's Grizzly Bears: it's a suspect now, so Hill Giant and Gray Ogre attack freely for 5.",
+      notes: `
+LETHAL: Convenient Target ({R}) on Grizzly Bears: it's suspected (menace, can't block). Attack with Hill Giant and Gray
+  Ogre: no blockers: 5.
+RULES: Suspected (701.60c): menace and "This creature can't block". An Aura can enchant any creature.
+WRONG LINES: Target on Hill Giant: 4/4 menace, the Bears block the Ogre: 4. On Gray Ogre: 3/3 menace, the Bears block
+  the Giant: 3.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "mkm-02-unmasked", title: "Unmasked", set: "mkm", tier: "easy",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { battlefield: [c("Alley Assailant", { faceDown: true }), c("Gray Ogre"), ...many(6, "Swamp")] },
+      explanation: "Your face-down creature is Alley Assailant. Turning it face up (its disguise cost, {4}{B}{B}) drains 3. Attack with both: Grizzly Bears blocks one, the other deals at least 2.",
+      notes: `
+LETHAL: Turn Alley Assailant face up ({4}{B}{B}): the opponent loses 3 (2 left). Attack with it (3/3) and Gray Ogre:
+  the Bears block one, the other deals 3 or 2. (Turning it up after blocks works the same: 2 + 3.)
+RULES: Disguise (702.168d): turning face up is a special action, any time you have priority, no stack. It doesn't
+  enter the battlefield, so "enters tapped" doesn't apply (708.8).
+WRONG LINES: Attacking without turning it up: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "mkm-03-case-closed", title: "Case Closed", set: "mkm", tier: "easy",
+      opp: { life: 7, battlefield: [c("Hill Giant")] },
+      you: { hand: [c("Case of the Gateway Express")],
+        battlefield: [c("Case of the Gateway Express", { solved: true }), c("Elite Vanguard"), c("Savannah Lions"), c("Glory Seeker"), c("Plains"), c("Plains")] },
+      explanation: "Your solved Case gives your creatures +1/+0. A second Case of the Gateway Express makes each of your three creatures deal 1 damage to Hill Giant: it dies, and three 3-power attackers deal 9.",
+      notes: `
+LETHAL: Case of the Gateway Express ({1}{W}) targeting Hill Giant: Elite Vanguard, Savannah Lions and Glory Seeker each
+  deal 1: 3 damage, it dies. Attack with all three (3/1, 3/1, 3/2 with the solved Case): 9.
+RULES: Cases (719.3): the solved one's "Solved — creatures you control get +1/+0" works; the new one isn't solved (it
+  could only solve at your end step).
+WRONG LINES: Attacking into the Giant: it blocks one, 6.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "mkm-04-evidence-locker", title: "Evidence Locker", set: "mkm", tier: "easy",
+      opp: { life: 5, battlefield: [c("Siege Mastodon")] },
+      you: { hand: [c("Bite Down on Crime")], battlefield: [c("Hill Giant"), c("Forest"), c("Forest")],
+        graveyard: [c("Colossal Dreadmaw"), c("Lightning Bolt")] },
+      explanation: "Collect evidence 6 by exiling Colossal Dreadmaw from your graveyard: Bite Down on Crime costs {2} less, just {1}{G}. Hill Giant becomes 5/3 and deals 5 to Siege Mastodon. Then it attacks for 5.",
+      notes: `
+LETHAL: Bite Down on Crime, collecting evidence 6 (exile Colossal Dreadmaw, mana value 6): {1}{G}. Hill Giant +2/+0
+  (5/3) deals 5 to Siege Mastodon (3/5): dies. Attack: 5.
+RULES: Collect evidence (701.59a): exile cards from your graveyard with total mana value 6 or more. Bite: only your
+  creature deals damage.
+WRONG LINES: Without evidence it costs {3}{G}: you have two lands. Lightning Bolt (mana value 1) isn't enough evidence.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "mkm-05-ward-off", title: "Ward Off", set: "mkm", tier: "medium",
+      opp: { life: 6, battlefield: [c("Defenestrated Phantom", { faceDown: true, id: "face-down" })] },
+      you: { hand: [c("Shock"), c("The Chase Is On")], battlefield: [c("Hill Giant"), ...many(6, "Mountain")] },
+      explanation: "The opponent's face-down creature is a 2/2 with ward {2}. Shock it and pay the ward: 3 mana. The other 3 pay for The Chase Is On: a 6/3 Hill Giant with no blocker left.",
+      notes: `
+LETHAL: Shock ({R}) the face-down creature; ward {2} triggers: pay {2}. 2 damage: the 2/2 dies. The Chase Is On
+  ({2}{R}) on Hill Giant: 6/3 first strike. Attack: 6.
+RULES: A face-down creature is a 2/2 with ward {2} (702.168a). Ward counters the spell unless its cost is paid
+  (702.21a). It's the opponent's: it stays face down (the opponent never acts).
+WRONG LINES: Shock to the face + Chase: the face-down blocks the Giant, 2. Not enough mana for both Chase and a warded
+  Shock if the Clue is cracked.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "mkm-06-caught-red-handed", title: "Caught Red-Handed", set: "mkm", tier: "medium",
+      opp: { life: 3, battlefield: [c("Siege Mastodon"), c("Grizzly Bears")] },
+      you: { hand: [c("Caught Red-Handed")], battlefield: [c("Hill Giant"), ...many(5, "Mountain")] },
+      explanation: "Take Siege Mastodon: it's untapped, has haste and is suspected (menace, can't block). Grizzly Bears alone can't block a menace creature, so the Mastodon's 3 gets in.",
+      notes: `
+LETHAL: Caught Red-Handed ({4}{R}) on Siege Mastodon: you control it, untapped, haste, suspected (menace). Attack with
+  it: the Bears alone can't block it (menace): 3.
+RULES: Suspect (701.60c). Gain control until end of turn; haste lets it attack.
+WRONG LINES: Taking the Bears: the Mastodon blocks the Giant and the Bears deal 2. Attacking without it: blocked.
+UNIQUENESS: Solver-checked (attacking with Hill Giant as well also wins: a bigger version of the same plan).`
+    }),
+    puzzle({
+      id: "mkm-07-dog-walker", title: "Dog Walker", set: "mkm", tier: "hard",
+      opp: { life: 8, battlefield: [c("Wall of Wood"), c("Grizzly Bears")] },
+      you: { hand: [c("Dog Walker"), c("The Chase Is On")], battlefield: [c("Wispdrinker Vampire"), ...many(4, "Plains"), ...many(4, "Mountain")] },
+      explanation: "Wispdrinker Vampire drains 1 for each creature with power 2 or less that enters. Cast Dog Walker face down (a 2/2: drain), then turn it face up for two Dogs (two drains). The Chase Is On makes the Vampire a 5/4 flyer: 3 + 5.",
+      notes: `
+LETHAL: Dog Walker face down ({3}): a 2/2 enters: drain 1 (7). Turn it face up ({R/W}{R/W}): two tapped 1/1 Dogs
+  enter: drain 2 (5). The Chase Is On ({2}{R}) on Wispdrinker Vampire: 5/4 flying first strike. Attack: 5.
+RULES: A face-down creature entering is a 2/2 (power 2 or less). Turning face up isn't entering (708.8): no drain for
+  the 3/1. The Wall and the Bears can't block a flyer.
+WRONG LINES: Dog Walker face up ({R}{W}): power 3, no drain, no Dogs: 5. Cracking the Clue instead of turning it up.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "mkm-08-two-faces", title: "Two Faces", set: "mkm", tier: "hard",
+      opp: { life: 6, battlefield: [c("Wall of Wood"), c("Giant Spider")] },
+      you: { battlefield: [c("Granite Witness", { faceDown: true }), c("Bolrac-Clan Basher", { faceDown: true }),
+        c("Plains"), c("Island"), ...many(5, "Mountain")] },
+      explanation: "Turn Granite Witness face up first and tap Giant Spider, the only creature that can block a flyer. Attack with both: the Witness flies in for 3. Bolrac-Clan Basher (turn it up too) has double strike and trample: if the Wall blocks it, first strike kills the Wall and the second hit tramples over for 3.",
+      notes: `
+LETHAL: Turn Granite Witness face up ({W/U}{W/U}: Plains + Island): tap Giant Spider. Turn Bolrac-Clan Basher face up
+  ({3}{R}{R}: Mountains), before or after blocks. Attack with both. Wall of Wood can't block the flying Witness: 3.
+  The Wall blocks the Basher: first strike 3 kills it (0/3); regular damage: blocked, no blocker left, trample: all 3
+  to the player (702.19e). No block: 6 + 3.
+RULES: Turning face up is a special action at any priority (116.2b). A first-strike damage step happens if a first or
+  double striker is in combat when combat damage would begin.
+WRONG LINES: Tapping the Wall: the Spider blocks the Basher (3 first strike, then 1 lethal and 2 trample) = 3 + 2 = 5.
+  Attacking with the Witness face down: the Spider blocks it.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "mkm-09-burning-masks", title: "Burning Masks", set: "mkm", tier: "hard",
+      opp: { life: 6, battlefield: [c("Wall of Wood")] },
+      you: { hand: [c("Case of the Burning Masks")],
+        battlefield: [c("Case of the Burning Masks", { solved: true }), c("Hill Giant"), ...many(4, "Mountain")],
+        library: [c("Grizzly Bears"), c("Lightning Bolt"), c("Mountain")] },
+      explanation: "The new Case burns away Wall of Wood. Sacrifice the solved Case to exile your top three cards and choose Lightning Bolt: the last Mountain casts it. Bolt plus Hill Giant: 6.",
+      notes: `
+LETHAL: Case of the Burning Masks ({1}{R}{R}): 3 damage to Wall of Wood: dies. Sacrifice the solved Case: exile Grizzly
+  Bears, Lightning Bolt and Mountain; choose Bolt: cast it ({R}) at the opponent: 3. Hill Giant: 3.
+RULES: Cases (719.3c): only a solved Case has its Solved ability. The chosen card may be played this turn from exile.
+WRONG LINES: Choosing the Mountain (an extra land, nothing to spend it on): 3. Bolting the Wall: the new Case needs a
+  creature target, Giant 3. Grizzly Bears can't attack this turn.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "mkm-10-interrogation", title: "Interrogation", set: "mkm", tier: "hard",
+      opp: { life: 20, poison: 4 },
+      you: { hand: [c("Deduce")], battlefield: [c("Persuasive Interrogators"), c("Crime Novelist"), c("Clue"),
+        c("Island"), c("Plains"), ...many(5, "Swamp")], library: [c("Novice Inspector")] },
+      explanation: "Each Clue you sacrifice gives 2 poison: you need three. Crack the Clue (draw Novice Inspector), Deduce and the Inspector make two more. Crime Novelist adds {R} each time you sacrifice an artifact, which pays for the next Clue.",
+      notes: `
+LETHAL: Three Clues sacrificed: 4 + 6 = 10 poison. Mana: Clue ({2}) → {R} back, draws Novice Inspector; Deduce ({1}{U},
+  the {R} + Island) → Clue; Novice Inspector ({W}) → Clue; Clue ({2}) → {R}; Clue ({R} + a land). 7 lands.
+RULES: Investigate (701.16a). Crime Novelist's trigger isn't a mana ability (a sacrifice to an activated ability's cost):
+  it resolves and adds {R}. Poison: 10 loses (704.5c).
+WRONG LINES: Without using the Novelist's mana: 9 needed. Deduce first: it draws the Inspector, the same plan.
+UNIQUENESS: Solver-checked (the order of the steps is free).`
     })
   );
 
