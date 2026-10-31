@@ -1010,6 +1010,87 @@
     "Dragon Sniper": { type: "Creature — Human Archer", cost: "{G}", pt: "1/1", kw: ["reach", "vigilance", "deathtouch"], text: "Reach, vigilance, deathtouch" }
   });
 
+  // ---- Final Fantasy (FIN): job select, tiered, Saga creatures (Summons), Wizard tokens, landfall ----
+  // (Sagas: chapters: [{ n: [1, 2], effect, targets }]; tiered: modes with plus costs, exactly one is chosen)
+  const WIZARD = { name: "Wizard", type: "Token Creature — Wizard", pt: "0/1", colors: ["B"],
+    triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, effect: { damage: 1, to: "opp" } }],
+    text: "Whenever you cast a noncreature spell, this token deals 1 damage to each opponent." };
+  const jobText = "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)";
+  const sagaText = (last) => `(As this Saga enters and after your draw step, add a lore counter. Sacrifice after ${last}.)`;
+  Object.assign(CARDS, {
+    "Wizard": { ...WIZARD, token: true },
+    "Hero": { name: "Hero", type: "Token Creature — Hero", pt: "1/1", colors: [], token: true, text: "" },
+    "Samurai's Katana": { type: "Artifact — Equipment", cost: "{2}{R}", kw: ["job select"], equip: { cost: "{5}", static: { pump: [2, 2], grant: ["trample", "haste"] } },
+      text: `${jobText} Equipped creature gets +2/+2, has trample and haste, and is a Samurai in addition to its other types. Murasame — Equip {5}` },
+    "Warrior's Sword": { type: "Artifact — Equipment", cost: "{3}{R}", kw: ["job select"], equip: { cost: "{5}", static: { pump: [3, 2] } },
+      text: `${jobText} Equipped creature gets +3/+2 and is a Warrior in addition to its other types. Equip {5}` },
+    "Monk's Fist": { type: "Artifact — Equipment", cost: "{2}", kw: ["job select"], equip: { cost: "{2}", static: { pump: [1, 0] } },
+      text: `${jobText} Equipped creature gets +1/+0 and is a Monk in addition to its other types. Equip {2}` },
+    "Dragoon's Lance": { type: "Artifact — Equipment", cost: "{1}{W}", kw: ["job select"], equip: { cost: "{4}", static: { pump: [1, 0], grant: ["flying"] } },
+      text: `${jobText} Equipped creature gets +1/+0 and is a Knight in addition to its other types. During your turn, equipped creature has flying. Gae Bolg — Equip {4}` },
+    "Black Mage's Rod": { type: "Artifact — Equipment", cost: "{1}{B}", kw: ["job select"], equip: { cost: "{3}", static: { pump: [1, 0] } },
+      triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, equipped: true, effect: { damage: 1, to: "opp", byAttached: true } }],
+      text: `${jobText} Equipped creature gets +1/+0, has "Whenever you cast a noncreature spell, this creature deals 1 damage to each opponent," and is a Wizard in addition to its other types. Equip {3}` },
+    "Red Mage's Rapier": { type: "Artifact — Equipment", cost: "{1}{R}", kw: ["job select"], equip: { cost: "{3}" },
+      triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, equipped: true, effect: { pump: [2, 0], to: "enchanted" } }],
+      text: `${jobText} Equipped creature has "Whenever you cast a noncreature spell, this creature gets +2/+0 until end of turn" and is a Wizard in addition to its other types. Equip {3}` },
+    "Coral Sword": { type: "Artifact — Equipment", cost: "{R}", kw: ["flash"], equip: { cost: "{1}", static: { pump: [1, 0] } },
+      etb: { attach: true, grant: ["first strike"] }, targets: "creature", targetFilter: { controller: "you" },
+      text: "Flash. When this Equipment enters, attach it to target creature you control. That creature gains first strike until end of turn. Equipped creature gets +1/+0. Equip {1}" },
+    // tiered
+    "Thunder Magic": { type: "Instant", cost: "{R}", tiered: true,
+      modes: [{ plus: "{0}", text: "Thunder: 2 damage to target creature", targets: "creature", effect: { damage: 2 } },
+        { plus: "{3}", text: "Thundara: 4 damage to target creature", targets: "creature", effect: { damage: 4 } },
+        { plus: "{5}{R}", text: "Thundaga: 8 damage to target creature", targets: "creature", effect: { damage: 8 } }],
+      text: "Tiered (Choose one additional cost.) • Thunder — {0} — Thunder Magic deals 2 damage to target creature. • Thundara — {3} — Thunder Magic deals 4 damage to target creature. • Thundaga — {5}{R} — Thunder Magic deals 8 damage to target creature." },
+    "Fire Magic": { type: "Instant", cost: "{R}", tiered: true,
+      modes: [{ plus: "{0}", text: "Fire: 1 damage to each creature", effect: { damageAll: { n: 1, creatures: "all" } } },
+        { plus: "{2}", text: "Fira: 2 damage to each creature", effect: { damageAll: { n: 2, creatures: "all" } } },
+        { plus: "{5}", text: "Firaga: 3 damage to each creature", effect: { damageAll: { n: 3, creatures: "all" } } }],
+      text: "Tiered (Choose one additional cost.) • Fire — {0} — Fire Magic deals 1 damage to each creature. • Fira — {2} — Fire Magic deals 2 damage to each creature. • Firaga — {5} — Fire Magic deals 3 damage to each creature." },
+    "Tifa's Limit Break": { type: "Instant", cost: "{G}", tiered: true,
+      modes: [{ plus: "{0}", text: "Somersault: target creature gets +2/+2", targets: "creature", effect: { pump: [2, 2] } },
+        { plus: "{2}", text: "Meteor Strikes: double target creature's power and toughness", targets: "creature", effect: { multiplyPT: 2 } },
+        { plus: "{6}{G}", text: "Final Heaven: triple target creature's power and toughness", targets: "creature", effect: { multiplyPT: 3 } }],
+      text: "Tiered (Choose one additional cost.) • Somersault — {0} — Target creature gets +2/+2 until end of turn. • Meteor Strikes — {2} — Double target creature's power and toughness until end of turn. • Final Heaven — {6}{G} — Triple target creature's power and toughness until end of turn." },
+    // Wizards and noncreature spells
+    "Mysidian Elder": { type: "Creature — Human Wizard", cost: "{2}{R}", pt: "1/3", etb: { create: WIZARD },
+      text: "When this creature enters, create a 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\"" },
+    "Black Waltz No. 3": { type: "Legendary Creature — Wizard", cost: "{2}{B}{R}", pt: "2/2", kw: ["flying", "deathtouch"],
+      triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, effect: { damage: 2, to: "opp" } }],
+      text: "Flying, deathtouch. Whenever you cast a noncreature spell, Black Waltz No. 3 deals 2 damage to each opponent." },
+    "Queen Brahne": { type: "Legendary Creature — Human Noble", cost: "{2}{R}", pt: "2/1", kw: ["prowess"], onAttack: { effect: { create: WIZARD } },
+      text: "Prowess. Whenever Queen Brahne attacks, create a 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\"" },
+    // landfall
+    "Sabotender": { type: "Creature — Plant", cost: "{1}{R}", pt: "2/1", kw: ["reach"], landfall: { damage: 1, to: "opp" },
+      text: "Reach. Landfall — Whenever a land you control enters, this creature deals 1 damage to each opponent." },
+    "Sazh's Chocobo": { type: "Creature — Bird", cost: "{G}", pt: "0/1", landfall: { counters: { "+1/+1": 1 }, self: true },
+      text: "Landfall — Whenever a land you control enters, put a +1/+1 counter on this creature." },
+    "Ride the Shoopuf": { type: "Enchantment", cost: "{1}{G}",
+      triggers: [{ on: "enters", filter: { land: true, controller: "you" }, targets: "creature", targetFilter: { controller: "you" }, effect: { counters: { "+1/+1": 1 } } }],
+      text: "Landfall — Whenever a land you control enters, put a +1/+1 counter on target creature you control. {5}{G}{G}: This enchantment becomes a 7/7 Beast creature in addition to its other types." },
+    // Summons (Saga creatures)
+    "Summon: Choco/Mog": { type: "Enchantment Creature — Saga Bird Moogle", cost: "{2}{W}", pt: "3/3",
+      chapters: [{ n: [1, 2, 3, 4], effect: { team: { pump: [1, 0], other: true } } }],
+      text: `${sagaText("IV")} I, II, III, IV — Stampede! — Other creatures you control get +1/+0 until end of turn.` },
+    "Summon: Primal Garuda": { type: "Enchantment Creature — Saga Harpy", cost: "{3}{W}", pt: "3/3", kw: ["flying"],
+      chapters: [{ n: [1], targets: "creature", targetFilter: { controller: "opponent", tapped: true }, effect: { damage: 4 } },
+        { n: [2, 3], targets: "creature", targetFilter: { controller: "you", other: true }, effect: { pump: [1, 0], grant: ["flying"] } }],
+      text: `${sagaText("III")} I — Aerial Blast — This creature deals 4 damage to target tapped creature an opponent controls. II, III — Slipstream — Another target creature you control gets +1/+0 and gains flying until end of turn. Flying` },
+    "Summon: Fat Chocobo": { type: "Enchantment Creature — Saga Bird", cost: "{4}{G}", pt: "4/4",
+      chapters: [{ n: [1], effect: { create: { name: "Bird", type: "Token Creature — Bird", pt: "2/2", colors: ["G"], landfall: { pump: [1, 0], self: true },
+          text: "Whenever a land you control enters, this token gets +1/+0 until end of turn." } } },
+        { n: [2, 3, 4], effect: { team: { grant: ["trample"] } } }],
+      text: `${sagaText("IV")} I — Wark — Create a 2/2 green Bird creature token with "Whenever a land you control enters, this token gets +1/+0 until end of turn." II, III, IV — Kerplunk — Creatures you control gain trample until end of turn.` },
+    "Clash of the Eikons": { type: "Sorcery", cost: "{G}", spree: true, oneOrMore: true,
+      modes: [{ text: "Target creature you control fights target creature an opponent controls", slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature", filter: { controller: "opponent" } }], effect: { fight: true } },
+        { text: "Remove a lore counter from target Saga you control", targets: "permanent", targetFilter: { controller: "you", subtype: "Saga" }, effect: { counters: { lore: -1 } } },
+        { text: "Put a lore counter on target Saga you control", targets: "permanent", targetFilter: { controller: "you", subtype: "Saga" }, effect: { counters: { lore: 1 } } }],
+      text: "Choose one or more — • Target creature you control fights target creature an opponent controls. • Remove a lore counter from target Saga you control. (Removing lore counters doesn't cause chapter abilities to trigger.) • Put a lore counter on target Saga you control." },
+    "Lion Heart": { type: "Artifact — Equipment", cost: "{4}", equip: { cost: "{2}", static: { pump: [2, 1] } }, etb: { damage: 2 }, targets: "any",
+      text: "When this Equipment enters, it deals 2 damage to any target. Equipped creature gets +2/+1. Equip {2}" }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -2397,6 +2478,133 @@ RULES: "Power 2 or less" is checked when the ability targets and resolves; after
   (702.180a). Flurry: the second spell each turn.
 WRONG LINES: Wild Ride before Underdogs' ability resolves: the Adept's power is 5. Attacking with the Giant: the Nestguard
   blocks it, and harmonize is unaffordable without it.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= FINAL FANTASY (set FIN) ======================= */
+  // Job select, tiered, Summons (Saga creatures), Wizard tokens, landfall
+  window.PUZZLES.push(
+    puzzle({
+      id: "fin-01-job-select", title: "Job Select", set: "fin", tier: "easy",
+      opp: { life: 3, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Samurai's Katana")], battlefield: [c("Hill Giant"), ...many(3, "Mountain")] },
+      explanation: "Samurai's Katana comes with its own Hero: job select makes a 1/1 Hero and attaches the Katana to it. The Hero is 3/3 with trample and haste. Attack with it and Hill Giant: the Bears can only stop one.",
+      notes: `
+LETHAL: Samurai's Katana ({2}{R}): a 1/1 Hero, Katana attached: 3/3 trample, haste. Attack with the Hero and Hill Giant:
+  the Bears block the Giant: 3; block the Hero: 1 trample + 3.
+RULES: Job select (702.182a). Haste from the Equipment lets the new token attack.
+WRONG LINES: Attacking with the Giant alone.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-02-thundara", title: "Thundara", set: "fin", tier: "easy",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Thunder Magic")], battlefield: [c("Hill Giant"), ...many(4, "Mountain")] },
+      explanation: "Thunder Magic is tiered: pay one extra cost. Thunder (2 damage) doesn't kill the 4/4 Nestguard; Thundara ({3} more, 4 damage) does. Then Hill Giant attacks for 3.",
+      notes: `
+LETHAL: Thunder Magic, Thundara tier ({R} + {3}): 4 damage to Krotiq Nestguard. Hill Giant attacks: 3.
+RULES: Tiered (702.183a): choose one mode and pay its additional cost.
+WRONG LINES: The {0} tier: 2 damage, the Nestguard survives and blocks.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-03-black-mages", title: "Black Mages", set: "fin", tier: "easy",
+      opp: { life: 7, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Mysidian Elder"), c("Shock"), c("Lightning Bolt")], battlefield: many(5, "Mountain") },
+      explanation: "Mysidian Elder brings a 0/1 Wizard that deals 1 damage whenever you cast a noncreature spell. Cast the Elder first, then Shock and Lightning Bolt the opponent: 2 + 3 + 1 + 1.",
+      notes: `
+LETHAL: Mysidian Elder ({2}{R}): a Wizard token. Shock the opponent: 2 + 1 (4). Lightning Bolt: 3 + 1 (0).
+RULES: The token's ability triggers on casting (before the spell resolves).
+WRONG LINES: Burning first: 5 only.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-04-landfall", title: "Landfall", set: "fin", tier: "easy",
+      opp: { life: 3, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Mountain")], battlefield: [c("Sabotender"), c("Sazh's Chocobo"), c("Ride the Shoopuf")] },
+      explanation: "Play the Mountain: three landfall abilities. Sabotender deals 1, Sazh's Chocobo gets a counter, and Ride the Shoopuf puts another on the Chocobo (2/3). Attack with both: whichever the Bears block, 2 gets through.",
+      notes: `
+LETHAL: Play Mountain: Sabotender 1 (2); Sazh's Chocobo +1/+1 counter; Ride the Shoopuf: counter on the Chocobo: 2/3.
+  Attack with Sabotender and the Chocobo: one is blocked, the other deals 2.
+RULES: Landfall: whenever a land you control enters.
+WRONG LINES: Shoopuf's counter on Sabotender (3/2): the Bears block it, the Chocobo deals 1: 2 total.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-05-slipstream", title: "Slipstream", set: "fin", tier: "medium",
+      opp: { life: 7, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Clash of the Eikons")], battlefield: [c("Summon: Primal Garuda", { counters: { lore: 1 } }), c("Hill Giant"), c("Forest")] },
+      explanation: "Summon: Primal Garuda has one lore counter. Clash of the Eikons can put another on it: chapter II gives Hill Giant +1/+0 and flying. The Garuda flies too: 3 + 4.",
+      notes: `
+LETHAL: Clash of the Eikons, mode "put a lore counter on target Saga": Garuda's chapter II: Hill Giant +1/+0, flying. Attack
+  with the Garuda (3 flying) and the Giant (4 flying): 7. The Nestguard can't block fliers.
+RULES: Sagas (714.2b): a chapter ability triggers when lore counters reach its number.
+WRONG LINES: Removing and adding a counter: chapter I again, which needs a tapped target. Fighting the Nestguard: the
+  Giant dies.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-06-final-heaven", title: "Final Heaven", set: "fin", tier: "medium",
+      opp: { life: 6, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Tifa's Limit Break")], battlefield: [c("Hill Giant"), c("Gray Ogre"), ...many(8, "Forest")] },
+      explanation: "Attack with both and wait for the block: Tifa's Limit Break is an instant. Whichever is unblocked gets the top tier, Final Heaven: triple power. The Bears block the Giant, so the Ogre becomes 6/6.",
+      notes: `
+LETHAL: Attack with Hill Giant and Gray Ogre. The Bears block one. Tifa's Limit Break, Final Heaven ({G} + {6}{G}): triple
+  the unblocked one: Ogre 6 (or Giant 9).
+RULES: Tiered (702.183a). "Triple its power": it gets +X/+Y, twice its power and toughness.
+WRONG LINES: Casting it before blocks: the Bears block the big one. Meteor Strikes: Ogre 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-07-black-waltz", title: "Black Waltz", set: "fin", tier: "hard",
+      opp: { life: 13, battlefield: [c("Giant Spider")] },
+      you: { hand: [c("Black Mage's Rod"), c("Monk's Fist"), c("Shock")], battlefield: [c("Black Waltz No. 3"), c("Wizard"), ...many(3, "Swamp"), c("Mountain"), c("Mountain")] },
+      explanation: "Every noncreature spell triggers Black Waltz No. 3 (2) and the Wizard (1) — Equipment too. Cast Black Mage's Rod first: its Hero then pings for each later spell. Rod (3), Monk's Fist (4), Shock the opponent (2 + 4).",
+      notes: `
+LETHAL: Black Mage's Rod ({1}{B}): Waltz 2 + Wizard 1 (10); its Hero has the Rod. Monk's Fist ({2}): 2 + 1 + 1 (6). Shock
+  the opponent: 2 + 2 + 1 + 1 (0).
+RULES: Equipment are noncreature spells. An ability an Equipment gives works once it's attached.
+WRONG LINES: The Rod last: 3 + 5 + 3 = 11. Attacking with the Waltz: Giant Spider (reach) blocks it.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-08-stampede", title: "Stampede", set: "fin", tier: "hard",
+      opp: { life: 10 },
+      you: { hand: [c("Clash of the Eikons")], battlefield: [c("Summon: Choco/Mog", { counters: { lore: 3 } }), c("Hill Giant"), c("Gray Ogre"), c("Forest")] },
+      explanation: "Summon: Choco/Mog has three lore counters. Adding a fourth triggers chapter IV, but then the Saga is sacrificed and can't attack. Instead choose both lore modes of Clash of the Eikons: remove one, then put one back. Chapter III triggers again and the Saga stays: 3 + 4 + 3.",
+      notes: `
+LETHAL: Clash of the Eikons, modes "remove a lore counter" and "put a lore counter" on Choco/Mog: 3 → 2 → 3: chapter III:
+  other creatures +1/+0. Attack with Choco/Mog (3), Hill Giant (4), Gray Ogre (3): 10.
+RULES: 714.2b: a chapter triggers when the count rises to its number (again after a removal). 714.4: a Saga with lore
+  counters at its final chapter is sacrificed once that chapter has left the stack.
+WRONG LINES: Only adding a counter: chapter IV, then the Saga is sacrificed: 4 + 3 = 7. No Clash: 8.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-09-fira", title: "Fira", set: "fin", tier: "hard",
+      opp: { life: 6, battlefield: [c("Grizzly Bears"), c("Grizzly Bears"), c("Grizzly Bears"), c("Hill Giant")] },
+      you: { hand: [c("Fire Magic")], battlefield: [c("Hero", { id: "hero" }), c("Samurai's Katana", { attachedTo: "hero" }), c("Hero", { id: "hero-2" }),
+        c("Warrior's Sword", { attachedTo: "hero-2" }), c("Hill Giant"), ...many(3, "Mountain")] },
+      explanation: "Fire Magic's middle tier, Fira, deals 2 to each creature: the three Bears die, and all your creatures have 3 toughness. The opponent's Hill Giant blocks one attacker; the other two deal at least 6.",
+      notes: `
+LETHAL: Fire Magic, Fira ({R} + {2}): 2 damage to each creature: the Bears die; your Heroes (3/3 trample, 4/3) and Hill
+  Giant survive. Attack with all three: the opponent's Giant blocks the 4/3 Hero: 3 + 3 = 6 (blocking the Katana Hero:
+  4 + 3).
+RULES: Tiered (702.183a).
+WRONG LINES: Fire (1 damage): nothing dies. Without Fire Magic, four blockers.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fin-10-limit-break", title: "Limit Break", set: "fin", tier: "hard",
+      opp: { life: 6, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Coral Sword"), c("Tifa's Limit Break")], battlefield: [c("Hill Giant"), c("Gray Ogre"), c("Mountain"), ...many(3, "Forest")] },
+      explanation: "The Bears block Hill Giant, so the Ogre must deal 6. Coral Sword (+1/+0) first, then Meteor Strikes doubles: (2 + 1) × 2 = 6. Doubling first gives only 5.",
+      notes: `
+LETHAL: Coral Sword ({R}): attached to Gray Ogre, 3/2. Attack with both; the Bears block the Giant. Tifa's Limit Break,
+  Meteor Strikes ({G} + {2}): double the Ogre: 6.
+RULES: Doubling power gives +X/+0 where X is its power at that moment, so bonuses must come first.
+WRONG LINES: Doubling before the Sword: 5. Pumping the Giant: the Bears block it.
 UNIQUENESS: Solver-checked.`
     })
   );

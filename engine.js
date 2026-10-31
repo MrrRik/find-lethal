@@ -217,6 +217,8 @@
       const picks = many ? [].concat(a.mode == null ? [] : a.mode) : [a.mode];
       return picks.map((mi, k) => {
         const m = f.modes[mi] || {};
+        // (a mode can have two target slots: "target creature you control fights target creature an opponent controls")
+        if (m.slots) return { effect: m.effect, slots: m.slots, target: many ? (a.target || [])[k] : a.target };
         return { effect: m.effect, targets: m.targets, filter: m.targetFilter, count: m.targetCount || ONE, target: many ? (a.target || [])[k] : a.target };
       });
     }
@@ -253,7 +255,8 @@
   // and the alternative to an additional cost: "behold a Goblin or pay {2}", "blight 2 or pay {1}" (a.behold / a.blight "pay")
   const costOf = (f, a = {}) => withX(f.cost, a.x) +
     (f.offspring && a.offspring ? f.offspring : "") +                     // offspring: an additional cost (CR 702.175a)
-    (f.spree && a.mode != null ? [].concat(a.mode).map((m) => (f.modes[m] && f.modes[m].plus) || "").join("") : "") +
+    // (spree; tiered, CR 702.183a: one mode, its cost added the same way)
+    ((f.spree || f.tiered) && a.mode != null ? [].concat(a.mode).map((m) => (f.modes[m] && f.modes[m].plus) || "").join("") : "") +
     (f.extraCostPerTarget && Array.isArray(a.target) && a.target.length > 1 ? `{${f.extraCostPerTarget * (a.target.length - 1)}}` : "") +
     (f.behold && f.behold.orPay && a.behold === "pay" ? f.behold.orPay : "") +
     (f.blight && f.blight.orPay && a.blight === "pay" ? f.blight.orPay : "");
@@ -863,6 +866,11 @@
         (!indestructible(c) && ((c.dmg || 0) >= toughness(c) || c.deathtouched)))) ||                                      // CR 704.5g, 704.5h
         (isPlaneswalker(c) && loyaltyOf(c) <= 0) ||                                                                         // CR 704.5i
         (isBattle(c) && defenseOf(c) <= 0 && !referenced(s, c.id)));                                                        // CR 704.5v
+      // CR 714.4 / 704.5s: a Saga whose lore counters reached its final chapter, with no chapter ability of it waiting or on
+      // the stack, is sacrificed
+      const doneSagas = [...s.player.battlefield, ...s.opponent.battlefield].filter((c) => c.chapters && !dying.includes(c) &&
+        ((c.counters && c.counters.lore) || 0) >= Math.max(...c.chapters.flatMap((ch) => ch.n)) && !referenced(s, c.id));
+      if (doneSagas.length) { doneSagas.forEach((c) => leave(s, c, "graveyard", ev, { sacrificed: true })); again = true; }
       if (dying.length) {
         const before = s.listens.length ? battlefieldNow(s) : null;
         dying.forEach((c) => leave(s, c, "graveyard", ev, { lookBack: before }));
@@ -964,7 +972,7 @@
   // Compiled triggers live outside the game state, in one table keyed by the card's definition, so states stay
   // small for the solver (it copies and compares every state it visits); a card only carries its key (tk).
   const TRIGGER_TABLE = new Map(), TRIGGER_KEYS = new Map();
-  const TRIGGER_FIELDS = ["triggers", "etb", "onDeath", "onAttack", "landfall", "onTreasureSac", "onTargetedBySpell", "returnsToHand", "backup", "eerie", "survival", "mobilize",
+  const TRIGGER_FIELDS = ["triggers", "etb", "onDeath", "onAttack", "landfall", "onTreasureSac", "onTargetedBySpell", "returnsToHand", "backup", "eerie", "survival", "mobilize", "chapters",
     "targets", "targetFilter", "targetCount"];
   // Rules text is only for showing the card; it's kept here by name, outside the state, for the same reason
   const CARD_TEXT = new Map();
@@ -1001,6 +1009,8 @@
     if (card.survival) list.push({ on: "main2", filter: { controller: "you" }, if: { selfTapped: true }, ...card.survival });
     // CR 702.181a: mobilize N — "Whenever this creature attacks, create N 1/1 red Warrior creature tokens. Those tokens
     // enter tapped and attacking. Sacrifice them at the beginning of the next end step."
+    // Saga chapters (CR 714.2): "I, II — …" triggers when lore counters reach that number: { n: [1, 2], effect, targets, … }
+    (card.chapters || []).forEach(({ n, ...ch }) => n.forEach((k) => list.push({ on: "lore", self: true, chapter: k, ...ch, count: ch.count || ch.targetCount })));
     if (card.mobilize) list.push({ on: "attacks", self: true, effect: { create: { ...WARRIOR, count: card.mobilize, tapped: true, attacking: true } } });
     return list;
   }
@@ -1013,7 +1023,9 @@
     // CR 702.91a: whenever this creature attacks, each other attacking creature gets +1/+0 until end of turn
     "battle cry": { on: "attacks", self: true, effect: { team: { pump: [1, 0], filter: { attacking: true }, other: true } } },
     // CR 702.163a: when this Equipment enters, create a 2/2 red Rebel creature token, then attach this Equipment to it
-    "for mirrodin!": { on: "enters", self: true, effect: { forMirrodin: true } }
+    "for mirrodin!": { on: "enters", self: true, effect: { forMirrodin: true } },
+    // CR 702.182a: job select — when this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it
+    "job select": { on: "enters", self: true, effect: { jobSelect: true } }
   };
   // Speed: the events anything in this puzzle can trigger on, worked out when the puzzle loads (its cards are known)
   // and kept up to date as new objects appear (tokens) or keywords are gained; emit() skips all other events
@@ -1144,6 +1156,7 @@
     if (f.level && e.level !== f.level) return false;                     // "when this Class becomes level 3"
     if (t.byYou && e.controller !== "you") return false;                  // valiant: "a spell or ability you control"
     if (t.mainPhase && !e.main) return false;                             // "… crews a Vehicle during your main phase"
+    if (t.chapter != null && !(e.before < t.chapter && t.chapter <= e.after)) return false;   // a Saga chapter (CR 714.2b)
     return true;
   }
   // An intervening "if" (CR 603.4): { controls: { filter, min } } — "if you control N or more …"
@@ -1218,6 +1231,8 @@
         if (!eventMatches(t, card, side, e)) continue;
         if (t.if && !conditionHolds(s, t.if, side, card)) continue;        // CR 603.4: checked as it triggers
         if (t.maxSpeed && !maxSpeed(s, side)) continue;                     // "Max speed — [triggered ability]" (CR 702.178a)
+        // an ability an Equipment gives ("Equipped creature has 'Whenever you cast …'"): only while it's attached
+        if (t.equipped && !(card.attachedTo && find(s, card.attachedTo))) continue;
         // "This ability triggers only once each turn"
         if (t.oncePerTurn) { const k = `${card.id}#${defId(t)}`; if ((s.once || []).includes(k)) continue; s.once = [...(s.once || []), k]; }
         // a source that already left (a look-back trigger, like a dying Blood Artist's): keep its last known information
@@ -1485,7 +1500,9 @@
     const amount = (d) => (d === "sacrificed" ? ctx.sacPower : d === "power" ? srcPower() : d === "eventCount" ? (ctx.event && ctx.event.count) || 0
       : typeof d === "object" && d.per ? (d.plus || 0) + s[ctx.side].battlefield.filter((c) => matches(s, c, d.per, ctx.side)).length
       : typeof d === "object" ? d.plusOtherSpells + Math.max((ctx.side === "player" ? s.spellsCast || 0 : 0) - 1, 0) : d);
-    if (eff.damage != null) dealDamage(s, ctx.src, ctx.side, to, amount(eff.damage), ev);
+    // ("this creature deals …" in an ability an Equipment or Aura gives: the creature it's attached to is the source)
+    const dmgSrc = (eff.byAttached && ctx.src && ctx.src.attachedTo && find(s, ctx.src.attachedTo)) || ctx.src;
+    if (eff.damage != null) dealDamage(s, dmgSrc, ctx.side, to, amount(eff.damage), ev);
     if (eff.lifeLoss && isPlayer) changeLife(s, to, -eff.lifeLoss, ev);
     // "each opponent gets a poison counter" (CR 122.1f)
     if (eff.poison && isPlayer) {
@@ -1518,7 +1535,11 @@
     if (eff.sacrifice && tgt) leave(s, tgt, "graveyard", ev, { sacrificed: true });   // "sacrifice it" (e.g. Ball Lightning)
     if (eff.counters && tgt) {                                   // e.g. { "+1/+1": 1 }; opposite counters then cancel (SBA)
       tgt.counters = { ...(tgt.counters || {}) };
-      Object.entries(eff.counters).forEach(([type, n]) => { tgt.counters[type] = (tgt.counters[type] || 0) + amount(n); });
+      const lore0 = tgt.counters.lore || 0;
+      // (a negative number removes counters: "remove a lore counter", never below 0)
+      Object.entries(eff.counters).forEach(([type, n]) => { tgt.counters[type] = Math.max(0, (tgt.counters[type] || 0) + amount(n)); });
+      // CR 714.2b: lore counters put on a Saga trigger the chapter abilities they reach
+      if (tgt.chapters && (tgt.counters.lore || 0) > lore0) emit(s, { type: "lore", obj: tgt, side: sideOf(s, tgt), before: lore0, after: tgt.counters.lore }, ev);
       if (Object.keys(eff.counters).some((k) => KW_COUNTERS.includes(k))) changed(s);   // (a keyword counter changes its abilities)
       ev.push({ type: "counters", id: tgt.id, counters: eff.counters });
     }
@@ -1535,6 +1556,8 @@
       }
     }
     if (eff.doublePower && tgt) addMod(s, tgt, [power(tgt), 0]);   // "double its power": +X/+0, X its power (CR 701.10b-c)
+    // "double / triple target creature's power and toughness": +X/+Y with X, Y its power and toughness (times k-1)
+    if (eff.multiplyPT && tgt) addMod(s, tgt, [(eff.multiplyPT - 1) * power(tgt), (eff.multiplyPT - 1) * toughness(tgt)]);
     // "double the number of +1/+1 counters on it": as many more as it has (CR 701.10e)
     if (eff.doubleCounters && tgt) {
       const n = (tgt.counters || {})[eff.doubleCounters] || 0;
@@ -1727,8 +1750,10 @@
       const n = eff.incubate === "power" ? srcPower() : eff.incubate;
       createToken(s, { ...INCUBATOR, counters: n ? { "+1/+1": n } : undefined }, ctx.side, ev);
     }
-    if (eff.forMirrodin) {
-      const rebel = createToken(s, { name: "Rebel", type: "Token Creature — Rebel", pt: "2/2", colors: ["R"] }, ctx.side, ev);
+    // For Mirrodin! (a 2/2 Rebel) and job select (CR 702.182a: a 1/1 colorless Hero): create it, then attach this to it
+    if (eff.forMirrodin || eff.jobSelect) {
+      const rebel = createToken(s, eff.jobSelect ? { name: "Hero", type: "Token Creature — Hero", pt: "1/1", colors: [] }
+        : { name: "Rebel", type: "Token Creature — Rebel", pt: "2/2", colors: ["R"] }, ctx.side, ev);
       const thing = find(s, ctx.selfId);
       // (attached only if the Equipment is still on the battlefield under the same player's control, CR 301.5c)
       if (thing && sideOf(s, thing) === ctx.side && find(s, rebel.id)) {
@@ -1980,11 +2005,15 @@
       const kinds = typeof w === "object" ? w : { "+1/+1": w === "X" ? x || 0 : w };
       Object.entries(kinds).forEach(([k, n]) => { if (n) perm.counters = { ...(perm.counters || {}), [k]: ((perm.counters || {})[k] || 0) + n }; });
     }
+    // CR 714.3a: a Saga enters with a lore counter (its chapter I ability triggers, 714.2b)
+    const sagaEnters = perm.chapters && !(perm.counters && perm.counters.lore);
+    if (sagaEnters) perm.counters = { ...(perm.counters || {}), lore: 1 };
     perm.ts = stamp(s);                                        // CR 613.7d: a timestamp as it enters the zone
     if (side === "player" && !isLand(perm)) s.celebration = (s.celebration || 0) + 1;   // (for celebration)
     s[side].battlefield.push(perm);
     changed(s);
     emit(s, { type: "enters", obj: perm, side }, ev);
+    if (sagaEnters) emit(s, { type: "lore", obj: perm, side, before: 0, after: 1 }, ev);
   }
 
   // Ward N on a permanent of the opponent's: when your spell or ability targets it, ward triggers and
