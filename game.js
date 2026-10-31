@@ -915,6 +915,15 @@
       if (canWarp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Warp it for ${card.warp} (exiled at the next end step)`]], again("warp"));
       casting.warp = canWarp && !canCast;
     }
+    // sneak (in your declare blockers step): return an unblocked attacker of yours and pay the sneak cost
+    if (card.sneak && casting.sneak === undefined && state.player.hand.includes(card)) {
+      const ids = (state.combat && state.combat.blocks ? state.combat.attackers : []).filter((id) => !E.check(state, { type: "cast", id: card.id, sneak: id }));
+      const normal = !E.check(state, { type: "cast", id: card.id });
+      if (!ids.length) casting.sneak = null;
+      else return pickCards({ ids, confirm: "Return it", alt: normal ? { label: `Cast normally (${card.cost})`, value: null } : null,
+        prompt: `Sneak ${card.sneak}: return an unblocked attacking creature you control to its owner's hand.`,
+        then: (picked) => again("sneak")(Array.isArray(picked) ? picked[0] : picked) });
+    }
     // web-slinging (a card in your hand): return a tapped creature of yours and pay less, or cast it normally
     if (card.webSlinging && casting.webSling === undefined && state.player.hand.includes(card)) {
       const ids = state.player.battlefield.filter((c) => E.isCreature(c) && c.tapped).map((c) => c.id).filter((id) => !E.check(state, { type: "cast", id: card.id, webSling: id }));
@@ -966,7 +975,7 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
-    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined });
+    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined });
     if (why) { cancelCast(); return rulesNote(why); }
     const n = f.chooseCount || 1;
     if (f.modes && casting.mode == null) {
@@ -1149,7 +1158,7 @@
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);

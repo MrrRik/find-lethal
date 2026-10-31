@@ -468,6 +468,7 @@
     if (referenced(s, card.id)) (s.lki = s.lki || {})[card.id] = lastKnown(card);   // its triggers still need it (CR 113.7a)
     s[side].battlefield = s[side].battlefield.filter((c) => c !== card);
     if (!isLand(card)) s.permLeft = true;                        // (void: a nonland permanent left the battlefield this turn)
+    if (side === "player") s.leftYours = true;                   // (disappear: a permanent left the battlefield under your control)
     changed(s);
     // CR 400.7: effects on it end with it; if the card comes back, it's a new object they don't apply to — and spells
     // and abilities that targeted it now target nothing there (CR 608.2b: no longer in the zone it was in)
@@ -482,7 +483,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -491,7 +492,7 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn",
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn", "sneaked",
     "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
@@ -724,7 +725,8 @@
         (!src.static.if || conditionHolds(s, src.static.if, srcSide, src)) &&
         matches(s, target, src.static.filter, srcSide) && !(src.static.other && target === src)) out.push({ ts: src.ts, ...src.static.team });
       if (src.perOther && src === target) {                    // "gets +2/+0 for each other Goblin you control"
-        const n = s[srcSide].battlefield.filter((x) => x !== src && hasType(x, src.perOther.type)).length;
+        // ("+1/+0 for each other creature you control": perOther.creature)
+        const n = s[srcSide].battlefield.filter((x) => x !== src && (src.perOther.creature ? isCreature(x) : hasType(x, src.perOther.type))).length;
         if (n) out.push({ ts: src.ts, pump: [src.perOther.pump[0] * n, src.perOther.pump[1] * n] });
       }
       // "gets +1/+1 for each oil counter on it" (perCounter)
@@ -1211,6 +1213,9 @@
     if (cond.door != null && !(self && self.unlocked && self.unlocked[cond.door])) return false;   // a Room door's ability
     if (cond.saddled && !(self && self.saddled)) return false;
     if (cond.webSlung && !(self && self.webSlung)) return false;    // "if they were cast using web-slinging"
+    if (cond.sneaked && !(self && self.sneaked)) return false;      // "if its sneak cost was paid"
+    // Disappear (TMT): "if a permanent left the battlefield under your control this turn"
+    if (cond.disappear && !(side === "player" && s.leftYours)) return false;
     // "as long as there's a Lesson card in your graveyard" (lessons: how many)
     if (cond.lessons && s[side].graveyard.filter((c) => subtypes(c).includes("Lesson")).length < cond.lessons) return false;
     // Void (EOE): "if a nonland permanent left the battlefield this turn or a spell was warped this turn"
@@ -1319,6 +1324,7 @@
     if (f.mountOrVehicle && !isMount(c) && !isVehicle(c)) return false;   // "Mounts and Vehicles you control"
     if (f.spacecraftOrPlanet && !subtypes(c).some((t) => t === "Spacecraft" || t === "Planet")) return false;
     if (f.nonland && typeHas(c, /\bland\b/i)) return false;                                      // "target nonland permanent"
+    if (f.creatureOrEnchantment && !isCreature(c) && !typeHas(c, /enchantment/i)) return false;   // "target creature or enchantment"
     if (f.hasCounter && !(((c.counters || {})[f.hasCounter === true ? "+1/+1" : f.hasCounter] || 0) > 0)) return false;   // "with +1/+1 counters on them"
     return true;
   }
@@ -2103,6 +2109,10 @@
       const less = has(perm, "compleated") ? 2 * (lifePips || 0) : 0;
       perm.counters = { ...(perm.counters || {}), loyalty: Math.max(0, Number(perm.loyalty) - less) };
     }
+    // "enters with two +1/+1 counters on it if …" (entersWithCountersIf: { if, counters }; Disappear)
+    if (perm.entersWithCountersIf && conditionHolds(s, perm.entersWithCountersIf.if, side, perm)) {
+      Object.entries(perm.entersWithCountersIf.counters).forEach(([k, n]) => { perm.counters = { ...(perm.counters || {}), [k]: ((perm.counters || {})[k] || 0) + n }; });
+    }
     // a number means +1/+1 counters; an object names the kinds ("enters with two oil counters": { oil: 2 })
     if (perm.entersWithCounters) {
       const w = perm.entersWithCounters;
@@ -2475,6 +2485,9 @@
     if (from.zone === "exile" && from.card.airbent) return { ...f, cost: "{2}", printedCost: f.cost };
     // CR 702.185a: warp — cast it from your hand for its warp cost instead (a.warp)
     if (a.warp && from.zone === "hand" && from.card.warp) return { ...f, cost: from.card.warp, warpCast: true, printedCost: f.cost };
+    // CR 702.190a: sneak — during your declare blockers step, its sneak cost and returning an unblocked attacking creature
+    // you control (a.sneak) instead
+    if (a.sneak != null && from.zone === "hand" && from.card.sneak) return { ...f, cost: from.card.sneak, sneakCast: true, printedCost: f.cost };
     // CR 702.188a: web-slinging — its web-slinging cost and returning a tapped creature you control (a.webSling) instead
     if (a.webSling != null && from.zone === "hand" && from.card.webSlinging) return { ...f, cost: from.card.webSlinging, webSlung: true, printedCost: f.cost };
     if (from.zone !== "graveyard") return f;
@@ -2593,7 +2606,13 @@
       if (f.cost == null) return "You can't cast that.";
       // ("You may cast this spell as though it had flash if you behold a Dragon": behold.flash)
       const flashByBehold = f.behold && f.behold.flash && a.behold != null && a.behold !== "pay";
-      if (!isInstant(f) && !has(f, "flash") && !flashByBehold && !sorceryTime(s)) return `You can only cast ${f.name} during your main phase, with nothing on the stack.`;
+      // sneak: only in your declare blockers step (after blockers), returning an unblocked attacker of yours
+      if (a.sneak != null) {
+        if (!from.card.sneak || from.zone !== "hand") return "Only a card with sneak in your hand can be cast that way.";
+        if (!(s.phase === "blockers" && s.combat && s.combat.blocks)) return "Sneak: only during your declare blockers step.";
+        if (!unblockedMine(s).includes(a.sneak)) return "Sneak: return an unblocked attacking creature you control.";
+      }
+      if (!isInstant(f) && !has(f, "flash") && !flashByBehold && !f.sneakCast && !sorceryTime(s)) return `You can only cast ${f.name} during your main phase, with nothing on the stack.`;
       // harmonize: tap up to one untapped creature you control (a.tapFor) to reduce the cost by its power
       if (a.tapFor != null && !(f.harmonizing && convokeHelpers(s).includes(a.tapFor))) return "Harmonize: tap one of your untapped creatures.";
       if (f.plottedCast && !sorceryTime(s)) return `A plotted card can only be cast during your main phase, with nothing on the stack.`;
@@ -2772,7 +2791,13 @@
         unlockDoor(s, room, a.face || 0, ev);
         return void sba(s, ev);
       }
+      // sneak (CR 702.190b): it enters tapped and attacking (not declared as an attacker; blockers are already declared)
+      if (card.sneaked && s.combat) perm.tapped = true;
       enter(s, perm, { x: a.x, lifePips: a.lifePips }, ev);
+      if (card.sneaked && s.combat && find(s, perm.id)) {
+        s.combat.attackers.push(perm.id);
+        if (s.combat.blocks) { s.combat.blocks[perm.id] = []; s.combat.blocked[perm.id] = false; }
+      }
     } else {
       // A spell whose targets have all become illegal doesn't resolve (608.2b); otherwise each part resolves in order
       const targeted = parts.filter((p) => p.targets || p.slots);
@@ -2947,6 +2972,8 @@
       // web-slinging: returning the tapped creature is part of the cost; the permanent remembers it ("if they were cast
       // using web-slinging")
       if (f.webSlung) { leave(s, find(s, a.webSling), "hand", ev); card.webSlung = true; }
+      // sneak: the unblocked attacker returns to its owner's hand as part of the cost (CR 702.190a)
+      if (f.sneakCast) { leave(s, find(s, a.sneak), "hand", ev); card.sneaked = true; }
       // "As an additional cost, discard a card or pay {2}" (a.discard: the card, or "pay")
       if (f.discardCost && a.discard != null && a.discard !== "pay") discardCard(s, s.player.hand.find((c) => c.id === a.discard), ev);
       // "whenever one or more cards leave your graveyard": cast from there (flashback, harmonize)
@@ -3129,6 +3156,8 @@
   }
   // Your tapped creatures (web-slinging returns one); the cards you could discard (unknown cards: one stands for all)
   const tappedMine = (s) => s.player.battlefield.filter((c) => isCreature(c) && c.tapped).map((c) => c.id);
+  // Your unblocked attacking creatures, once blockers are declared (sneak returns one)
+  const unblockedMine = (s) => (s.combat && s.combat.blocks ? s.combat.attackers.filter((id) => !s.combat.blocked[id] && s.player.battlefield.some((c) => c.id === id)) : []);
   function discardChoices(s, except) {
     const seen = new Set();
     return s.player.hand.filter((c) => c.id !== except && (c.unknown ? !seen.has("?") && seen.add("?") : true)).map((c) => c.id);
@@ -3182,6 +3211,7 @@
           ...(f.harmonizing ? convokeHelpers(s).map((tapFor) => ({ tapFor })) : []),               // (harmonize: a tapped creature)
           ...(zone === "hand" && card.warp ? [{ warp: true }] : []),                                // (its warp cost)
           ...(zone === "hand" && card.webSlinging ? tappedMine(s).map((webSling) => ({ webSling })) : []),   // (web-slinging)
+          ...(zone === "hand" && card.sneak ? unblockedMine(s).map((sneak) => ({ sneak })) : []),          // (sneak)
           ...(f.behold && f.behold.flash ? beholdOptions(s, f).slice(0, 1).map((behold) => ({ behold })) : [])];   // (flash by beholding)
         if (check(s, { type: "cast", id: card.id, face }) && !reducible.some((r) => !check(s, { type: "cast", id: card.id, face, ...r }))) continue;
         const n = f.chooseCount || 1;
@@ -3203,6 +3233,8 @@
         const tapFors = f.harmonizing ? [undefined, ...convokeHelpers(s)] : [undefined];
         // warp: cast it normally, or for its warp cost
         const warps = zone === "hand" && card.warp ? [undefined, true] : [undefined];
+        // sneak: in your declare blockers step, returning each unblocked attacker of yours
+        const sneaks = zone === "hand" && card.sneak ? [undefined, ...unblockedMine(s)] : [undefined];
         // web-slinging: normally, or returning each tapped creature of yours
         const webSlings = zone === "hand" && card.webSlinging ? [undefined, ...tappedMine(s)] : [undefined];
         // a discard cost: each other card in your hand (unknown cards are all alike: one of them), or pay
@@ -3215,13 +3247,14 @@
         // collect evidence (optional): not, or each set of graveyard cards that's just enough
         const evidences = f.evidence ? [undefined, ...evidenceOptions(s, f.evidence)] : [undefined];
         for (const mode of modes) for (const color of colors) for (const x of xs) for (const sac of sacs) for (const bargain of bargains) for (const evidence of evidences)
-          for (const blight of blights) for (const behold of beholds) for (const convoke of convokes) for (const lifePips of lifePipsList) for (const offspring of offsprings) for (const gift of gifts) for (const tapFor of tapFors) for (const warp of warps) for (const webSling of webSlings) for (const discard of discards) {
+          for (const blight of blights) for (const behold of beholds) for (const convoke of convokes) for (const lifePips of lifePipsList) for (const offspring of offsprings) for (const gift of gifts) for (const tapFor of tapFors) for (const warp of warps) for (const webSling of webSlings) for (const discard of discards) for (const sneak of sneaks) {
             for (const pick of castTargets(s, f, { mode, x, blight, bargain, evidence, gift, behold }, sac)) {
               const a = { type: "cast", id: card.id, face, mode, color, x, sac, ...pick };
               if (tapFor !== undefined) a.tapFor = tapFor;
               if (warp) a.warp = true;
               if (webSling !== undefined) a.webSling = webSling;
               if (discard !== undefined) a.discard = discard;
+              if (sneak !== undefined) a.sneak = sneak;
               if (evidence !== undefined) a.evidence = evidence;
               if (offspring) a.offspring = true;
               if (gift) a.gift = true;
@@ -3406,6 +3439,7 @@
     if (a.tapFor != null) d += ` (tapping ${nameOf(s, a.tapFor)})`;
     if (a.warp) d += " (warp)";
     if (a.webSling != null) d += ` (web-slinging, returning ${nameOf(s, a.webSling)})`;
+    if (a.sneak != null) d += ` (sneak, returning ${nameOf(s, a.sneak)})`;
     if (from && from.zone === "graveyard" && f && f.mayhemCast) d = d.replace(" (harmonize)", " (mayhem)");
     if (a.discard === "pay") d += " (paying instead of discarding)";
     else if (a.discard != null) d += ` (discarding ${nameOf(s, a.discard)})`;

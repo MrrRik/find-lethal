@@ -1306,6 +1306,69 @@
     "Dawn's Light Archer": { type: "Creature — Elf Archer", cost: "{2}{G}", pt: "4/2", kw: ["flash", "reach"], text: "Flash. Reach" }
   });
 
+  // ---- Teenage Mutant Ninja Turtles (TMT): sneak, alliance, disappear, Mutagen tokens ----
+  // (sneak: its cost — cast during your declare blockers step by returning an unblocked attacker)
+  const sneakText = (cost, perm = true) => `Sneak ${cost} (You may cast this spell for ${cost} if you also return an unblocked attacker you control to hand during the declare blockers step.${perm ? " It enters tapped and attacking." : ""})`;
+  const MUTAGEN = { name: "Mutagen", type: "Token Artifact — Mutagen", colors: [],
+    abilities: [{ cost: "{1}", tap: true, sacSelf: true, sorcery: true, targets: "creature", effect: { counters: { "+1/+1": 1 } }, text: "{1}, {T}, Sacrifice: +1/+1 counter on target creature" }],
+    text: "{1}, {T}, Sacrifice this token: Put a +1/+1 counter on target creature. Activate only as a sorcery." };
+  const SPIRIT_TURTLE = { name: "Ninja Turtle Spirit", type: "Token Creature — Ninja Turtle Spirit", pt: "1/1", colors: ["W"] };
+  Object.assign(CARDS, {
+    "Mutagen": { ...MUTAGEN, token: true },
+    "Shredder, Unrelenting": { type: "Legendary Creature — Human Ninja", cost: "{4}{B}", pt: "6/4", kw: ["deathtouch"], sneak: "{3}{B}",
+      triggers: [{ on: "enters", self: true, targets: "creature", targetFilter: { controller: "you", other: true }, effect: { grant: ["deathtouch"] } },
+        { on: "attacks", self: true, targets: "creature", targetFilter: { controller: "you", other: true }, effect: { grant: ["deathtouch"] } }],
+      text: `${sneakText("{3}{B}")} Deathtouch. Whenever Shredder enters or attacks, another target creature you control gains deathtouch until end of turn.` },
+    "Oroku Saki, Shredder Rising": { type: "Legendary Creature — Human Ninja", cost: "{2}{B}", pt: "3/1", sneak: "{1}{B}",
+      triggers: [{ on: "combatDamage", self: true, effect: { draw: 1 } }],
+      text: `${sneakText("{1}{B}")} Whenever Oroku Saki deals combat damage to a player, you draw a card and lose 1 life.` },
+    "Splinter, Hamato Yoshi": { type: "Legendary Creature — Mutant Ninja Rat", cost: "{1}{B}", pt: "1/3", kw: ["menace"], sneak: "{B}",
+      static: { team: { pump: [1, 1] }, filter: { type: "Ninja" }, other: true },
+      text: `${sneakText("{B}")} Menace. Other Ninjas you control get +1/+1.` },
+    "Leonardo, Big Brother": { type: "Legendary Creature — Mutant Ninja Turtle", cost: "{2}{W}", pt: "1/3", sneak: "{W}", perOther: { creature: true, pump: [1, 0] },
+      text: `${sneakText("{W}")} Leonardo gets +1/+0 for each other creature you control.` },
+    "Leonardo, Leader in Blue": { type: "Legendary Creature — Mutant Ninja Turtle", cost: "{W}", pt: "2/1", sneak: "{3}{W}{W}",
+      triggers: [{ on: "enters", self: true, if: { sneaked: true }, effect: { team: { pump: [2, 0] } } }],
+      abilities: [{ cost: "{1}{W}", effect: { grant: ["first strike"], self: true }, text: "{1}{W}: first strike" }],
+      text: `${sneakText("{3}{W}{W}")} When Leonardo enters, if his sneak cost was paid, creatures you control get +2/+0 until end of turn. {1}{W}: Leonardo gains first strike until end of turn.` },
+    "The Last Ronin's Technique": { type: "Instant", cost: "{3}{W}", sneak: "{1}{W}",
+      effect: { create: { ...SPIRIT_TURTLE, count: 3 }, insteadIf: { if: { sneaked: true }, effect: { create: { ...SPIRIT_TURTLE, count: 3, tapped: true, attacking: true } } } },
+      text: `${sneakText("{1}{W}", false)} Create three 1/1 white Ninja Turtle Spirit creature tokens. If this spell's sneak cost was paid, they enter tapped and attacking.` },
+    "Shredder's Technique": { type: "Sorcery", cost: "{2}{B}", sneak: "{B}", targets: "permanent", targetFilter: { creatureOrEnchantment: true }, effect: { destroy: true },
+      text: `${sneakText("{B}", false)} Destroy target creature or enchantment. If an enchantment was destroyed this way, you lose 2 life.` },
+    "Karai's Technique": { type: "Sorcery", cost: "{1}{W}{B}", sneak: "{W}{B}", spree: true, oneOrMore: true,
+      modes: [{ text: "Target creature gets +3/+3", targets: "creature", effect: { pump: [3, 3] } }, { text: "Target creature gets -3/-3", targets: "creature", effect: { pump: [-3, -3] } }],
+      text: `${sneakText("{W}{B}", false)} Choose one or both — • Target creature gets +3/+3 until end of turn. • Target creature gets -3/-3 until end of turn.` },
+    // alliance
+    "Raphael, Tough Turtle": { type: "Legendary Creature — Mutant Ninja Turtle", cost: "{1}{R}", pt: "1/3",
+      triggers: [{ on: "enters", other: true, filter: { controller: "you", creature: true }, targets: "opponent", effect: { damage: 1 } }],
+      text: "Alliance — Whenever another creature you control enters, Raphael deals 1 damage to target opponent." },
+    "Mutant Town Musicians": { type: "Creature — Mutant Bard Performer", cost: "{2}{R}", pt: "2/4", kw: ["trample"],
+      triggers: [{ on: "enters", other: true, filter: { controller: "you", creature: true }, effect: { pump: [1, 0], self: true } }],
+      text: "Trample. Alliance — Whenever another creature you control enters, this creature gets +1/+0 until end of turn." },
+    // disappear
+    "Putrid Pals": { type: "Creature — Human Ooze Mutant", cost: "{2}{B/G}{B/G}", pt: "3/3", kw: ["deathtouch"],
+      entersWithCountersIf: { if: { disappear: true }, counters: { "+1/+1": 2 } },
+      text: "Deathtouch. Disappear — This creature enters with two +1/+1 counters on it if a permanent left the battlefield under your control this turn." },
+    "Foot Mystic": { type: "Creature — Human Ninja Warlock", cost: "{3}{B}", pt: "2/4", kw: ["lifelink"],
+      triggers: [{ on: "enters", self: true, if: { disappear: true }, effect: { create: { name: "Ninja", type: "Token Creature — Ninja", pt: "1/1", colors: ["B"] } } }],
+      text: "Lifelink. Disappear — When this creature enters, if a permanent left the battlefield under your control this turn, create a 1/1 black Ninja creature token." },
+    // others
+    "Hard-Won Jitte": { type: "Artifact — Equipment", cost: "{1}{R}", equip: { cost: "{2}", static: { grant: ["double strike"] } },
+      text: "Equipped creature has double strike. Equip {2}" },
+    "Skateboard": { type: "Artifact — Equipment", cost: "{1}", equip: { cost: "{1}", static: { pump: [1, 0], grant: ["haste"] } }, etb: { tap: true }, targets: "permanent",
+      text: "When this Equipment enters, tap target permanent. Equipped creature gets +1/+0 and has haste. Equip {1}" },
+    "Guac & Marshmallow Pizza": { type: "Artifact — Food", cost: "{G}", kw: ["flash"], etb: { pump: [2, 2], untap: true }, targets: "creature",
+      text: "Flash. When this artifact enters, target creature gets +2/+2 until end of turn. Untap it. {2}, {T}, Sacrifice this artifact: You gain 3 life." },
+    "Tenderize": { type: "Instant", cost: "{1}{G}", slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature", filter: { controller: "opponent" } }], effect: { bite: true },
+      text: "Target creature you control deals damage equal to its power to target creature an opponent controls." },
+    "Squirrelanoids": { type: "Creature — Squirrel Mutant", cost: "{B}", pt: "1/1", kw: ["deathtouch"], text: "Deathtouch" },
+    "Mouser Attack!": { type: "Instant", cost: "{1}{R}",
+      modes: [{ text: "Create a 1/1 colorless Robot artifact creature token", effect: { create: { name: "Robot", type: "Token Artifact Creature — Robot", pt: "1/1", colors: [] } } },
+        { text: "Target creature gets +3/+0 and first strike", targets: "creature", effect: { pump: [3, 0], grant: ["first strike"] } }],
+      text: "Choose one — • Create a 1/1 colorless Robot artifact creature token. • Target creature gets +3/+0 and gains first strike until end of turn." }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -3314,6 +3377,132 @@ LETHAL: Feisty Spikeling ({1}{R/W}), Mischievous Sneakling ({1}{U/B}, flash), Sh
   the opponent loses 5. (9 lands: 2 + 2 + 5.)
 RULES: A hybrid card is all of its colors (202.2d); vivid counts when the ability resolves.
 WRONG LINES: Shimmercreep first, without the others: 2-3.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= TEENAGE MUTANT NINJA TURTLES (set TMT) ======================= */
+  // Sneak, alliance, disappear
+  window.PUZZLES.push(
+    puzzle({
+      id: "tmt-01-shredder", title: "Shredder", set: "tmt", tier: "easy",
+      opp: { life: 6, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Shredder, Unrelenting")], battlefield: [c("Hill Giant"), c("Grizzly Bears"), ...many(4, "Swamp")] },
+      explanation: "Attack with both. After blockers, sneak Shredder for {3}{B}: return the unblocked Grizzly Bears to your hand, and Shredder enters tapped and attacking — unblocked. 6 damage.",
+      notes: `
+LETHAL: Attack with Hill Giant and Grizzly Bears. The Nestguard blocks the Giant. Declare blockers step: Shredder by sneak
+  ({3}{B}, return the Bears): enters tapped and attacking, unblocked: 6. (If the Bears are blocked, return the Giant.)
+RULES: Sneak (702.190a-b): cast during your declare blockers step; the permanent enters tapped and attacking.
+WRONG LINES: Casting Shredder before combat: 5 mana, you have 4 — and he'd be summoning sick.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-02-tough-turtle", title: "Tough Turtle", set: "tmt", tier: "easy",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("The Last Ronin's Technique")], battlefield: [c("Raphael, Tough Turtle"), ...many(4, "Plains")] },
+      explanation: "Alliance: Raphael deals 1 damage to the opponent whenever another creature you control enters. The Last Ronin's Technique makes three tokens: 3.",
+      notes: `
+LETHAL: The Last Ronin's Technique ({3}{W}): three 1/1 Ninja Turtle Spirits enter: Raphael 1 + 1 + 1. 0.
+RULES: Each token entering is its own event: three triggers.
+WRONG LINES: Attacking with Raphael: the Nestguard blocks.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-03-skateboard", title: "Skateboard", set: "tmt", tier: "easy",
+      opp: { life: 6, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Skateboard")], battlefield: [c("Hill Giant"), c("Gray Ogre", { sick: true }), c("Mountain"), c("Mountain")] },
+      explanation: "Skateboard's enters ability taps the Nestguard. Equip it ({1}) to the summoning-sick Gray Ogre: +1/+0 and haste. 3 + 3.",
+      notes: `
+LETHAL: Skateboard ({1}): tap Krotiq Nestguard. Equip ({1}) Gray Ogre: 3/2 haste. Attack with both: 6.
+RULES: A tapped creature can't block.
+WRONG LINES: Equipping the Giant: the Ogre stays home: 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-04-tenderize", title: "Tenderize", set: "tmt", tier: "easy",
+      opp: { life: 5, battlefield: [c("Wall of Wood")] },
+      you: { hand: [c("Tenderize")], battlefield: [c("Hill Giant"), c("Gray Ogre"), c("Forest"), c("Forest")] },
+      explanation: "Hill Giant deals 3 to the Wall of Wood (Gray Ogre's 2 isn't enough). With no blocker, both attack: 5.",
+      notes: `
+LETHAL: Tenderize: Hill Giant deals 3 to Wall of Wood (0/3): it dies. Attack: 3 + 2 = 5.
+RULES: Only the first creature deals damage (it isn't a fight).
+WRONG LINES: Using the Ogre: 2 damage, the Wall lives and blocks.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-05-karai", title: "Karai's Technique", set: "tmt", tier: "medium",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Karai's Technique")], battlefield: [c("Hill Giant"), c("Grizzly Bears"), c("Gray Ogre"), c("Plains"), c("Swamp")] },
+      explanation: "Attack with all three; the Nestguard blocks the Giant. Sneak Karai's Technique for {W}{B}: return the unblocked Grizzly Bears, and give the unblocked Gray Ogre +3/+3. 5.",
+      notes: `
+LETHAL: Attack with all three. The Nestguard blocks Hill Giant. Karai's Technique by sneak ({W}{B}, return Grizzly Bears):
+  +3/+3 on Gray Ogre: 5. (Whatever is blocked, two unblocked 2-power creatures remain: return one, pump the other.)
+RULES: Sneak works for instants and sorceries too (702.190a), in the declare blockers step.
+WRONG LINES: Casting it in main phase: {1}{W}{B}, you have two lands.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-06-deathtouch", title: "Unrelenting", set: "tmt", tier: "medium",
+      opp: { life: 6, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Shredder, Unrelenting")], battlefield: [c("Mutant Town Musicians"), c("Grizzly Bears"), ...many(4, "Swamp")] },
+      explanation: "Attack with both first — sneak needs an unblocked attacker. Whichever one the Nestguard doesn't block goes back to your hand to sneak in Shredder: 6 unblocked damage. (If the Musicians are blocked, Shredder's trigger gives them deathtouch, so they trample over too.)",
+      notes: `
+LETHAL: Attack with Mutant Town Musicians and Grizzly Bears. Sneak Shredder ({3}{B}), returning the unblocked one: 6
+  attacking. If the Nestguard blocked the Musicians and the Bears go back, Shredder's trigger gives the Musicians
+  deathtouch (+1/+0 from alliance): 1 to the blocker, 2 trample over: 8.
+RULES: Sneak (702.190a-b). Deathtouch + trample: 1 damage is lethal to the blocker (702.19c).
+WRONG LINES: Not attacking first: no unblocked creature to return.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-07-leader-in-blue", title: "Leader in Blue", set: "tmt", tier: "hard",
+      opp: { life: 8, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Leonardo, Leader in Blue")], battlefield: [c("Hill Giant"), c("Grizzly Bears"), c("Gray Ogre"), ...many(5, "Plains")] },
+      explanation: "Leonardo costs {W} — but sneaking him for {3}{W}{W} turns on his trigger: creatures you control get +2/+0. Attack with all three; the Nestguard blocks the Giant. Return the Bears: Leonardo (4) and Gray Ogre (4) are unblocked.",
+      notes: `
+LETHAL: Attack with all three; the Nestguard blocks Hill Giant. Leonardo by sneak ({3}{W}{W}, return Grizzly Bears): enters
+  tapped and attacking; his sneak trigger: creatures +2/+0. Leonardo 4 + Gray Ogre 4 = 8.
+RULES: "If his sneak cost was paid" (the cheaper {W} cast doesn't count).
+WRONG LINES: Casting Leonardo for {W} before combat: summoning sick, no trigger.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-08-big-brother", title: "Big Brother", set: "tmt", tier: "hard",
+      opp: { life: 9, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Leonardo, Big Brother"), c("The Last Ronin's Technique")], battlefield: [c("Hill Giant"), c("Grizzly Bears"), c("Gray Ogre"), ...many(3, "Plains")] },
+      explanation: "Attack with all three; the Nestguard blocks the Giant. Sneak The Last Ronin's Technique ({1}{W}), returning the Bears: three Spirits enter tapped and attacking. Then sneak Leonardo ({W}), returning one of the new Spirits. Leonardo gets +1/+0 for each other creature: 5. Ogre 2 + two Spirits 2 + Leonardo 5.",
+      notes: `
+LETHAL: Attack with all three; the Nestguard blocks Hill Giant. The Last Ronin's Technique by sneak (return Grizzly Bears):
+  three 1/1 Spirits tapped and attacking. Leonardo, Big Brother by sneak ({W}, return a Spirit): attacking; others: Giant,
+  Ogre, two Spirits: 5/3. Damage: Ogre 2 + Spirits 2 + Leonardo 5 = 9.
+RULES: Tokens that entered attacking are unblocked attackers, so they can pay for sneak too.
+WRONG LINES: Leonardo first: only 3 others, then the Technique: 2 + 3... 8.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-09-musicians", title: "Mutant Town", set: "tmt", tier: "hard",
+      opp: { life: 8, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("The Last Ronin's Technique")], battlefield: [c("Mutant Town Musicians"), c("Raphael, Tough Turtle"), c("Grizzly Bears"), c("Plains"), c("Plains")] },
+      explanation: "Attack with all three; the Nestguard blocks the Musicians. Sneak The Last Ronin's Technique, returning the Bears: three Spirits enter attacking. Raphael deals 1 for each and the Musicians get +3/+0 — 5 trample against a 4-toughness blocker: 1 over. 3 + 3 + 1 + 1.",
+      notes: `
+LETHAL: Attack with Musicians, Raphael and Bears; the Nestguard blocks the Musicians. Sneak The Last Ronin's Technique
+  ({1}{W}, return the Bears): three Spirits tapped and attacking. Alliance: Raphael 3; Musicians 5/4 trample: 1 over.
+  Spirits 3 + Raphael 1 + 3 + 1 = 8.
+RULES: Sneak; alliance (another creature entering).
+WRONG LINES: Returning Raphael: no pings.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tmt-10-alliance", title: "Alliance", set: "tmt", tier: "hard",
+      opp: { life: 11, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Leonardo, Leader in Blue")], battlefield: [c("Raphael, Tough Turtle"), c("Mutant Town Musicians"), c("Grizzly Bears"), c("Gray Ogre"), ...many(5, "Plains")] },
+      explanation: "Attack with all four; the Nestguard blocks the Musicians. Sneak Leonardo, Leader in Blue for the +2/+0 — and return Raphael, not a 2-power creature: once everyone gets +2/+0, a 4-power attacker is worth more than Raphael's 1-damage ping.",
+      notes: `
+LETHAL: Attack with Raphael, Musicians, Bears, Ogre; the Nestguard blocks the Musicians. Leonardo by sneak ({3}{W}{W},
+  return Raphael): +2/+0 to all; the Musicians also +1 (alliance): 5/4 trample: 1 over. Leonardo 4 + Bears 4 + Ogre 4 +
+  1 = 13. Against every block the opponent could make, only returning Raphael always reaches 11 (solver-checked).
+RULES: Sneak trigger "if his sneak cost was paid"; alliance.
+WRONG LINES: Keeping Raphael for his ping and returning a 2-power creature: the opponent's best block keeps it under 11.
 UNIQUENESS: Solver-checked.`
     })
   );
