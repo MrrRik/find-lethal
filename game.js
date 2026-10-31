@@ -1115,8 +1115,12 @@
     if (!f.aura && /creature|artifact|enchantment|planeswalker|battle/i.test(f.type || "")) return [];
     const out = [];
     E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, gift: casting.gift || undefined }).forEach((p, part) => {
-      if (p.slots) p.slots.forEach((sl, slot) => out.push({ kind: sl.targets, filter: sl.filter, count: ONE, src: f, part, slot,
-        label: f.name, which: sl.filter && sl.filter.controller === "you" ? "your creature" : sl.filter && sl.filter.controller === "opponent" ? "a creature you don't control" : null }));
+      if (p.slots) p.slots.forEach((sl, slot) => {
+        // (what the slot takes: "your planeswalker", "a creature or planeswalker you don't control")
+        const noun = sl.targets === "planeswalker" ? "planeswalker" : sl.targets === "creature-or-planeswalker" ? "creature or planeswalker" : "creature";
+        out.push({ kind: sl.targets, filter: sl.filter, count: ONE, src: f, part, slot,
+          label: f.name, which: sl.filter && sl.filter.controller === "you" ? `your ${noun}` : sl.filter && sl.filter.controller === "opponent" ? `a ${noun} you don't control` : null });
+      });
       else if (p.targets) out.push({ kind: p.targets, filter: p.filter, count: p.count || ONE, src: f, part, label: f.name });
     });
     return out;

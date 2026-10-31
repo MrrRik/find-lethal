@@ -150,7 +150,7 @@
       return c.faces.map((f, i) => (c.unlocked[i] ? null : { special: "unlock", door: i, cost: f.cost, sorcery: true, text: `Unlock ${f.name} (${f.cost})` })).filter(Boolean);
     }
     if (c.st && c.st.lost) return [];                          // it lost all its abilities (CR 613.1f)
-    const list = [...(c.abilities || [])];
+    const list = [...(c.abilities || []), ...((c.st && c.st.abilities) || [])];   // (its own, then gained ones)
     if (c.equip) list.push({ cost: c.equip.cost, targets: "creature", filter: { controller: "you" }, sorcery: true, effect: { attach: true },
       text: `Equip ${c.equip.cost}` });
     // CR 702.122a: "Crew N" — tap any number of other untapped creatures you control with total power N or more:
@@ -701,7 +701,7 @@
   // (statics that read counters or poison — perCounter, conditional — can change without a board change: then also
   // when the poison counters or the counters on permanents differ from the last rebuild)
   const LAST = new WeakMap();
-  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.player.speed || 0}|${s.gainedLife ? 1 : 0}|${s.player.enduringStory ? 1 : 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
+  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.player.speed || 0}|${s.gainedLife ? 1 : 0}|${s.player.enduringStory ? 1 : 0}|${s.oppNoncombat ? 1 : 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
     [...s.player.battlefield, ...s.opponent.battlefield].map((c) => (c.counters ? c.id + JSON.stringify(c.counters) : "")).join();
   const refresh = (s) => { if (CHANGED.has(s) || (s.dynamicStatics && LAST.get(s) !== dynamicKey(s))) recomputeStatics(s); };
   function recomputeStatics(s) {
@@ -724,6 +724,8 @@
       if (src.static && src.static.team && isCreature(target) && sideOf(s, target) === srcSide &&
         (!src.static.if || conditionHolds(s, src.static.if, srcSide, src)) &&
         matches(s, target, src.static.filter, srcSide) && !(src.static.other && target === src)) out.push({ ts: src.ts, ...src.static.team });
+      // "Planeswalkers you control have '[−2]: …'" (static.walkers: the loyalty abilities they gain, layer 6)
+      if (src.static && src.static.walkers && isPlaneswalker(target) && sideOf(s, target) === srcSide) out.push({ ts: src.ts, addAbilities: src.static.walkers });
       if (src.perOther && src === target) {                    // "gets +2/+0 for each other Goblin you control"
         // ("+1/+0 for each other creature you control": perOther.creature)
         const n = s[srcSide].battlefield.filter((x) => x !== src && (src.perOther.creature ? isCreature(x) : hasType(x, src.perOther.type))).length;
@@ -756,12 +758,13 @@
     }
     const typed = (c) => (typeOf.has(c) ? { type: typeOf.get(c) } : {});
     const layer6 = (c, effects) => {
-      let kw = [...ownKw(c)], lost = false;
-      effects.filter((e) => e.grant || e.loseAll).sort(byTs).forEach((e) => {
-        if (e.loseAll) { kw = []; lost = true; }                // CR 613.1f: removes abilities (from earlier effects too)
+      let kw = [...ownKw(c)], lost = false, abilities = [];
+      effects.filter((e) => e.grant || e.loseAll || e.addAbilities).sort(byTs).forEach((e) => {
+        if (e.loseAll) { kw = []; abilities = []; lost = true; }   // CR 613.1f: removes abilities (from earlier effects too)
         if (e.grant) kw.push(...e.grant);
+        if (e.addAbilities) abilities.push(...e.addAbilities);   // (gained activated abilities)
       });
-      return { kw, lost };
+      return { kw, lost, abilities };
     };
     // pass 1: abilities lost or not, from resolved effects and from statics of objects that still have abilities
     // (an "loses all abilities" Aura is a static ability: its source must still have its own abilities)
@@ -792,7 +795,7 @@
         setSt(c, { kw: ownKw(c), base: c.vividPower ? [vividCount(s, sideOf(s, c)), base[1]] : base, mod: [0, 0], lost: false, ...colors, ...typed(c) });
         continue;
       }
-      const { kw, lost } = layer6(c, effects);
+      const { kw, lost, abilities } = layer6(c, effects);
       // layer 7a: a characteristic-defining ability (vivid: power = colors among your permanents) — gone if lost
       let base = basePT(c);
       if (c.vividPower && !lost) base = [vividCount(s, sideOf(s, c)), base[1]];
@@ -801,7 +804,7 @@
       // layer 7c: modifications (+N/+N); the order inside a sublayer doesn't change a sum
       const mod = [0, 0];
       effects.filter((e) => e.pump).forEach((e) => { mod[0] += e.pump[0]; mod[1] += e.pump[1]; });
-      setSt(c, { kw, base, mod, lost, ...colors, ...typed(c) });
+      setSt(c, { kw, base, mod, lost, ...(abilities.length ? { abilities } : {}), ...colors, ...typed(c) });
     }
   }
 
@@ -935,6 +938,7 @@
     if (to === "opp" || to === "you") {
       const side = s[to === "opp" ? "opponent" : "player"];
       dealt();
+      if (!combat && to === "opp") s.oppNoncombat = true;       // ("an opponent was dealt noncombat damage this turn")
       if (has(src, "infect")) {
         side.poison = (side.poison || 0) + n;
         ev.push({ type: "poison", who: to, amount: n });
@@ -1228,6 +1232,9 @@
     if (cond.sneaked && !(self && self.sneaked)) return false;      // "if its sneak cost was paid"
     if (cond.infusion && !(side === "player" && s.gainedLife)) return false;   // Infusion (SOS): "if you gained life this turn"
     if (cond.enduring && !s[side].enduringStory) return false;     // "as long as you have an enduring story" (CR 702.195b)
+    // "as long as an opponent was dealt noncombat damage this turn"; "if you've activated a loyalty ability this turn"
+    if (cond.oppNoncombat && !(side === "player" && s.oppNoncombat)) return false;
+    if (cond.loyaltyActivated && !(side === "player" && s.loyaltyActivated)) return false;
     // Disappear (TMT): "if a permanent left the battlefield under your control this turn"
     if (cond.disappear && !(side === "player" && s.leftYours)) return false;
     // "as long as there's a Lesson card in your graveyard" (lessons: how many)
@@ -1345,6 +1352,7 @@
     if (f.nonland && typeHas(c, /\bland\b/i)) return false;                                      // "target nonland permanent"
     if (f.creatureOrEnchantment && !isCreature(c) && !typeHas(c, /enchantment/i)) return false;   // "target creature or enchantment"
     if (f.hasCounter && !(((c.counters || {})[f.hasCounter === true ? "+1/+1" : f.hasCounter] || 0) > 0)) return false;   // "with +1/+1 counters on them"
+    if (f.enteredThisTurn && !c.enteredThisTurn) return false;                                   // "target creature that entered this turn"
     return true;
   }
 
@@ -1389,6 +1397,8 @@
     const walkers = [...s.player.battlefield, ...s.opponent.battlefield].filter((c) => isPlaneswalker(c) && !isCreature(c))
       .filter((c) => matches(s, c, filter, side) && canTarget(s, src, side, c.id)).map((c) => c.id);
     if (kind === "creature-or-planeswalker") return [...creatures, ...walkers];
+    if (kind === "planeswalker") return [...s.player.battlefield, ...s.opponent.battlefield].filter(isPlaneswalker)
+      .filter((c) => matches(s, c, filter, side) && canTarget(s, src, side, c.id)).map((c) => c.id);
     // battles (not also creatures): "any target" includes them (CR 115.4); "target creature, planeswalker, or battle";
     // "target battle or opponent"
     const battles = [...s.player.battlefield, ...s.opponent.battlefield].filter((c) => isBattle(c) && !isCreature(c))
@@ -1517,7 +1527,8 @@
         ev.push({ type: "counters", id: x.id, counters: eff.counterFirst });
       }
       if (x && y) {
-        const px = Math.max(power(x), 0), py = Math.max(power(y), 0);
+        // "target planeswalker you control deals damage equal to its loyalty to …" (byLoyalty)
+        const px = Math.max(eff.byLoyalty ? loyaltyOf(x) : power(x), 0), py = Math.max(power(y), 0);
         dealDamage(s, x, sideOf(s, x), y.id, px, ev);
         if (eff.fight) dealDamage(s, y, sideOf(s, y), x.id, py, ev);
       }
@@ -1688,6 +1699,23 @@
       // "create …" makes tokens for the ability's controller; "target player creates …" (eff.forTarget) for that player
       const side = eff.forTarget ? (to === "you" ? "player" : "opponent") : ctx.side;
       for (let i = 0; i < (eff.create.count || 1); i++) createToken(s, eff.create, side, ev);
+    }
+    // FRA: "empower Jace N" — put N loyalty counters on a Jace token you control; if you control none, first create one
+    // (it has no printed loyalty, so it enters with none, CR 306.5b; the counters go on before state-based actions)
+    if (eff.empower) {
+      const jace = s[ctx.side].battlefield.find((c) => c.token && isPlaneswalker(c) && subtypes(c).includes("Jace")) || createToken(s, JACE, ctx.side, ev);
+      addLoyalty(s, jace, eff.empower, ctx.side, ev);
+    }
+    // "put a loyalty counter on each planeswalker you control" (Way of the Mentor): one event for all of them ("whenever
+    // you put one or more loyalty counters …" triggers once)
+    if (eff.loyaltyEach) {
+      const walkers = s[ctx.side].battlefield.filter(isPlaneswalker);
+      walkers.forEach((p, i) => addLoyalty(s, p, eff.loyaltyEach, ctx.side, ev, i > 0));
+    }
+    // "If that land is a Mountain, add {R}" (ifEventType: { type, effect }: only when the triggering object has that subtype)
+    if (eff.ifEventType) {
+      const obj = ctx.event && find(s, ctx.event.id);
+      if (obj && subtypes(obj).includes(eff.ifEventType.type)) applyEffect(s, eff.ifEventType.effect, target, ctx, ev);
     }
     // CR 310.12b: exile the defeated Siege, then you may cast it transformed without paying its mana cost (it goes on
     // the stack right away, during this resolution: timing rules don't apply, CR 608.2g)
@@ -2097,6 +2125,17 @@
     "Young Hero": role("Young Hero", {}, "Enchant creature. Enchanted creature has \"Whenever this creature attacks, if its toughness is 3 or less, put a +1/+1 counter on it.\"",
       { triggers: [{ on: "attacks", enchanted: true, if: { maxToughness: 3 }, effect: { counters: { "+1/+1": 1 }, to: "eventObject" } }] })
   };
+  // The Jace token "empower Jace" creates: a blue Jace planeswalker with "[−1]: Surveil 1" and "[−3]: Draw a card"
+  const JACE = { name: "Jace", type: "Token Planeswalker — Jace", colors: ["U"], abilities: [
+    { loyalty: -1, effect: { surveil: 1 }, text: "−1: Surveil 1" }, { loyalty: -3, effect: { draw: 1 }, text: "−3: Draw a card" }] };
+  // Loyalty counters put on a planeswalker (by an effect, or a loyalty ability's + cost, CR 606.4): "whenever you put one
+  // or more loyalty counters on a planeswalker" (Inspired Tethermage)
+  function addLoyalty(s, p, n, side, ev, quiet = false) {
+    if (!(n > 0)) return;
+    p.counters = { ...(p.counters || {}), loyalty: loyaltyOf(p) + n };
+    ev.push({ type: "counters", id: p.id, counters: { loyalty: n } });
+    if (!quiet) emit(s, { type: "loyaltyUp", obj: p, side }, ev);
+  }
   function createToken(s, spec, side, ev) {
     const t = { ...clone(spec), token: true, owner: side, id: `${slug(spec.name)}-t${s.nextId++}` };
     ["count", "attacking"].forEach((k) => delete t[k]);
@@ -3134,7 +3173,12 @@
         leave(s, card, "exile", ev);
       }
       // CR 606.4: a loyalty ability's cost puts on or removes loyalty counters
-      if (ab.loyalty != null) { card.counters = { ...(card.counters || {}), loyalty: loyaltyOf(card) + ab.loyalty }; card.loyaltyUsed = true; }
+      if (ab.loyalty != null) {
+        card.loyaltyUsed = true;
+        s.loyaltyActivated = true;                                 // ("if you've activated a loyalty ability this turn")
+        if (ab.loyalty > 0) addLoyalty(s, card, ab.loyalty, "player", ev);
+        else card.counters = { ...(card.counters || {}), loyalty: loyaltyOf(card) + ab.loyalty };
+      }
       if (ab.removeCounters) {
         const { kind, n = 1 } = ab.removeCounters;
         card.counters = { ...card.counters, [kind]: card.counters[kind] - n };

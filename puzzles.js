@@ -1524,6 +1524,57 @@
       text: "Whenever Nori attacks, target attacking creature gains first strike until end of turn." }
   });
 
+  // ---- Reality Fracture (FRA): empower Jace (the Jace token), Way enchantments, prepared, threshold ----
+  const EMPOWER = (n) => `Empower Jace ${n}. (Put ${["", "a", "two", "three", "four", "five", "six", "seven"][n]} loyalty counter${n > 1 ? "s" : ""} on a Jace token you control. If you don't control one, first create a blue Jace planeswalker token with "[−1]: Surveil 1" and "[−3]: Draw a card.")`;
+  const BEAST = { name: "Beast", type: "Token Creature — Beast", pt: "4/4", colors: ["G"], kw: ["trample"] };
+  Object.assign(CARDS, {
+    "Keeper of the Quiet Hour": { type: "Artifact Creature — Chimera", cost: "{3}", pt: "3/2", etb: { empower: 2 },
+      text: `When this creature enters, ${EMPOWER(2).replace(/^E/, "e")}` },
+    "Arcane Amphisbaena": { type: "Creature — Snake", cost: "{1}{G}", pt: "1/1", kw: ["deathtouch"], etb: { empower: 2 },
+      text: `Deathtouch. When this creature enters, ${EMPOWER(2).replace(/^E/, "e")}` },
+    "Mindseeker Oculus": { type: "Creature — Homunculus", cost: "{2}{U}", pt: "2/1", etb: { empower: 4 },
+      text: `When this creature enters, ${EMPOWER(4).replace(/^E/, "e")}` },
+    "Inspired Tethermage": { type: "Creature — Elf Warrior", cost: "{2}{G}", pt: "3/2",
+      triggers: [{ on: "loyaltyUp", filter: { controller: "you" }, effect: { counters: { "+1/+1": 1 }, self: true } }],
+      abilities: [{ cost: "{6}", effect: { empower: 2 }, text: "{6}: Empower Jace 2" }],
+      text: `Whenever you put one or more loyalty counters on a planeswalker, put a +1/+1 counter on this creature. {6}: ${EMPOWER(2)}` },
+    "Way of the Mentor": { type: "Legendary Enchantment", cost: "{2}{W}", etb: { empower: 5 },
+      triggers: [{ on: "gainLife", filter: { controller: "you" }, effect: { loyaltyEach: 1 } }],
+      text: `When Way of the Mentor enters, ${EMPOWER(5).replace(/^E/, "e")} Whenever you gain life, put a loyalty counter on each planeswalker you control.` },
+    "Way of the Pyromancer": { type: "Legendary Enchantment", cost: "{1}{R}", etb: { empower: 2 },
+      static: { walkers: [{ loyalty: 1, effect: { addMana: "R" }, text: "+1: Add {R}" }] },
+      text: `When Way of the Pyromancer enters, empower Jace 2. Planeswalkers you control have "[+1]: Add {R}."` },
+    "Way of the Wildspeaker": { type: "Legendary Enchantment", cost: "{4}{G}", etb: { empower: 7 },
+      static: { walkers: [{ loyalty: -4, effect: { create: BEAST }, text: "−4: Create a 4/4 green Beast creature token with trample" }] },
+      text: `When Way of the Wildspeaker enters, empower Jace 7. Planeswalkers you control have "[−4]: Create a 4/4 green Beast creature token with trample."` },
+    "Compel Brutality": { type: "Instant", cost: "{1}{G}", modes: [
+      { text: "Target creature you control deals damage equal to its power to target creature or planeswalker an opponent controls",
+        slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature-or-planeswalker", filter: { controller: "opponent" } }], effect: { bite: true } },
+      { text: "Target planeswalker you control deals damage equal to its loyalty to target creature or planeswalker an opponent controls",
+        slots: [{ targets: "planeswalker", filter: { controller: "you" } }, { targets: "creature-or-planeswalker", filter: { controller: "opponent" } }], effect: { bite: true, byLoyalty: true } }],
+      text: "Choose one — • Target creature you control deals damage equal to its power to target creature or planeswalker an opponent controls. • Target planeswalker you control deals damage equal to its loyalty to target creature or planeswalker an opponent controls." },
+    "Kiora of Salt and Sand": { type: "Legendary Creature — Merfolk Noble", cost: "{1}{G}{U}", pt: "2/4",
+      triggers: [{ on: "youAttack", filter: { controller: "you" }, if: { loyaltyActivated: true }, targets: "creature", targetFilter: { attacking: true }, effect: { untap: true, grant: ["unblockable"] } }],
+      static: { walkers: [{ loyalty: -8, effect: { create: { name: "Leviathan", type: "Token Creature — Leviathan", pt: "8/8", colors: ["U"], kw: ["hexproof"] } }, text: "−8: Create an 8/8 blue Leviathan creature token with hexproof" }] },
+      text: "Whenever you attack, if you've activated a loyalty ability this turn, untap target attacking creature. It can't be blocked this turn. Planeswalkers you control have \"[−8]: Create an 8/8 blue Leviathan creature token with hexproof.\"" },
+    // prepared, threshold, noncombat damage
+    "Whiplash Wordsmith": { type: "Creature — Vampire Sorcerer", cost: "{3}{B/R}", pt: "3/3", entersPrepared: true,
+      conditional: [{ if: { oppNoncombat: true }, grant: ["flying", "haste"] }],
+      prepare: { name: "Vicious Verse", type: "Sorcery", cost: "{B/R}", targets: "opponent", effect: { damage: 1 }, text: "Vicious Verse deals 1 damage to target opponent." },
+      text: `${PREP} As long as an opponent was dealt noncombat damage this turn, this creature has flying and haste. // Vicious Verse {B/R} (Sorcery): Vicious Verse deals 1 damage to target opponent.` },
+    "Theorix Metamage": { type: "Creature — Shade Wizard", cost: "{2}{U/B}", pt: "2/3", entersPrepared: true,
+      conditional: [{ if: { threshold: true }, pump: [1, 0], grant: ["flying"] }],
+      prepare: { name: "Omit Variables", type: "Sorcery", cost: "{U/B}", effect: { mill: 3 }, text: "Mill three cards." },
+      text: `${PREP} Threshold — This creature gets +1/+0 and has flying as long as there are seven or more cards in your graveyard. // Omit Variables {U/B} (Sorcery): Mill three cards.` },
+    "Koth, the Geomancer": { type: "Legendary Creature — Human Warrior", cost: "{2}{R}", pt: "3/2", kw: ["reach"],
+      landfall: { damage: 1, to: "opp", ifEventType: { type: "Mountain", effect: { addMana: "R" } } },
+      text: "Reach. Landfall — Whenever a land you control enters, Koth deals 1 damage to each opponent. If that land is a Mountain, add {R}." },
+    "Gallia, the Merrymaker": { type: "Legendary Creature — Satyr", cost: "{1}{R}", pt: "2/1", kw: ["haste"],
+      static: { team: { grant: ["haste"] }, filter: { hasCounter: "+1/+1" }, other: true },
+      abilities: [{ cost: "{1}{R}", tap: true, targets: "creature", filter: { enteredThisTurn: true }, effect: { counters: { "+1/+1": 1 } }, text: "{1}{R}, {T}: Put a +1/+1 counter on target creature that entered this turn" }],
+      text: "Haste. Each other creature you control with a +1/+1 counter on it has haste. {1}{R}, {T}: Put a +1/+1 counter on target creature that entered this turn." }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -4026,6 +4077,130 @@ LETHAL: Forest: Attercop +1/+1 (landfall) and a +1/+1 counter (Beorn's Hospitali
   ferocious: 3/3 menace. Both Bears block Attercop: Nighthowl 3; one blocks Attercop: the other can't block menace alone: 3.
 RULES: Ferocious; menace.
 WRONG LINES: The counter on Nighthowl: no creature with power 4.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= REALITY FRACTURE (set FRA) ======================= */
+  // Empower Jace, Way enchantments, prepared, threshold
+  window.PUZZLES.push(
+    puzzle({
+      id: "fra-01-empower", title: "Empower", set: "fra", tier: "easy",
+      opp: { life: 4 },
+      you: { hand: [c("Keeper of the Quiet Hour")], battlefield: [c("Inspired Tethermage"), ...many(3, "Forest")] },
+      explanation: "Keeper of the Quiet Hour empowers Jace: a Jace token is created and gets two loyalty counters. Inspired Tethermage sees loyalty counters go on a planeswalker and gets a +1/+1 counter: 4.",
+      notes: `
+LETHAL: Keeper ({3}): empower Jace 2: Jace token, 2 loyalty: Tethermage trigger: +1/+1 counter: 4/3. Attack: 4.
+RULES: Empower Jace: if you control no Jace token, create one first, then put the counters on it.
+WRONG LINES: Attacking first: 3.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-02-compel", title: "Compel Brutality", set: "fra", tier: "easy",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Way of the Mentor"), c("Compel Brutality")], battlefield: [c("Hill Giant"), c("Plains"), c("Plains"), c("Forest"), c("Forest"), c("Forest")] },
+      explanation: "Hill Giant only deals 3 to the 4/4 Nestguard. Way of the Mentor makes a Jace with 5 loyalty — Compel Brutality's second mode lets Jace deal 5. Then the Giant attacks.",
+      notes: `
+LETHAL: Way of the Mentor ({2}{W}): Jace 5. Compel Brutality ({1}{G}), mode 2: Jace deals 5 to Krotiq Nestguard. Hill
+  Giant: 3.
+RULES: A planeswalker deals damage equal to its loyalty (the damage source is Jace).
+WRONG LINES: Mode 1 with the Giant: 3 damage, the Nestguard survives and blocks.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-03-wordsmith", title: "Vicious Verse", set: "fra", tier: "easy",
+      opp: { life: 4, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Whiplash Wordsmith")], battlefield: many(5, "Mountain") },
+      explanation: "Whiplash Wordsmith enters prepared: cast its Vicious Verse for 1 damage. Now the opponent was dealt noncombat damage, so the Wordsmith has flying and haste: 3 in the air.",
+      notes: `
+LETHAL: Whiplash Wordsmith ({3}{B/R}, enters prepared). Vicious Verse (the prepared copy, {B/R}): 1. Wordsmith: flying,
+  haste: 3.
+RULES: Prepared (CR 722.3): cast a copy of its spell; noncombat damage turns on the Wordsmith's static ability.
+WRONG LINES: None.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-04-threshold", title: "Omit Variables", set: "fra", tier: "easy",
+      opp: { life: 3, battlefield: [c("Grizzly Bears")] },
+      you: { battlefield: [c("Theorix Metamage", { prepared: true }), c("Island")], graveyard: many(4, "Island"), library: many(3, "Island") },
+      explanation: "Four cards in your graveyard. The prepared Theorix Metamage's Omit Variables mills three: seven — threshold. A 3/3 flier.",
+      notes: `
+LETHAL: Omit Variables ({U/B}, the prepared copy): mill 3: 7 cards in the graveyard: threshold: Metamage 3/3 flying. 3.
+RULES: Threshold: seven or more cards in your graveyard.
+WRONG LINES: Attacking without threshold: the Bears block.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-05-kiora", title: "Salt and Sand", set: "fra", tier: "medium",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Keeper of the Quiet Hour")], battlefield: [c("Kiora of Salt and Sand"), c("Hill Giant"), ...many(3, "Forest")] },
+      explanation: "Kiora only helps if you've activated a loyalty ability this turn. Keeper makes a Jace; use its −1 (surveil). Then attack: Kiora makes Hill Giant unblockable.",
+      notes: `
+LETHAL: Keeper ({3}): Jace 2. Jace −1: surveil 1 (empty library). Attack with Hill Giant: Kiora's trigger: untap it, it
+  can't be blocked: 3.
+RULES: Kiora's intervening "if" (CR 603.4): a loyalty ability activated this turn.
+WRONG LINES: Attacking without activating Jace: the Nestguard blocks the Giant.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-06-koth", title: "Geomancer", set: "fra", tier: "medium",
+      opp: { life: 5, battlefield: [c("Grizzly Bears"), c("Grizzly Bears")] },
+      you: { hand: [c("Mountain"), c("Whiplash Wordsmith")], battlefield: [c("Koth, the Geomancer"), ...many(3, "Mountain")] },
+      explanation: "The Mountain: Koth deals 1 and adds {R}. That's five mana: Whiplash Wordsmith and its Vicious Verse (1). The Wordsmith flies in with haste: 3.",
+      notes: `
+LETHAL: Mountain: Koth: 1 damage, add {R}. Wordsmith ({3}{B/R}): 4 mana. Vicious Verse ({B/R}): 1. Wordsmith 3 flying.
+  1 + 1 + 3 = 5. (Koth attacking is blocked.)
+RULES: Landfall; mana added by a resolving trigger stays until the step ends.
+WRONG LINES: Without the Verse: 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-07-mentor", title: "Mentor", set: "fra", tier: "hard",
+      opp: { life: 6 },
+      you: { hand: [c("Way of the Mentor"), c("Well-Worn Spatula")], battlefield: [c("Inspired Tethermage"), ...many(5, "Plains")] },
+      explanation: "Way of the Mentor first: Jace gets 5 loyalty (Tethermage +1). Then the Spatula's lifegain puts a loyalty counter on Jace (Tethermage +1 again). Equip it: 6.",
+      notes: `
+LETHAL: Way of the Mentor ({2}{W}): Jace 5: Tethermage 4/3. Well-Worn Spatula ({1}): gain 2: Mentor: loyalty counter on
+  Jace: Tethermage 5/4. Equip {1}: 6/5. Attack: 6.
+RULES: Inspired Tethermage triggers whenever you put loyalty counters on a planeswalker.
+WRONG LINES: The Spatula first: its lifegain happens before Mentor: 5.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-08-wildspeaker", title: "Wildspeaker", set: "fra", tier: "hard",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Way of the Wildspeaker")], battlefield: [c("Gallia, the Merrymaker"), c("Inspired Tethermage"), ...many(4, "Forest"), ...many(3, "Mountain")] },
+      explanation: "Way of the Wildspeaker gives Jace 7 and the −4: a 4/4 trampling Beast. Gallia puts a +1/+1 counter on it (it entered this turn) — and creatures with +1/+1 counters have haste.",
+      notes: `
+LETHAL: Wildspeaker ({4}{G}): Jace 7, Tethermage 4/3. Jace −4: Beast 4/4 trample. Gallia ({1}{R}, {T}): counter on the
+  Beast: 5/5, haste. Attack Beast + Tethermage: the Bears block the Tethermage: 5 (or the Beast: 3 trample + 4).
+RULES: Gallia's static gives haste to other creatures with a +1/+1 counter.
+WRONG LINES: Gallia attacking instead: 2 + 4, the Bears block the Tethermage: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-09-pyromancer", title: "Pyromancer", set: "fra", tier: "hard",
+      opp: { life: 7, battlefield: [c("Krotiq Nestguard"), c("Grizzly Bears")] },
+      you: { hand: [c("Way of the Pyromancer"), c("Shock")], battlefield: [c("Kiora of Salt and Sand"), c("Inspired Tethermage"), c("Mountain"), c("Mountain")] },
+      explanation: "Way of the Pyromancer: Jace 2 (Tethermage +1). Jace's +1 adds {R} and puts a loyalty counter on (Tethermage +1). Shock to the face. Kiora makes the 5/4 Tethermage unblockable.",
+      notes: `
+LETHAL: Way of the Pyromancer ({1}{R}): Jace 2: Tethermage 4/3. Jace +1 (granted): add {R}; the +1 cost is a loyalty
+  counter: Tethermage 5/4. Shock the opponent: 2. Attack with the Tethermage: Kiora: unblockable: 5. 7.
+RULES: A loyalty ability that adds mana isn't a mana ability (CR 605.1a): it resolves from the stack. Its cost puts a
+  loyalty counter on (CR 606.4).
+WRONG LINES: Jace −1: no mana for Shock, Tethermage 4. Shocking a blocker: 5.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "fra-10-scrounger", title: "Heavy Lifting", set: "fra", tier: "hard",
+      opp: { life: 3, battlefield: [c("Wilderland Scrounger")] },
+      you: { hand: [c("Way of the Mentor"), c("Compel Brutality"), c("Well-Worn Spatula")], battlefield: [c("Hill Giant"), ...many(3, "Plains"), ...many(3, "Forest")] },
+      explanation: "The 3/6 Scrounger needs 6 damage. Way of the Mentor gives Jace 5; the Spatula's lifegain adds a sixth loyalty. Compel Brutality: Jace deals 6. Hill Giant: 3.",
+      notes: `
+LETHAL: Way of the Mentor ({2}{W}): Jace 5. Well-Worn Spatula ({1}): gain 2: Jace 6. Compel Brutality mode 2: 6 to the
+  Scrounger. Giant: 3.
+RULES: Way of the Mentor; damage equal to loyalty.
+WRONG LINES: Spatula first: Jace 5. Spatula on the Giant + mode 1: 4 damage.
 UNIQUENESS: Solver-checked.`
     })
   );
