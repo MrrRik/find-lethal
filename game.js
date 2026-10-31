@@ -53,7 +53,26 @@
     try { localStorage.setItem(STORE, JSON.stringify(progress)); } catch (_) { /* storage unavailable: fine */ }
   }
 
-  const unlocked = (set, i) => i === 0 || progress[set[i - 1].id] === "solved";
+  // Cheat: tap the "Find Lethal" title 5 times in a row (or open the page with ?unlock) to unlock every puzzle;
+  // the same 5 taps lock them again. Kept per browser.
+  const CHEAT = "find-lethal:unlock-all";
+  let unlockAll = false;
+  try {
+    if (/[?&]unlock\b/.test(location.search)) localStorage.setItem(CHEAT, "1");
+    unlockAll = localStorage.getItem(CHEAT) === "1";
+  } catch (_) { /* storage unavailable: no cheat */ }
+  let titleTaps = 0, tapTimer = null;
+  document.querySelector(".menu-title").addEventListener("click", () => {
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => { titleTaps = 0; }, 1500);
+    if (++titleTaps < 5) return;
+    titleTaps = 0;
+    unlockAll = !unlockAll;
+    try { if (unlockAll) localStorage.setItem(CHEAT, "1"); else localStorage.removeItem(CHEAT); } catch (_) { /* fine */ }
+    alert(unlockAll ? "Cheat on: every puzzle is unlocked." : "Cheat off: puzzles unlock one by one again.");
+  });
+
+  const unlocked = (set, i) => unlockAll || i === 0 || progress[set[i - 1].id] === "solved";
 
   $("clear-progress").addEventListener("click", () => {
     if (!confirm("Clear all puzzle progress? Every puzzle goes back to untried and locked.")) return;
