@@ -296,7 +296,9 @@
   function produces(c) {
     if (c.tapped) return null;
     if (isTreasure(c)) return "WUBRG";
-    if (isLand(c)) {
+    // (a land that's also a creature — earthbent — taps for mana too, unless summoning sick without haste)
+    if (typeHas(c, /\bland\b/i) && isCreature(c) && c.sick && !has(c, "haste")) return null;
+    if (typeHas(c, /\bland\b/i)) {
       if (c.produces) return c.produces;
       for (const [name, col] of Object.entries(BASIC)) if (new RegExp("\\b" + name + "\\b").test(c.type || "")) return col;
       return "C";
@@ -343,7 +345,9 @@
   // Mana in the pool, then untapped lands, Treasures and other mana sources (minus any excluded,
   // e.g. a creature that is being tapped for the ability being paid for)
   function manaSources(s, exclude = []) {
-    const pool = s.pool.map((sym, i) => ({ id: "pool:" + i, colors: sym === "*" ? "WUBRG" : sym, kind: "pool" }));
+    const pool = [...s.pool.map((sym, i) => ({ id: "pool:" + i, colors: sym === "*" ? "WUBRG" : sym, kind: "pool" })),
+      // firebending mana (CR 702.189a): {R} that stays until end of combat
+      ...Array.from({ length: s.firePool || 0 }, (_, i) => ({ id: "fire:" + i, colors: "R", kind: "pool" }))];
     // ("Max speed — {T}: Add {R}{R}": maxSpeedMana — a mana ability it has only at max speed, CR 702.178a)
     const field = s.player.battlefield.filter((c) => !exclude.includes(c.id) && !(c.maxSpeedMana && !maxSpeed(s, "player")))
       .map((c) => ({ id: c.id, colors: produces(c), kind: isTreasure(c) ? "treasure" : isLand(c) ? "land" : "other" }))
@@ -1046,7 +1050,8 @@
     // a card that targets, counters or copies spells makes the stack itself matter (turns off a solver shortcut)
     const json = JSON.stringify(card);
     if (card.replacements) s.replaces = true;                 // (zone changes then check for replacement effects)
-    if (card.conditional || card.perCounter) s.dynamicStatics = true;
+    if (card.conditional || card.perCounter || /"hasCounter"/.test(json)) s.dynamicStatics = true;
+    if (/firebending/.test(json)) add("attacks");             // (firebending it may gain later still triggers)
     if (/"damageSources"|"attackedCount"/.test(json)) s.tracksSources = true;
     if (/"loseAll"|"setBase"/.test(json)) s.tsMatters = true;  // (effects whose order matters: keep timestamps)
     if (/"targets":"spell"|"counter(Spell)?":true|"copySpell"|"copyEventSpell"/.test(json)) s.stackAware = true;
@@ -1108,7 +1113,10 @@
   const triggersOf = (c) => [...((c.st && c.st.lost) ? [] : TRIGGER_TABLE.get(compile(c).tk) || []), ...keywords(c).filter((k) => KEYWORD_TRIGGERS[k]).map((k) => KEYWORD_TRIGGERS[k]),
     ...(isBattle(c) && /\bsiege\b/i.test(c.type || "") ? [SIEGE_TRIGGER] : []),
     ...(c.toSolve && !(c.st && c.st.lost) ? [CASE_TRIGGER] : []),
-    ...(c.offspring && !(c.st && c.st.lost) ? [OFFSPRING_TRIGGER] : [])];
+    ...(c.offspring && !(c.st && c.st.lost) ? [OFFSPRING_TRIGGER] : []),
+    // CR 702.189a: firebending N — "Whenever this creature attacks, add N {R}. Until end of combat, you don't lose this mana"
+    ...keywords(c).map((k) => /^firebending (\d+)$/.exec(k)).filter(Boolean).map((m) => FIRE_TRIGGERS[m[1]] || (FIRE_TRIGGERS[m[1]] = { on: "attacks", self: true, effect: { fireMana: Number(m[1]) } }))];
+  const FIRE_TRIGGERS = {};
   // CR 702.175a: offspring — "When this permanent enters, if its offspring cost was paid, create a token that's a copy of
   // it, except it's 1/1."
   const OFFSPRING_TRIGGER = { on: "enters", self: true, if: { offspringPaid: true }, effect: { offspringCopy: true } };
@@ -1203,6 +1211,8 @@
     if (cond.door != null && !(self && self.unlocked && self.unlocked[cond.door])) return false;   // a Room door's ability
     if (cond.saddled && !(self && self.saddled)) return false;
     if (cond.webSlung && !(self && self.webSlung)) return false;    // "if they were cast using web-slinging"
+    // "as long as there's a Lesson card in your graveyard" (lessons: how many)
+    if (cond.lessons && s[side].graveyard.filter((c) => subtypes(c).includes("Lesson")).length < cond.lessons) return false;
     // Void (EOE): "if a nonland permanent left the battlefield this turn or a spell was warped this turn"
     if (cond.void && !(side === "player" && (s.permLeft || s.warped))) return false;
     if (cond.controlsType && !s[side].battlefield.some((c) => subtypes(c).includes(cond.controlsType))) return false;   // "if you control a Spacecraft"
@@ -1308,6 +1318,8 @@
     if (f.equipped && ![...s.player.battlefield, ...s.opponent.battlefield].some((e) => e.equip && e.attachedTo === c.id)) return false;   // "equipped creatures"
     if (f.mountOrVehicle && !isMount(c) && !isVehicle(c)) return false;   // "Mounts and Vehicles you control"
     if (f.spacecraftOrPlanet && !subtypes(c).some((t) => t === "Spacecraft" || t === "Planet")) return false;
+    if (f.nonland && typeHas(c, /\bland\b/i)) return false;                                      // "target nonland permanent"
+    if (f.hasCounter && !(((c.counters || {})[f.hasCounter === true ? "+1/+1" : f.hasCounter] || 0) > 0)) return false;   // "with +1/+1 counters on them"
     return true;
   }
 
@@ -1396,8 +1408,14 @@
   }
   // The payment options for casting f as `a`: convoke helpers (all must help), or any of them when not chosen yet
   // (a permanent sacrificed for bargain can't also be a mana source — a Treasure is sacrificed for its mana)
-  const castPayment = (s, f, a, except) =>
-    bestPayment(s, reducedCost(s, f, costOf(f, a), a), { except, exclude: [...(a.bargain != null ? [a.bargain] : []), ...(a.tapFor != null ? [a.tapFor] : [])], lifePips: has(f, "compleated") ? a.lifePips || 0 : undefined, convoke: has(f, "convoke") ? (a.convoke == null ? "any" : a.convoke) : undefined });
+  // (the spell's own targets among your permanents are left untapped when other mana can pay — you'd tap other lands
+  // for an earthbend aimed at a land)
+  const castPayment = (s, f, a, except) => {
+    const keep = [a.target].flat(3).filter((id) => id && s.player.battlefield.some((c) => c.id === id));
+    return (keep.length && castPaymentWith(s, f, a, except, keep)) || castPaymentWith(s, f, a, except, []);
+  };
+  const castPaymentWith = (s, f, a, except, keep) =>
+    bestPayment(s, reducedCost(s, f, costOf(f, a), a), { except, exclude: [...(a.bargain != null ? [a.bargain] : []), ...(a.tapFor != null ? [a.tapFor] : []), ...keep], lifePips: has(f, "compleated") ? a.lifePips || 0 : undefined, convoke: has(f, "convoke") ? (a.convoke == null ? "any" : a.convoke) : undefined });
 
   // Every choice of targets for a spec: one target, or "up to two" (any distinct combination)
   function targetChoices(list, count) {
@@ -1524,6 +1542,8 @@
     // ("X is 2 plus the number of Mounts and Vehicles you control": { plus: 2, per: { mountOrVehicle: true } })
     const amount = (d) => (d === "sacrificed" ? ctx.sacPower : d === "power" ? srcPower() : d === "eventCount" ? (ctx.event && ctx.event.count) || 0
       : typeof d === "object" && d.per ? (d.plus || 0) + s[ctx.side].battlefield.filter((c) => matches(s, c, d.per, ctx.side)).length
+      // ("2 plus the number of Lesson cards in your graveyard": { plus: 2, perGraveyard: "Lesson" })
+      : typeof d === "object" && d.perGraveyard ? (d.plus || 0) + s[ctx.side].graveyard.filter((c) => subtypes(c).includes(d.perGraveyard)).length
       : typeof d === "object" ? d.plusOtherSpells + Math.max((ctx.side === "player" ? s.spellsCast || 0 : 0) - 1, 0) : d);
     // ("this creature deals …" in an ability an Equipment or Aura gives: the creature it's attached to is the source)
     const dmgSrc = (eff.byAttached && ctx.src && ctx.src.attachedTo && find(s, ctx.src.attachedTo)) || ctx.src;
@@ -1689,6 +1709,24 @@
       applyEffect(s, more, tgt.id, ctx, ev);
     }
     if (eff.manifestDread) manifestDread(s, ctx.side, ev);
+    // firebending (CR 702.189a): {R}s that last until end of combat
+    if (eff.fireMana && ctx.side === "player") { s.firePool = (s.firePool || 0) + eff.fireMana; ev.push({ type: "firebending", n: eff.fireMana }); }
+    // CR 701.65a: airbend — exile it; while it's exiled, its owner may cast it for {2} rather than its mana cost
+    if (eff.airbend && tgt) {
+      const owner = tgt.owner || sideOf(s, tgt);
+      leave(s, tgt, "exile", ev);
+      const card = s[owner].exile.find((x) => x.id === tgt.id);
+      if (card) card.airbent = true;
+    }
+    // CR 701.66a: earthbend N — target land you control becomes a 0/0 creature with haste that's still a land, with N
+    // +1/+1 counters (its "when it dies or is exiled, return it" ability isn't modeled: puzzles end first)
+    if (eff.earthbend && tgt) {
+      addEffect(s, tgt, { becomeCreature: true });
+      addEffect(s, tgt, { setBase: [0, 0] });
+      grant(tgt, ["haste"], s);
+      tgt.counters = { ...(tgt.counters || {}), "+1/+1": ((tgt.counters || {})["+1/+1"] || 0) + eff.earthbend };
+      ev.push({ type: "earthbend", id: tgt.id, n: eff.earthbend });
+    }
     // station (CR 702.184a): charge counters equal to the tapped creature's power; "If it's a Spacecraft, put ten charge
     // counters on it" (chargeIfSpacecraft)
     const charge = eff.charge === "tapped" ? ctx.tappedPower || 0 : eff.chargeIfSpacecraft && tgt && subtypes(tgt).includes("Spacecraft") ? eff.chargeIfSpacecraft : 0;
@@ -1697,6 +1735,8 @@
       changed(s);
       ev.push({ type: "counters", id: tgt.id, counters: { charge } });
     }
+    // "If that creature is an Ally, it also gains flying until end of turn" (ifTargetType)
+    if (eff.ifTargetType && tgt && hasType(tgt, eff.ifTargetType.type)) grant(tgt, eff.ifTargetType.grant, s);
     // "If that creature was cast for its warp cost, it also gains …"
     if (eff.ifWarped && tgt && tgt.warped) grant(tgt, eff.ifWarped, s);
     // "another target creature you control gets +X/+X, where X is this creature's power"
@@ -2086,9 +2126,11 @@
   function spend(s, ids, ev) {
     let treasures = 0;
     ids.filter((id) => id.startsWith("pool:")).map((id) => Number(id.slice(5))).sort((x, y) => y - x).forEach((i) => s.pool.splice(i, 1));
+    s.firePool = (s.firePool || 0) - ids.filter((id) => id.startsWith("fire:")).length;
+    if (!s.firePool) delete s.firePool;
     ids.filter((id) => id.startsWith("life:")).forEach(() => changeLife(s, "you", -2, ev));
     // every source this payment taps: those it uses directly, and those whose extra mana it uses ("id+n")
-    const tapped = [...new Set(ids.filter((id) => !id.startsWith("pool:") && !id.startsWith("life:")).map((id) => id.split("+")[0]))];
+    const tapped = [...new Set(ids.filter((id) => !id.startsWith("pool:") && !id.startsWith("fire:") && !id.startsWith("life:")).map((id) => id.split("+")[0]))];
     tapped.forEach((id) => {
       const src = find(s, id);
       // one tap makes all its mana at once (CR 605.4a); what this payment doesn't use stays in your pool (CR 106.4)
@@ -2168,7 +2210,7 @@
       .some((face) => { const f = faceOf(c, { face }); return fast(f) && (!check(s, { type: "cast", id: c.id, face }) ||
         (f.behold && f.behold.flash && beholdOptions(s, f).length > 0 && !check(s, { type: "cast", id: c.id, face, behold: beholdOptions(s, f)[0] }))); });
     return s.player.hand.some((c) => castNow(c, "hand") || (c.cycling && !check(s, { type: "cycle", id: c.id }))) ||
-      s.player.exile.some((c) => (c.onAdventure || c.playable) && castNow(c, "exile")) ||
+      s.player.exile.some((c) => (c.onAdventure || c.playable || c.airbent) && castNow(c, "exile")) ||
       s.player.graveyard.some((c) => (c.flashback || (c.mayhem && c.discardedThisTurn)) && castNow(c, "graveyard")) ||
       s.player.hand.some((c) => c.handAbility && !check(s, { type: "channel", id: c.id })) ||
       s.player.battlefield.some((c) => abilitiesOf(c).some((ab) => !ab.sorcery && !abilityProblem(s, c, ab, 0)));
@@ -2306,6 +2348,7 @@
   // Turn-based actions when a step begins
   function enterStep(s, step, blocks, ev) {
     s.pool = [];                                               // mana empties between steps
+    if (at(step) >= at("main2")) delete s.firePool;            // (firebending mana: at the end of combat)
     // "At the beginning of the end step" triggers (e.g. Ball Lightning's sacrifice) trigger as the end step
     // begins; you can respond to them, so they resolve when you move on from the end step
     if (step === "cleanup") {
@@ -2337,8 +2380,16 @@
     (!s.exhaustedThisTurn && s.player.battlefield.some((c) => c.refuelsExhaust && !(c.st && c.st.lost)));
   // What activating it costs: X filled in; "Exhaust abilities of other permanents you control cost {2} less to activate"
   // (exhaustLess, Boom Scholar) — only the generic part goes down (CR 601.2f, 602.2b)
-  function abilityCost(s, card, ab, x) {
-    const cost = withX(ab.cost, x);
+  // CR 701.67a: waterbend — for each generic mana in the waterbend cost you may tap an untapped artifact or creature you
+  // control instead (ab.waterbend: the cost is a waterbend cost; a.waterTap: what's tapped; not chosen yet: as many as
+  // could help)
+  const waterHelpers = (s, card, ab) => s.player.battlefield.filter((c) => (isCreature(c) || isArtifact(c)) && !c.tapped && !(ab.tap && c.id === card.id)).map((c) => c.id);
+  function abilityCost(s, card, ab, x, waterTap) {
+    let cost = withX(ab.cost, x);
+    if (ab.waterbend) {
+      const p = parseCost(cost), n = Math.min(p.generic, waterTap ? waterTap.length : waterHelpers(s, card, ab).length);
+      cost = (p.generic - n ? `{${p.generic - n}}` : "") + p.pips.map((y) => `{${y}}`).join("");
+    }
     if (!ab.exhaust) return cost;
     const less = s.player.battlefield.filter((c) => c !== card && c.exhaustLess && !(c.st && c.st.lost)).reduce((t, c) => t + c.exhaustLess, 0);
     if (!less) return cost;
@@ -2390,7 +2441,8 @@
     const h = s.player.hand.find((c) => c.id === id);
     if (h) return { card: h, zone: "hand" };
     // (or a card exiled with "you may play that card this turn", or a card plotted on an earlier turn, CR 702.170d)
-    const e = s.player.exile.find((c) => c.id === id && (c.onAdventure || c.playable || (c.plotted && !c.plottedNow)));
+    // (or airbent: castable for {2}, CR 701.65a)
+    const e = s.player.exile.find((c) => c.id === id && (c.onAdventure || c.playable || (c.plotted && !c.plottedNow) || c.airbent));
     if (e) return { card: e, zone: "exile" };
     // (or harmonize, CR 702.180a)
     // (or mayhem, if you discarded it this turn, CR 702.187b)
@@ -2405,6 +2457,8 @@
     const f = faceOf(from.card, a);
     // CR 702.170d: a plotted card is cast without paying its mana cost (an alternative cost: nothing to pay)
     if (from.zone === "exile" && from.card.plotted) return { ...f, cost: "", plottedCast: true };
+    // airbent: {2} rather than its mana cost (CR 701.65a)
+    if (from.zone === "exile" && from.card.airbent) return { ...f, cost: "{2}", printedCost: f.cost };
     // CR 702.185a: warp — cast it from your hand for its warp cost instead (a.warp)
     if (a.warp && from.zone === "hand" && from.card.warp) return { ...f, cost: from.card.warp, warpCast: true, printedCost: f.cost };
     // CR 702.188a: web-slinging — its web-slinging cost and returning a tapped creature you control (a.webSling) instead
@@ -2596,6 +2650,11 @@
       if (ab.craft && !craftOptions(s, card, ab.craft).includes(a.craft)) return "Choose something to craft with.";
       if (ab.stationAb && !(a.crew && a.crew.length === 1 && crewHelpers(s, card).includes(a.crew[0]))) return "Station: tap one other untapped creature you control.";
       if (ab.discardCost && a.discard != null && !s.player.hand.some((c) => c.id === a.discard)) return "Discard a card from your hand.";
+      if (a.waterTap != null) {
+        const helpers = waterHelpers(s, card, ab), l = a.waterTap;
+        if (!ab.waterbend || new Set(l).size !== l.length || !l.every((id) => helpers.includes(id)) || l.length > parseCost(withX(ab.cost, a.x)).generic) return "Waterbend: tap your untapped artifacts and creatures, one per generic mana.";
+        if (!bestPayment(s, abilityCost(s, card, ab, a.x, l), { exclude: [...(ab.tap ? [card.id] : []), ...l] })) return "Not enough mana.";
+      }
       if (ab.crew) {
         const crew = a.crew || [];
         if (new Set(crew).size !== crew.length || !crew.every((id) => crewHelpers(s, card).includes(id))) return `Only your other untapped creatures can ${ab.saddle ? "saddle" : "crew"} it.`;
@@ -2847,7 +2906,7 @@
       // A sacrificed creature's power is what it was at that moment (triggers from casting resolve later).
       const pay = castPayment(s, f, a, card.id);
       s.player[zone] = s.player[zone].filter((c) => c !== card);
-      ["playable", "plotted", "plottedNow", "discardedThisTurn"].forEach((k) => delete card[k]);
+      ["playable", "plotted", "plottedNow", "discardedThisTurn", "airbent"].forEach((k) => delete card[k]);
       // collect evidence: the chosen cards go from your graveyard to exile (CR 701.59a); a permanent spell remembers it
       if (a.evidence != null) {
         const ids = [].concat(a.evidence);
@@ -2913,7 +2972,8 @@
     if (a.type === "activate") {
       const card = find(s, a.id);
       const ab = abilitiesOf(card)[a.index];
-      const pay = ab.cost ? bestPayment(s, abilityCost(s, card, ab, a.x), { exclude: ab.tap ? [card.id] : [] }) : [];
+      const pay = ab.cost ? bestPayment(s, abilityCost(s, card, ab, a.x, ab.waterbend ? a.waterTap || [] : undefined), { exclude: [...(ab.tap ? [card.id] : []), ...(a.waterTap || [])] }) : [];
+      (ab.waterbend ? a.waterTap || [] : []).forEach((id) => tap(s, find(s, id), ev));   // waterbend: tapped to help pay
       // CR 602.2: the ability goes on the stack, then its costs are paid; it's independent of its source (CR 113.7a)
       const ctx = { src: lastKnown(card), side: "player", sacPower: Math.max(power(card), 0), selfId: card.id, x: a.x };
       spend(s, pay, ev);
@@ -3166,8 +3226,10 @@
           if (ab.stationAb) { crewHelpers(s, card).forEach((id) => out.push({ type: "activate", id: card.id, index, crew: [id] })); return; }
           const list = ab.targets ? targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)) : null;
           const discards = ab.discardCost ? discardChoices(s) : [undefined];
-          (list ? targetChoices(list, ab.targetCount) : [undefined]).forEach((target) => discards.forEach((discard) =>
-            out.push({ type: "activate", id: card.id, index, target, x, ...(discard !== undefined ? { discard } : {}) })));
+          // waterbend: which artifacts and creatures help pay (each set up to the generic amount)
+          const waters = ab.waterbend ? subsets(waterHelpers(s, card, ab)).filter((l) => l.length <= parseCost(ab.cost).generic && !check(s, { type: "activate", id: card.id, index, waterTap: l, target: list ? list[0] : undefined })) : [undefined];
+          (list ? targetChoices(list, ab.targetCount) : [undefined]).forEach((target) => discards.forEach((discard) => waters.forEach((waterTap) =>
+            out.push({ type: "activate", id: card.id, index, target, x, ...(discard !== undefined ? { discard } : {}), ...(waterTap !== undefined ? { waterTap } : {}) }))));
         });
       });
     }
@@ -3314,7 +3376,7 @@
     if (a.type === "activate") {
       const card = find(s, a.id);
       const ab = card && abilitiesOf(card)[a.index];
-      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : ab && ab.stationAb ? "stationed" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.discard ? ` (discarding ${nameOf(s, a.discard)})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
+      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : ab && ab.stationAb ? "stationed" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.discard ? ` (discarding ${nameOf(s, a.discard)})` : ""}${a.waterTap && a.waterTap.length ? ` (waterbending: tapping ${a.waterTap.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
     }
     const from = castable(s, a.id);
     const f = from ? castFace(from, a) : null;

@@ -1212,6 +1212,72 @@
       text: "Lifelink. {3}{B}: This creature deals 1 damage to each opponent." }
   });
 
+  // ---- Avatar: The Last Airbender (TLA): firebending, airbend, earthbend, waterbend, Lessons, Allies ----
+  const fireText = (n) => `Firebending ${n} (Whenever this creature attacks, add ${"{R}".repeat(n)}. This mana lasts until end of combat.)`;
+  const AIRBEND = "(Exile it. While it's exiled, its owner may cast it for {2} rather than its mana cost.)";
+  const earthText = (n) => `Earthbend ${n}. (Target land you control becomes a 0/0 creature with haste that's still a land. Put ${n === 1 ? "a +1/+1 counter" : `${["", "", "two", "three", "four"][n]} +1/+1 counters`} on it. When it dies or is exiled, return it to the battlefield tapped.)`;
+  const WATER = "(While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)";
+  const ALLY = { name: "Ally", type: "Token Creature — Ally", pt: "1/1", colors: ["W"] };
+  Object.assign(CARDS, {
+    // firebending
+    "Fire Sages": { type: "Creature — Human Cleric", cost: "{1}{R}", pt: "2/2", kw: ["firebending 1"],
+      abilities: [{ cost: "{1}{R}{R}", effect: { counters: { "+1/+1": 1 }, self: true }, text: "{1}{R}{R}: +1/+1 counter" }],
+      text: `${fireText(1)} {1}{R}{R}: Put a +1/+1 counter on this creature.` },
+    "Zuko, Exiled Prince": { type: "Legendary Creature — Human Noble", cost: "{3}{R}", pt: "4/3", kw: ["firebending 3"],
+      abilities: [{ cost: "{3}", effect: { impulse: 1 }, text: "{3}: Exile the top card; play it this turn" }],
+      text: `${fireText(3)} {3}: Exile the top card of your library. You may play that card this turn.` },
+    "Rough Rhino Cavalry": { type: "Creature — Human Mercenary", cost: "{4}{R}", pt: "5/5", kw: ["firebending 2"],
+      abilities: [{ cost: "{8}", exhaust: true, effect: { counters: { "+1/+1": 2 }, grant: ["trample"], self: true }, text: "Exhaust — {8}: two +1/+1 counters, trample" }],
+      text: `${fireText(2)} Exhaust — {8}: Put two +1/+1 counters on this creature. It gains trample until end of turn. (Activate each exhaust ability only once.)` },
+    "Fire Nation Cadets": { type: "Creature — Human Soldier", cost: "{R}", pt: "1/2", conditional: [{ if: { lessons: 1 }, grant: ["firebending 2"] }],
+      abilities: [{ cost: "{2}", effect: { pump: [1, 0], self: true }, text: "{2}: +1/+0" }],
+      text: `This creature has firebending 2 as long as there's a Lesson card in your graveyard. (Whenever this creature attacks, add {R}{R}. This mana lasts until end of combat.) {2}: This creature gets +1/+0 until end of turn.` },
+    "Twin Blades": { type: "Artifact — Equipment", cost: "{2}{R}", kw: ["flash"], equip: { cost: "{2}", static: { pump: [1, 1] } },
+      etb: { attach: true, grant: ["double strike"] }, targets: "creature", targetFilter: { controller: "you" },
+      text: "Flash. When this Equipment enters, attach it to target creature you control. That creature gains double strike until end of turn. Equipped creature gets +1/+1. Equip {2}" },
+    "Combustion Technique": { type: "Instant — Lesson", cost: "{1}{R}", targets: "creature", effect: { damage: { plus: 2, perGraveyard: "Lesson" } },
+      text: "Combustion Technique deals damage equal to 2 plus the number of Lesson cards in your graveyard to target creature. If that creature would die this turn, exile it instead." },
+    "Iroh's Demonstration": { type: "Sorcery — Lesson", cost: "{1}{R}",
+      modes: [{ text: "1 damage to each creature your opponents control", effect: { damageAll: { n: 1, creatures: "opponent" } } },
+        { text: "4 damage to target creature", targets: "creature", effect: { damage: 4 } }],
+      text: "Choose one — • Iroh's Demonstration deals 1 damage to each creature your opponents control. • Iroh's Demonstration deals 4 damage to target creature." },
+    "Cunning Maneuver": { type: "Instant", cost: "{1}{R}", targets: "creature", effect: { pump: [3, 1], create: { name: "Clue", type: "Token Artifact — Clue", colors: [] } },
+      text: "Target creature gets +3/+1 until end of turn. Create a Clue token. (It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")" },
+    // airbend
+    "Airbending Lesson": { type: "Instant — Lesson", cost: "{2}{W}", targets: "permanent", targetFilter: { nonland: true }, effect: { airbend: true, draw: 1 },
+      text: `Airbend target nonland permanent. ${AIRBEND} Draw a card.` },
+    "Rowdy Snowballers": { type: "Creature — Human Peasant Ally", cost: "{2}{U}", pt: "2/2", etb: { tap: true, counters: { stun: 1 } }, targets: "opponent-creature",
+      text: "When this creature enters, tap target creature an opponent controls and put a stun counter on it. (If a permanent with a stun counter would become untapped, remove one from it instead.)" },
+    "Yip Yip!": { type: "Instant — Lesson", cost: "{W}", targets: "creature", targetFilter: { controller: "you" }, effect: { pump: [2, 2], ifTargetType: { type: "Ally", grant: ["flying"] } },
+      text: "Target creature you control gets +2/+2 until end of turn. If that creature is an Ally, it also gains flying until end of turn." },
+    "Octopus Form": { type: "Instant — Lesson", cost: "{U}", targets: "creature", targetFilter: { controller: "you" }, effect: { pump: [1, 1], grant: ["hexproof"], untap: true },
+      text: "Target creature you control gets +1/+1 and gains hexproof until end of turn. Untap it. (It can't be the target of spells or abilities your opponents control.)" },
+    "Treetop Freedom Fighters": { type: "Creature — Human Rebel Ally", cost: "{2}{R}", pt: "2/1", kw: ["haste"], etb: { create: ALLY },
+      text: "Haste. When this creature enters, create a 1/1 white Ally creature token." },
+    "Deserter's Disciple": { type: "Creature — Human Rebel Ally", cost: "{1}{R}", pt: "2/2",
+      abilities: [{ tap: true, targets: "creature", filter: { controller: "you", maxPower: 2, other: true }, effect: { grant: ["unblockable"] }, text: "{T}: Another power 2 or less can't be blocked" }],
+      text: "{T}: Another target creature you control with power 2 or less can't be blocked this turn." },
+    // earthbend
+    "Earthbending Lesson": { type: "Sorcery — Lesson", cost: "{3}{G}", targets: "land", targetFilter: { controller: "you" }, effect: { earthbend: 4 },
+      text: earthText(4) },
+    "Badgermole": { type: "Creature — Badger Mole", cost: "{4}{G}", pt: "4/4", etb: { earthbend: 2 }, targets: "land", targetFilter: { controller: "you" },
+      static: { team: { grant: ["trample"] }, filter: { hasCounter: "+1/+1" } },
+      text: `When this creature enters, ${earthText(2).replace(/^E/, "e")} Creatures you control with +1/+1 counters on them have trample.` },
+    "Rocky Rebuke": { type: "Instant", cost: "{1}{G}", slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature", filter: { controller: "opponent" } }], effect: { bite: true },
+      text: "Target creature you control deals damage equal to its power to target creature an opponent controls." },
+    "Pillar Launch": { type: "Instant", cost: "{G}", targets: "creature", effect: { pump: [2, 2], grant: ["reach"], untap: true },
+      text: "Target creature gets +2/+2 and gains reach until end of turn. Untap it." },
+    // waterbend
+    "Giant Koi": { type: "Creature — Fish", cost: "{4}{U}{U}", pt: "5/7",
+      abilities: [{ cost: "{3}", waterbend: true, effect: { grant: ["unblockable"], self: true }, text: "Waterbend {3}: can't be blocked" }],
+      text: `Waterbend {3}: This creature can't be blocked this turn. ${WATER} Islandcycling {2} ({2}, Discard this card: Search your library for an Island card, reveal it, put it into your hand, then shuffle.)` },
+    "Flexible Waterbender": { type: "Creature — Human Warrior Ally", cost: "{3}{U}", pt: "2/5", kw: ["vigilance"],
+      abilities: [{ cost: "{3}", waterbend: true, effect: { setBase: [5, 2], self: true }, text: "Waterbend {3}: base 5/2" }],
+      text: `Vigilance. Waterbend {3}: This creature has base power and toughness 5/2 until end of turn. ${WATER}` },
+    "First-Time Flyer": { type: "Creature — Human Pilot Ally", cost: "{1}{U}", pt: "1/2", kw: ["flying"], conditional: [{ if: { lessons: 1 }, pump: [1, 1] }],
+      text: "Flying. This creature gets +1/+1 as long as there's a Lesson card in your graveyard." }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -2975,6 +3041,128 @@ LETHAL: Spider-Man India by web-slinging ({1}{G}{W}, return Hill Giant): mana va
   power), the other deals 2. 0.
 RULES: Web-slinging (702.188a); mana value is from the mana cost, not the alternative cost (118.9c).
 WRONG LINES: Attacking first: no counter, no ping: 2.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= AVATAR: THE LAST AIRBENDER (set TLA) ======================= */
+  // Firebending, airbend, earthbend, waterbend, Lessons
+  window.PUZZLES.push(
+    puzzle({
+      id: "tla-01-firebending", title: "Firebending", set: "tla", tier: "easy",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Lightning Strike")], battlefield: [c("Fire Sages"), c("Hill Giant"), c("Mountain")] },
+      explanation: "One Mountain isn't enough for Lightning Strike — until Fire Sages attacks: firebending adds {R} that lasts until end of combat. Attack with both and Strike the opponent.",
+      notes: `
+LETHAL: Attack with Fire Sages and Hill Giant: firebending 1: {R}. Lightning Strike ({R} + Mountain) the opponent: 3. The
+  Nestguard blocks the Giant: Sages 2. 5. (Blocking the Sages: 3 + 3.)
+RULES: Firebending (702.189a): the mana stays until end of combat.
+WRONG LINES: Main phase: one mana, no Strike.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-02-airbend", title: "Airbend", set: "tla", tier: "easy",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Airbending Lesson")], battlefield: [c("Hill Giant"), ...many(3, "Plains")] },
+      explanation: "Airbending Lesson exiles the Nestguard (its owner could cast it again for {2}, but not this turn). Hill Giant attacks for 3.",
+      notes: `
+LETHAL: Airbending Lesson ({2}{W}): airbend Krotiq Nestguard (exiled). Hill Giant: 3.
+RULES: Airbend (701.65a): exile it; its owner may cast it for {2}.
+WRONG LINES: Airbending your own Giant: you could recast it, but it'd be summoning sick.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-03-earthbend", title: "Earthbend", set: "tla", tier: "easy",
+      opp: { life: 4 },
+      you: { hand: [c("Earthbending Lesson")], battlefield: many(5, "Forest") },
+      explanation: "Pay for Earthbending Lesson with four Forests and earthbend the fifth: a 0/0 land creature with haste and four +1/+1 counters. Attack with it.",
+      notes: `
+LETHAL: Earthbending Lesson ({3}{G}, four Forests): earthbend 4 on the untapped fifth Forest: 4/4 haste. Attack: 4.
+RULES: Earthbend (701.66a): the land becomes a 0/0 creature with haste, still a land.
+WRONG LINES: Tapping the targeted Forest for mana: a tapped creature can't attack.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-04-giant-koi", title: "Giant Koi", set: "tla", tier: "easy",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Giant Koi"), c("Gray Ogre", { sick: true }), c("Island"), c("Island")] },
+      explanation: "Waterbend {3}: you may tap artifacts and creatures to pay {1} each. Gray Ogre can't attack this turn anyway: tap it and two Islands. Giant Koi can't be blocked: 5.",
+      notes: `
+LETHAL: Giant Koi: waterbend {3}, tapping Gray Ogre (summoning sick: fine) and two Islands: it can't be blocked. 5.
+RULES: Waterbend (701.67a): each tapped artifact or creature pays {1} of the waterbend cost.
+WRONG LINES: Attacking into the Nestguard: blocked.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-05-zuko", title: "Exiled Prince", set: "tla", tier: "medium",
+      opp: { life: 6, battlefield: [c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Zuko, Exiled Prince"), c("Hill Giant"), c("Mountain"), c("Mountain")], library: [c("Lightning Strike")] },
+      explanation: "Attack with Zuko and Hill Giant: firebending 3 gives {R}{R}{R} for this combat. Spend it on Zuko's ability: exile the top card, Lightning Strike, which you may play this turn. Cast it with your Mountains: 3 more.",
+      notes: `
+LETHAL: Attack with both: firebending 3: {R}{R}{R}. Zuko {3}: exile Lightning Strike (top of the library). Cast it with
+  the Mountains: 3. The Nestguard blocks Zuko: Giant 3. 6. (Blocking the Giant: 4 + 3.)
+RULES: Firebending (702.189a). "You may play that card this turn."
+WRONG LINES: Using Zuko's ability before combat: the Mountains alone can't pay {3}.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-06-combustion", title: "Combustion", set: "tla", tier: "medium",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Combustion Technique")], battlefield: [c("Hill Giant"), c("Mountain"), c("Mountain")], graveyard: [c("Airbending Lesson"), c("Yip Yip!")] },
+      explanation: "Combustion Technique deals 2 plus the number of Lesson cards in your graveyard: two are there, so 4 — enough for the Nestguard. Hill Giant attacks for 3.",
+      notes: `
+LETHAL: Combustion Technique: 2 + 2 Lessons = 4 to Krotiq Nestguard. Hill Giant: 3.
+RULES: The count is made as it resolves (it isn't in the graveyard yet itself).
+WRONG LINES: None.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-07-twin-blades", title: "Twin Blades", set: "tla", tier: "hard",
+      opp: { life: 6, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Twin Blades")], battlefield: [c("Rough Rhino Cavalry"), c("Fire Sages"), c("Mountain")] },
+      explanation: "Attack with both: firebending gives {R}{R}{R} for the combat. After blocks, flash in Twin Blades on the unblocked creature: +1/+1 and double strike. The Bears block the Rhino, so Fire Sages hits for 3 twice.",
+      notes: `
+LETHAL: Attack with Rough Rhino Cavalry (firebending 2) and Fire Sages (1): {R}{R}{R}. The Bears block the Rhino. Twin
+  Blades (flash, {2}{R}): attached to Fire Sages: 3/3 double strike: 6. (Blocking the Sages: Rhino 6/6 double strike.)
+RULES: Firebending mana lasts through the combat steps; flash lets the Equipment come in after blockers.
+WRONG LINES: Casting Twin Blades before combat: one Mountain. Before blocks: the Bears block the double striker.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-08-koi-fire", title: "Fire and Water", set: "tla", tier: "hard",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard"), c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Giant Koi"), c("Rough Rhino Cavalry"), c("Mountain")] },
+      explanation: "Two Nestguards can block both attackers. Giant Koi's waterbend {3} can't be paid before combat (the Rhino and the Mountain make only 2). Attack with both: the Rhino's firebending adds {R}{R}, and with the Mountain that's {3} — before blockers are declared. The Koi can't be blocked.",
+      notes: `
+LETHAL: Attack with Giant Koi and Rough Rhino Cavalry: firebending 2: {R}{R}. Waterbend {3} (RR + Mountain): the Koi can't
+  be blocked. The Nestguards block the Rhino: 5.
+RULES: Firebending mana arrives in the declare attackers step; blockers come after.
+WRONG LINES: Waterbending in main phase: only the Rhino and the Mountain can help: 2. Just attacking: both are blocked.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-09-cadets", title: "Cadets", set: "tla", tier: "hard",
+      opp: { life: 6, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Yip Yip!"), c("Lightning Strike")], battlefield: [c("Fire Nation Cadets"), c("Hill Giant"), c("Plains")] },
+      explanation: "Yip Yip! is a Lesson: once it's in your graveyard, Fire Nation Cadets has firebending 2. Use it on the Cadets (3/4), attack with both, and the {R}{R} pays for Lightning Strike. 3 + 3 either way.",
+      notes: `
+LETHAL: Yip Yip! ({W}) on Fire Nation Cadets: 3/4, and a Lesson in the graveyard: firebending 2. Attack with both: {R}{R}:
+  Lightning Strike the opponent: 3. The Nestguard blocks either: 3 more. 6.
+RULES: Firebending from a static ability ("as long as there's a Lesson card in your graveyard").
+WRONG LINES: Yip Yip! on the Giant: the Nestguard blocks the Giant: 1 + 3 = 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tla-10-lessons", title: "Lessons", set: "tla", tier: "hard",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard"), c("Pride of the Road")] },
+      you: { hand: [c("Iroh's Demonstration"), c("Combustion Technique")], battlefield: [c("Hill Giant"), c("Gray Ogre"), ...many(4, "Mountain")],
+        graveyard: [c("Yip Yip!"), c("Octopus Form")] },
+      explanation: "Pride of the Road has 5 toughness: Combustion Technique needs three Lessons in your graveyard. Cast Iroh's Demonstration first (4 damage kills the Nestguard), then it's the third Lesson: Combustion deals 5.",
+      notes: `
+LETHAL: Iroh's Demonstration ({1}{R}), 4 damage to Krotiq Nestguard. Combustion Technique ({1}{R}): 2 + 3 Lessons = 5 to
+  Pride of the Road. Attack: 3 + 2 = 5.
+RULES: The Lesson count is checked as Combustion Technique resolves.
+WRONG LINES: Combustion first: 4 damage, Pride survives; Iroh's 4 can't kill it either.
 UNIQUENESS: Solver-checked.`
     })
   );

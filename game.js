@@ -439,7 +439,7 @@
     // your hand, plus Adventure cards waiting in exile (their creature can still be cast)
     const hand = p.player.hand;
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
-    const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted);
+    const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted || c.airbent);
     // (and graveyard cards with harmonize, cast from there, or renew, an ability used from there)
     const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn));
     fill($("hand"), [...hand, ...adventures, ...flashbacks]);
@@ -448,14 +448,15 @@
       if (el) { el.classList.add("adventure"); el.append(Object.assign(document.createElement("div"), { className: "attachchip", textContent: label })); }
     };
     adventures.forEach((c) => mark(c, c.plotted ? (c.plottedNow ? "Plotted (cast it free on a later turn)" : "Plotted: cast it free (main phase)")
-      : c.playable ? "Exiled: you may play it this turn" : "On an adventure (exile)"));
+      : c.playable ? "Exiled: you may play it this turn" : c.airbent ? "Airbent: cast it for {2}" : "On an adventure (exile)"));
     flashbacks.forEach((c) => mark(c, c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)`
       : c.renew ? `Renew ${c.renew.cost} (graveyard)` : `Mayhem ${c.mayhem} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
       (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} usable from the graveyard` : "");
     $("hand-wrap").classList.toggle("empty", !hand.length && !adventures.length && !flashbacks.length);
     showPhase(p.phase);
-    $("pool").textContent = p.pool.length ? `${p.pool.length} mana floating` : "";
+    const floating = p.pool.length + (p.firePool || 0);              // (firebending {R}s last until end of combat)
+    $("pool").textContent = floating ? `${floating} mana floating` : "";
     markCombat();
     popNewCounters();
     fitBoard();
@@ -819,6 +820,18 @@
         if (max < 1) { cancelCast(); return rulesNote("Not enough mana."); }
         return askChoice(`${card.name}: choose X`, Array.from({ length: max }, (_, i) => [i + 1, String(i + 1)]), again("x"));
       }
+      // waterbend: which of your untapped artifacts and creatures help pay (one generic mana each)
+      if (ab.waterbend && casting.waterTap === undefined) {
+        const base = { type: "activate", id: card.id, index: casting.index, target: firstTarget(card, casting.index) };
+        const sets = E.subsets(state.player.battlefield.filter((c) => (E.isCreature(c) || /artifact/i.test(c.type || "")) && !c.tapped && !(ab.tap && c.id === card.id)).map((c) => c.id))
+          .filter((l) => !E.check(state, { ...base, waterTap: l }));
+        const same = (x, y) => x.length === y.length && x.every((id) => y.includes(id));
+        if (sets.length === 1 && !sets[0].length) casting.waterTap = [];
+        else return pickCards({ ids: [...new Set(sets.flat())], min: 0, max: Math.max(...sets.map((l) => l.length)),
+          prompt: `Waterbend ${ab.cost}: tap your artifacts and creatures to help pay (each pays {1}), or pay with mana.`,
+          confirm: (l) => (l.length ? `Waterbend (${l.length})` : "Mana only"), complete: (l) => sets.some((set) => same(set, l)),
+          canAdd: (l) => sets.some((set) => l.every((x) => set.includes(x))), then: (l) => again("waterTap")(l) });
+      }
       // "Discard a card: …": which card
       if (ab.discardCost && casting.discard === undefined) {
         return pickCards({ ids: state.player.hand.map((c) => c.id), confirm: "Discard",
@@ -1126,7 +1139,7 @@
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
     : casting.renew ? { type: "renew", id: casting.card.id, target }
     : casting.channel ? { type: "channel", id: casting.card.id, target }
-    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined }
+    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
