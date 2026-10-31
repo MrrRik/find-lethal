@@ -1152,6 +1152,66 @@
     "Rig for War": { type: "Instant", cost: "{1}{R}", targets: "creature", effect: { pump: [3, 0], grant: ["reach", "first strike"] }, text: "Target creature gets +3/+0 and gains reach and first strike until end of turn." }
   });
 
+  // ---- Marvel's Spider-Man (SPM): web-slinging, mayhem, discarding, Villains and Heroes ----
+  // (webSlinging: its cost; mayhem: its cost from the graveyard if discarded this turn; handAbility: an ability that
+  // discards the card from your hand; discardCost: "discard a card or pay {2}")
+  const webText = (cost) => `Web-slinging ${cost} (You may cast this spell for ${cost} if you also return a tapped creature you control to its owner's hand.)`;
+  const mayhemText = (cost) => `Mayhem ${cost} (You may cast this card from your graveyard for ${cost} if you discarded it this turn. Timing rules still apply.)`;
+  Object.assign(CARDS, {
+    "Raging Goblinoids": { type: "Creature — Goblin Berserker Villain", cost: "{4}{R}", pt: "5/4", kw: ["haste"], mayhem: "{2}{R}", text: `Haste. ${mayhemText("{2}{R}")}` },
+    "Spider-Islanders": { type: "Creature — Spider Horror Citizen", cost: "{3}{R}", pt: "4/3", mayhem: "{1}{R}", text: mayhemText("{1}{R}") },
+    "Electro's Bolt": { type: "Sorcery", cost: "{2}{R}", targets: "creature", effect: { damage: 4 }, mayhem: "{1}{R}",
+      text: `Electro's Bolt deals 4 damage to target creature. ${mayhemText("{1}{R}")}` },
+    "Swarm, Being of Bees": { type: "Legendary Creature — Insect Villain", cost: "{2}{B}", pt: "2/2", kw: ["flash", "flying"], mayhem: "{B}",
+      text: `Flash. Flying. ${mayhemText("{B}")}` },
+    "Romantic Rendezvous": { type: "Sorcery", cost: "{1}{R}", effect: { discardThenDraw: 2, drawAnyway: true }, text: "Discard a card, then draw two cards." },
+    "Pumpkin Bombardment": { type: "Sorcery", cost: "{B/R}", discardCost: { orPay: "{2}" }, targets: "creature", effect: { damage: 3 },
+      text: "As an additional cost to cast this spell, discard a card or pay {2}. Pumpkin Bombardment deals 3 damage to target creature." },
+    "Hobgoblin, Mantled Marauder": { type: "Legendary Creature — Goblin Human Villain", cost: "{1}{R}", pt: "1/2", kw: ["flying", "haste"],
+      triggers: [{ on: "discard", filter: { controller: "you" }, effect: { pump: [2, 0], self: true } }],
+      text: "Flying, haste. Whenever you discard a card, Hobgoblin gets +2/+0 until end of turn." },
+    "Masked Meower": { type: "Creature — Spider Cat Hero", cost: "{R}", pt: "1/1", kw: ["haste"],
+      abilities: [{ discardCost: true, sacSelf: true, effect: { draw: 1 }, text: "Discard a card, Sacrifice: Draw a card" }],
+      text: "Haste. Discard a card, Sacrifice this creature: Draw a card." },
+    "Inner Demons Gangsters": { type: "Creature — Human Rogue Villain", cost: "{3}{B}", pt: "3/4",
+      abilities: [{ discardCost: true, sorcery: true, effect: { pump: [1, 0], grant: ["menace"], self: true }, text: "Discard a card: +1/+0 and menace" }],
+      text: "Discard a card: This creature gets +1/+0 and gains menace until end of turn. Activate only as a sorcery. (It can't be blocked except by two or more creatures.)" },
+    "Stegron the Dinosaur Man": { type: "Legendary Creature — Dinosaur Villain", cost: "{4}{R}", pt: "5/4", kw: ["menace"],
+      handAbility: { cost: "{1}{R}", targets: "creature", filter: { controller: "you" }, effect: { pump: [3, 1] } },
+      text: "Menace. Dinosaur Formula — {1}{R}, Discard this card: Until end of turn, target creature you control gets +3/+1 and becomes a Dinosaur in addition to its other types." },
+    "Angry Rabble": { type: "Creature — Human Citizen", cost: "{1}{R}", pt: "2/2", kw: ["trample"],
+      triggers: [{ on: "cast", filter: { controller: "you", minManaValue: 4 }, effect: { damage: 1, to: "opp" } }],
+      abilities: [{ cost: "{5}{R}", sorcery: true, effect: { counters: { "+1/+1": 2 }, self: true }, text: "{5}{R}: two +1/+1 counters" }],
+      text: "Trample. Whenever you cast a spell with mana value 4 or greater, this creature deals 1 damage to each opponent. {5}{R}: Put two +1/+1 counters on this creature. Activate only as a sorcery." },
+    "Lurking Lizards": { type: "Creature — Lizard Villain", cost: "{1}{G}", pt: "1/3", kw: ["trample"],
+      triggers: [{ on: "cast", filter: { controller: "you", minManaValue: 4 }, effect: { counters: { "+1/+1": 1 }, self: true } }],
+      text: "Trample. Whenever you cast a spell with mana value 4 or greater, put a +1/+1 counter on this creature." },
+    "Spider-Man, Web-Slinger": { type: "Legendary Creature — Spider Human Hero", cost: "{2}{W}", pt: "3/3", webSlinging: "{W}", text: webText("{W}") },
+    "Spider-UK": { type: "Legendary Creature — Spider Human Hero", cost: "{3}{W}", pt: "3/4", webSlinging: "{2}{W}",
+      text: `${webText("{2}{W}")} At the beginning of your end step, if two or more creatures entered the battlefield under your control this turn, you draw a card and gain 2 life.` },
+    "Spider-Man India": { type: "Legendary Creature — Spider Human Hero", cost: "{3}{G}{W}", pt: "4/4", webSlinging: "{1}{G}{W}",
+      triggers: [{ on: "cast", filter: { controller: "you", creature: true }, targets: "creature", targetFilter: { controller: "you" }, effect: { counters: { "+1/+1": 1 }, grant: ["flying"] } }],
+      text: `${webText("{1}{G}{W}")} Pavitr's Sevā — Whenever you cast a creature spell, put a +1/+1 counter on target creature you control. It gains flying until end of turn.` },
+    "Spiders-Man, Heroic Horde": { type: "Legendary Creature — Spider Hero", cost: "{1}{G}", pt: "2/3", webSlinging: "{4}{G}{G}",
+      triggers: [{ on: "enters", self: true, if: { webSlung: true }, effect: { create: { name: "Spider", type: "Token Creature — Spider", pt: "2/1", kw: ["reach"], colors: ["G"], count: 2 } } }],
+      text: `${webText("{4}{G}{G}")} When Spiders-Man enters, if they were cast using web-slinging, you gain 3 life and create two 2/1 green Spider creature tokens with reach.` },
+    "Shocker, Unshakable": { type: "Legendary Creature — Human Rogue Villain", cost: "{4}{R}{R}", pt: "5/5", kw: ["first strike"],
+      etb: { damage: 2, damageController: 2 }, targets: "creature",
+      text: "During your turn, Shocker has first strike. Vibro-Shock Gauntlets — When Shocker enters, he deals 2 damage to target creature and 2 damage to that creature's controller." },
+    "Taxi Driver": { type: "Creature — Human Pilot", cost: "{1}{R}", pt: "3/1",
+      abilities: [{ cost: "{1}", tap: true, targets: "creature", effect: { grant: ["haste"] }, text: "{1}, {T}: Target creature gains haste" }],
+      text: "{1}, {T}: Target creature gains haste until end of turn." },
+    "Thwip!": { type: "Instant", cost: "{W}", targets: "creature", effect: { pump: [2, 2], grant: ["flying"] },
+      text: "Target creature gets +2/+2 and gains flying until end of turn. If it's a Spider, you gain 2 life." },
+    "Grow Extra Arms": { type: "Instant", cost: "{1}{G}", lessIfTargetType: { type: "Spider", n: 1 }, targets: "creature", effect: { pump: [4, 4] },
+      text: "This spell costs {1} less to cast if it targets a Spider. Target creature gets +4/+4 until end of turn." },
+    "Wraith, Vicious Vigilante": { type: "Legendary Creature — Human Detective Hero", cost: "{1}{W}{U}", pt: "1/1", kw: ["double strike", "unblockable"],
+      text: "Double strike. Fear Gas — Wraith can't be blocked." },
+    "Merciless Enforcers": { type: "Creature — Human Mercenary Villain", cost: "{1}{B}", pt: "2/1", kw: ["lifelink"],
+      abilities: [{ cost: "{3}{B}", effect: { damage: 1, to: "opp" }, text: "{3}{B}: 1 damage to each opponent" }],
+      text: "Lifelink. {3}{B}: This creature deals 1 damage to each opponent." }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -2790,6 +2850,131 @@ LETHAL: Weftstalker Ardent (warp {R}). Galactic Wayfarer ({2}{G}): it enters: 1;
   Bolt: void: 3. 0. (5 lands: 1 + 3 + 1.)
 RULES: Weftstalker sees creatures and artifacts entering; a token is both.
 WRONG LINES: Casting Weftstalker for {2}{R}: no mana for the rest.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= MARVEL'S SPIDER-MAN (set SPM) ======================= */
+  // Web-slinging, mayhem, discarding, mana value 4 or greater
+  window.PUZZLES.push(
+    puzzle({
+      id: "spm-01-mayhem", title: "Mayhem", set: "spm", tier: "easy",
+      opp: { life: 5 },
+      you: { hand: [c("Raging Goblinoids")], battlefield: [c("Masked Meower"), ...many(3, "Mountain")] },
+      explanation: "Raging Goblinoids costs 5, but it has mayhem: once you've discarded it this turn, cast it from your graveyard for {2}{R}. Masked Meower's ability discards it for free. A 5/4 with haste.",
+      notes: `
+LETHAL: Masked Meower: discard Raging Goblinoids, sacrifice the Meower, draw. Mayhem: cast the Goblinoids from the graveyard
+  for {2}{R}. Haste: attack for 5.
+RULES: Mayhem (702.187b): cast it from your graveyard for its mayhem cost if you discarded it this turn.
+WRONG LINES: Attacking with the Meower: 1.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-02-web-slinger", title: "Web-Slinger", set: "spm", tier: "easy",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Spider-Man, Web-Slinger")], battlefield: [c("Spider-Man India"), c("Hill Giant", { tapped: true }), c("Plains")] },
+      explanation: "Web-sling Spider-Man for {W}, returning the tapped Hill Giant. Casting a creature spell triggers Spider-Man India: a +1/+1 counter and flying on India. A 5/5 flier.",
+      notes: `
+LETHAL: Spider-Man, Web-Slinger by web-slinging ({W}, return the tapped Hill Giant). Spider-Man India's trigger: +1/+1
+  counter and flying on India. Attack with India: 5 (the Nestguard can't block fliers).
+RULES: Web-slinging (702.188a): an alternative cost — pay it and return a tapped creature you control to its owner's hand.
+WRONG LINES: Casting Spider-Man normally: 3 mana, you have 1.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-03-wraith", title: "Fear Gas", set: "spm", tier: "easy",
+      opp: { life: 6, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Thwip!")], battlefield: [c("Wraith, Vicious Vigilante"), c("Plains")] },
+      explanation: "Wraith can't be blocked and has double strike. Thwip! makes it 3/3: 3 + 3.",
+      notes: `
+LETHAL: Thwip! ({W}): Wraith +2/+2: 3/3 double strike, unblockable: 6.
+RULES: Double strike deals combat damage twice.
+WRONG LINES: None needed beyond the pump.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-04-dinosaur-formula", title: "Dinosaur Formula", set: "spm", tier: "easy",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Stegron the Dinosaur Man")], battlefield: [c("Hill Giant"), c("Gray Ogre"), c("Mountain"), c("Mountain")] },
+      explanation: "Stegron's Dinosaur Formula works from your hand at instant speed: {1}{R}, discard it, +3/+1. Attack with both; the Bears block the Giant, so the Ogre gets +3: 5.",
+      notes: `
+LETHAL: Attack with Hill Giant and Gray Ogre. The Bears block the Giant. Dinosaur Formula ({1}{R}, discard Stegron) on the
+  Ogre: 5/3: 5.
+RULES: An activated ability that works from your hand; discarding the card is part of its cost.
+WRONG LINES: Using it before blocks: the Bears block the pumped creature.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-05-hobgoblin", title: "Hobgoblin", set: "spm", tier: "medium",
+      opp: { life: 6, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Pumpkin Bombardment"), c("Stegron the Dinosaur Man")], battlefield: [c("Hobgoblin, Mantled Marauder"), c("Mountain"), c("Mountain")] },
+      explanation: "Hobgoblin gets +2/+0 whenever you discard a card. Dinosaur Formula discards Stegron and gives Hobgoblin +3/+1: 1 + 3 + 2 = 6 in the air.",
+      notes: `
+LETHAL: Dinosaur Formula ({1}{R}, discard Stegron) on Hobgoblin: +3/+1, and the discard: +2/+0. 6/3 flying: 6.
+RULES: Discarding as a cost still makes "whenever you discard a card" trigger.
+WRONG LINES: Pumpkin Bombardment discarding Stegron: only +2 (3).
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-06-extra-arms", title: "Extra Arms", set: "spm", tier: "medium",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Grow Extra Arms")], battlefield: [c("Spider-Man, Web-Slinger"), c("Masked Meower"), c("Forest")] },
+      explanation: "Grow Extra Arms costs {G} if it targets a Spider. Attack with both Spiders and wait: the Bears block Spider-Man, so the Masked Meower gets +4/+4: 5.",
+      notes: `
+LETHAL: Attack with Spider-Man and Masked Meower (both Spiders). The Bears block Spider-Man. Grow Extra Arms ({G}, it
+  targets a Spider) on the Meower: 5/5: 5. (Blocking the Meower: Spider-Man 7.)
+RULES: "Costs {1} less if it targets a Spider" (601.2f).
+WRONG LINES: Casting it first: the Bears block the pumped Spider.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-07-electros-bolt", title: "Electro's Bolt", set: "spm", tier: "hard",
+      opp: { life: 5, battlefield: [c("Grizzly Bears"), c("Krotiq Nestguard")] },
+      you: { hand: [c("Pumpkin Bombardment"), c("Electro's Bolt")], battlefield: [c("Hill Giant"), c("Gray Ogre"), c("Mountain"), c("Mountain"), c("Swamp")] },
+      explanation: "Pumpkin Bombardment asks you to discard a card or pay {2}. Discard Electro's Bolt: Bombardment kills the Bears, and the Bolt can now be cast with mayhem for {1}{R} to kill the Nestguard. Attack for 3 + 2.",
+      notes: `
+LETHAL: Pumpkin Bombardment ({B/R}, discarding Electro's Bolt): 3 to the Bears. Electro's Bolt by mayhem ({1}{R}): 4 to
+  Krotiq Nestguard. Attack with Hill Giant and Gray Ogre: 5.
+RULES: Mayhem (702.187b): discarded this turn, so it can be cast from the graveyard.
+WRONG LINES: Paying {2} for the Bombardment, or hard-casting the Bolt ({2}{R}): not enough mana for both.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-08-printed-value", title: "Printed Value", set: "spm", tier: "hard",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Raging Goblinoids")], battlefield: [c("Masked Meower"), c("Angry Rabble"), c("Lurking Lizards"), ...many(3, "Mountain")] },
+      explanation: "Cast Raging Goblinoids by mayhem for {2}{R}: its mana value is still 5, so Angry Rabble deals 1 and Lurking Lizards grows. Attack with all three; the Bears block the Goblinoids: 2 + 2 + 1.",
+      notes: `
+LETHAL: Masked Meower discards Raging Goblinoids. Cast it by mayhem ({2}{R}): mana value 5: Angry Rabble 1 (4), Lurking
+  Lizards +1/+1 (2/4 trample). Attack with Goblinoids (haste), Rabble (2/2 trample), Lizards: the Bears block the
+  Goblinoids: 2 + 2 = 4. 0.
+RULES: An alternative cost doesn't change a spell's mana value (118.9c).
+WRONG LINES: Attacking without the Goblinoids: the Bears block one trampler.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-09-inner-demons", title: "Inner Demons", set: "spm", tier: "hard",
+      opp: { life: 9, battlefield: [c("Giant Spider")] },
+      you: { hand: [c("Spider-Islanders"), c("Electro's Bolt")], battlefield: [c("Hobgoblin, Mantled Marauder"), c("Inner Demons Gangsters"), c("Mountain"), c("Mountain")] },
+      explanation: "Discard both cards to Inner Demons Gangsters: each discard gives the Gangsters +1/+0 and menace, and Hobgoblin +2/+0. Then cast Electro's Bolt by mayhem to kill the Giant Spider. Hobgoblin 5 flying + Gangsters 5.",
+      notes: `
+LETHAL: Inner Demons Gangsters: discard Spider-Islanders, then Electro's Bolt (Gangsters 5/4 menace; Hobgoblin 5/2).
+  Electro's Bolt by mayhem ({1}{R}): 4 to Giant Spider. Attack with both: 10.
+RULES: Mayhem (702.187b); "whenever you discard a card" for each one.
+WRONG LINES: Keeping the Spider alive: it blocks Hobgoblin (reach). One discard: 3 + 4 = 7.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "spm-10-india", title: "Spider-Man India", set: "spm", tier: "hard",
+      opp: { life: 3, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Spider-Man India")], battlefield: [c("Angry Rabble"), c("Lurking Lizards"), c("Hill Giant", { tapped: true }), c("Forest"), c("Plains"), c("Mountain")] },
+      explanation: "Web-sling Spider-Man India for {1}{G}{W}, returning the tapped Hill Giant. It's still a 5-mana spell: Angry Rabble deals 1, Lurking Lizards gets a counter. Attack with both tramplers: the Bears stop only one.",
+      notes: `
+LETHAL: Spider-Man India by web-slinging ({1}{G}{W}, return Hill Giant): mana value 5: Rabble 1 (2), Lizards 2/4 trample.
+  Attack with Angry Rabble (2/2 trample) and Lurking Lizards: the Bears block one (no trample damage over a 2/2 from 2
+  power), the other deals 2. 0.
+RULES: Web-slinging (702.188a); mana value is from the mana cost, not the alternative cost (118.9c).
+WRONG LINES: Attacking first: no counter, no ping: 2.
 UNIQUENESS: Solver-checked.`
     })
   );

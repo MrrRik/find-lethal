@@ -441,7 +441,7 @@
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
     const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted);
     // (and graveyard cards with harmonize, cast from there, or renew, an ability used from there)
-    const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew);
+    const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn));
     fill($("hand"), [...hand, ...adventures, ...flashbacks]);
     const mark = (c, label) => {
       const el = document.querySelector(`#hand .card[data-id="${c.id}"]`);
@@ -449,7 +449,8 @@
     };
     adventures.forEach((c) => mark(c, c.plotted ? (c.plottedNow ? "Plotted (cast it free on a later turn)" : "Plotted: cast it free (main phase)")
       : c.playable ? "Exiled: you may play it this turn" : "On an adventure (exile)"));
-    flashbacks.forEach((c) => mark(c, c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)` : `Renew ${c.renew.cost} (graveyard)`));
+    flashbacks.forEach((c) => mark(c, c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)`
+      : c.renew ? `Renew ${c.renew.cost} (graveyard)` : `Mayhem ${c.mayhem} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
       (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} usable from the graveyard` : "");
     $("hand-wrap").classList.toggle("empty", !hand.length && !adventures.length && !flashbacks.length);
@@ -789,6 +790,18 @@
   // Abilities: X → targets. Waiting triggers: targets.
   function nextChoice() {
     if (casting.trigger) return targetPhase();
+    // an ability that discards this card from your hand ("{1}{R}, Discard this card: …"): cast it, or use that
+    if (casting.card.handAbility && casting.channel === undefined && state.player.hand.includes(casting.card)) {
+      const card = casting.card, canUse = !E.check(state, { type: "channel", id: card.id }), canCast = !E.check(state, { type: "cast", id: card.id });
+      if (canUse && canCast) return askChoice(`${card.name}: cast it, or discard it for its ability?`,
+        [[false, `Cast ${card.name} (${card.cost})`], [true, `Discard it: ${card.handAbility.cost} — its ability`]], (v) => { casting.channel = v; nextChoice(); });
+      casting.channel = canUse && !canCast;
+    }
+    if (casting.channel) {
+      const h = casting.card.handAbility;
+      casting.phases = casting.phases || (h.targets ? [{ kind: h.targets, filter: h.filter, count: ONE, src: casting.card, label: `${casting.card.name}'s ability` }] : []);
+      return targetPhase();
+    }
     // renew: an ability of a card in your graveyard (it's exiled as you activate it); its target
     if (casting.renew) {
       const why = E.check(state, { type: "renew", id: casting.card.id });
@@ -805,6 +818,11 @@
         const max = E.manaAvailable(state, ab.tap ? [card.id] : []) - E.manaValue(ab.cost);
         if (max < 1) { cancelCast(); return rulesNote("Not enough mana."); }
         return askChoice(`${card.name}: choose X`, Array.from({ length: max }, (_, i) => [i + 1, String(i + 1)]), again("x"));
+      }
+      // "Discard a card: …": which card
+      if (ab.discardCost && casting.discard === undefined) {
+        return pickCards({ ids: state.player.hand.map((c) => c.id), confirm: "Discard",
+          prompt: `Discard a card from your hand for ${card.name}'s ability.`, then: (picked) => again("discard")(Array.isArray(picked) ? picked[0] : picked) });
       }
       // station: tap one other untapped creature; it puts charge counters equal to its power on this permanent
       if (ab.stationAb && casting.crew === undefined) {
@@ -879,6 +897,15 @@
       if (canWarp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Warp it for ${card.warp} (exiled at the next end step)`]], again("warp"));
       casting.warp = canWarp && !canCast;
     }
+    // web-slinging (a card in your hand): return a tapped creature of yours and pay less, or cast it normally
+    if (card.webSlinging && casting.webSling === undefined && state.player.hand.includes(card)) {
+      const ids = state.player.battlefield.filter((c) => E.isCreature(c) && c.tapped).map((c) => c.id).filter((id) => !E.check(state, { type: "cast", id: card.id, webSling: id }));
+      const normal = !E.check(state, { type: "cast", id: card.id });
+      if (!ids.length) casting.webSling = null;
+      else return pickCards({ ids, confirm: "Return it", alt: normal ? { label: `Cast normally (${card.cost})`, value: null } : null,
+        prompt: `Web-slinging ${card.webSlinging}: return a tapped creature you control to its owner's hand.`,
+        then: (picked) => again("webSling")(Array.isArray(picked) ? picked[0] : picked) });
+    }
     if (casting.cycle) {
       const a = { type: "cycle", id: card.id };
       const why = E.check(state, a);
@@ -921,7 +948,7 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
-    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined });
+    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined });
     if (why) { cancelCast(); return rulesNote(why); }
     const n = f.chooseCount || 1;
     if (f.modes && casting.mode == null) {
@@ -992,6 +1019,16 @@
           prompt: `Behold ${n > 1 ? n + " " + f.behold.type + "s" : "a " + f.behold.type} for ${f.name}: choose on your battlefield or reveal from your hand.`,
           then: (picked) => again("behold")(Array.isArray(picked) ? (n > 1 ? picked : picked[0]) : picked) });
       }
+    }
+    // "As an additional cost, discard a card or pay {2}": a card from your hand, or pay
+    if (f.discardCost && casting.discard === undefined) {
+      const ids = state.player.hand.filter((c) => c.id !== card.id).map((c) => c.id);
+      const canPay = f.discardCost.orPay && !E.check(state, { ...base, discard: "pay" });
+      if (!ids.length && !canPay) { cancelCast(); return rulesNote(`${f.name} needs a card to discard.`); }
+      if (!ids.length) casting.discard = "pay";
+      else return pickCards({ ids, confirm: "Discard", alt: canPay ? { label: `Pay ${f.discardCost.orPay} instead`, value: "pay" } : null,
+        prompt: `Discard a card from your hand for ${f.name}${f.discardCost.orPay ? `, or pay ${f.discardCost.orPay}` : ""}.`,
+        then: (picked) => again("discard")(Array.isArray(picked) ? picked[0] : picked) });
     }
     // convoke: any set of your untapped creatures that, with your mana, pays the cost (only those can be picked)
     if (E.has(f, "convoke") && casting.convoke === undefined) {
@@ -1064,7 +1101,7 @@
 
   // Turn the chosen targets into the action's target (and ask how to divide damage, if needed)
   function assemble() {
-    if (casting.trigger || casting.index != null || casting.renew) return finishChoice(casting.results[0]);
+    if (casting.trigger || casting.index != null || casting.renew || casting.channel) return finishChoice(casting.results[0]);
     const f = faceNow();
     const phases = casting.phases;
     if (!phases.length || phases[0].optional) return finishChoice(casting.results[0]);
@@ -1088,12 +1125,13 @@
   // The action being built: casting a spell, activating ability `index` of a permanent, or a waiting trigger's target
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
     : casting.renew ? { type: "renew", id: casting.card.id, target }
-    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined }
+    : casting.channel ? { type: "channel", id: casting.card.id, target }
+    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);
@@ -1246,6 +1284,7 @@
     const ab = E.abilitiesOf(card)[index];
     const why = E.check(state, { type: "activate", id: card.id, index, target: firstTarget(card, index), x: E.parseCost(ab.cost).x ? 1 : undefined,
       crew: ab.crew ? crewIds(card) : ab.stationAb ? crewIds(card).slice(0, 1) : undefined,
+      discard: ab.discardCost ? (state.player.hand[0] || {}).id : undefined,
       craft: ab.craft ? (E.legalActions(state).find((a) => a.type === "activate" && a.id === card.id && a.index === index && a.craft) || {}).craft : undefined });
     if (why) return rulesNote(why, btn.closest(".card"));
     casting = { card, index, results: [], picks: [] };

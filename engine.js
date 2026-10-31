@@ -266,7 +266,8 @@
     ((f.spree || f.tiered) && a.mode != null ? [].concat(a.mode).map((m) => (f.modes[m] && f.modes[m].plus) || "").join("") : "") +
     (f.extraCostPerTarget && Array.isArray(a.target) && a.target.length > 1 ? `{${f.extraCostPerTarget * (a.target.length - 1)}}` : "") +
     (f.behold && f.behold.orPay && a.behold === "pay" ? f.behold.orPay : "") +
-    (f.blight && f.blight.orPay && a.blight === "pay" ? f.blight.orPay : "");
+    (f.blight && f.blight.orPay && a.blight === "pay" ? f.blight.orPay : "") +
+    (f.discardCost && f.discardCost.orPay && a.discard === "pay" ? f.discardCost.orPay : "");
   // CR 702.41a: "affinity for artifacts" — costs {1} less for each artifact you control; lessPer: { filter, n } is the
   // same for other "costs {n} less to cast for each …" spells. CR 601.2f: only the generic part goes down, not below 0
   // bargainLess: "This spell costs {N} less to cast if it's bargained"
@@ -279,6 +280,9 @@
     // creature's power, CR 702.180a)
     const flat = (f.bargainLess && a.bargain != null ? f.bargainLess : 0) + (f.evidenceLess && a.evidence != null ? f.evidenceLess : 0) +
       (f.lessIfAnotherSpell && (s.spellsCast || 0) >= 1 ? f.lessIfAnotherSpell : 0) +
+      // ("costs {1} less to cast if it targets a Spider": lessIfTargetType)
+      // (no target chosen yet: as if it will target one, so "can I start casting it?" isn't answered too early)
+      (f.lessIfTargetType && (a.target == null || [].concat(a.target).some((t) => hasType(find(s, t), f.lessIfTargetType.type))) ? f.lessIfTargetType.n : 0) +
       (f.harmonizing && a.tapFor != null && find(s, a.tapFor) ? Math.max(power(find(s, a.tapFor)), 0) : 0);
     if (!per.length && !flat) return cost;
     const less = flat + per.reduce((t, p) => t + p.n * s.player.battlefield.filter((c) => objectIs(c, p.filter)).length, 0);
@@ -474,7 +478,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -483,7 +487,7 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped",
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn",
     "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
@@ -1161,6 +1165,8 @@
     if (f.expend && e.n !== f.expend) return false;                       // "whenever you expend 4"
     if (f.enchantment && !typeHas(e.obj, /enchantment/i)) return false;  // "whenever an enchantment you control enters"
     if (f.artifactOrCreature && !isArtifact(e.obj) && !isCreature(e.obj)) return false;   // "another creature or artifact"
+    // "a spell with mana value 4 or greater" (its printed cost, even if cast for an alternative cost, CR 118.9c)
+    if (f.minManaValue && manaValue(e.obj.printedCost != null ? e.obj.printedCost : e.obj.cost) < f.minManaValue) return false;
     if (t.on === "unlock" && t.door != null && e.door !== t.door) return false;   // "when you unlock this door"
     if (f.level && e.level !== f.level) return false;                     // "when this Class becomes level 3"
     if (t.byYou && e.controller !== "you") return false;                  // valiant: "a spell or ability you control"
@@ -1196,6 +1202,7 @@
     if (cond.selfTapped && !(self && self.tapped)) return false;
     if (cond.door != null && !(self && self.unlocked && self.unlocked[cond.door])) return false;   // a Room door's ability
     if (cond.saddled && !(self && self.saddled)) return false;
+    if (cond.webSlung && !(self && self.webSlung)) return false;    // "if they were cast using web-slinging"
     // Void (EOE): "if a nonland permanent left the battlefield this turn or a spell was warped this turn"
     if (cond.void && !(side === "player" && (s.permLeft || s.warped))) return false;
     if (cond.controlsType && !s[side].battlefield.some((c) => subtypes(c).includes(cond.controlsType))) return false;   // "if you control a Spacecraft"
@@ -1702,12 +1709,12 @@
       if (pick === 1) createToken(s, { name: "Spirit", type: "Token Creature — Spirit", pt: `${n}/${n}`, colors: ["W"] }, ctx.side, ev);
     }
     // "Discard a card. If you do, draw two cards." (you choose which; with an empty hand nothing happens)
-    if (eff.discardThenDraw && ctx.side === "player" && s.player.hand.length) {
-      const i = choose(s, "Discard which card?", s.player.hand.map((c) => c.name), "player");
-      const [gone] = s.player.hand.splice(i, 1);
-      putCard(s, gone, "player", replaceMove(s, gone, "hand", "graveyard", "player"));
-      ev.push({ type: "discarded", id: gone.id });
-      emit(s, { type: "discard", obj: gone, side: "player", count: 1 }, ev);
+    // ("Discard a card, then draw two cards": drawAnyway — the draw doesn't depend on the discard)
+    if (eff.discardThenDraw && ctx.side === "player" && (s.player.hand.length || eff.drawAnyway)) {
+      if (s.player.hand.length) {
+        const i = choose(s, "Discard which card?", s.player.hand.map((c) => c.name), "player");
+        discardCard(s, s.player.hand[i], ev);
+      }
       draw(s, "player", eff.discardThenDraw, ev);
     }
     // "+X/+X, where X is the number of attacking creatures" (pumpCount: the creatures you control that X counts)
@@ -1922,6 +1929,19 @@
     if (!known.length) return;
     const pick = choose(s, "Choose the card you may play this turn", known.map((c) => c.name), side);
     known[pick].playable = true;
+  }
+
+  // You discard a card from your hand (CR 701.9a): it goes to your graveyard, remembering it was discarded this turn
+  // (mayhem, CR 702.187b), and "whenever you discard" abilities trigger (also for a cost); `first` emits events that
+  // happen with it (a cycled card's "when you cycle")
+  function discardCard(s, card, ev, first) {
+    s.player.hand = s.player.hand.filter((c) => c !== card);
+    const to = replaceMove(s, card, "hand", "graveyard", "player");
+    putCard(s, card, "player", to);
+    if (to === "graveyard") card.discardedThisTurn = true;
+    ev.push({ type: "discarded", id: card.id });
+    if (first) first();
+    emit(s, { type: "discard", obj: card, side: "player", count: 1 }, ev);
   }
 
   // A library is: known cards on top (library), then unknown, irrelevant cards (libraryCount), then known
@@ -2149,7 +2169,8 @@
         (f.behold && f.behold.flash && beholdOptions(s, f).length > 0 && !check(s, { type: "cast", id: c.id, face, behold: beholdOptions(s, f)[0] }))); });
     return s.player.hand.some((c) => castNow(c, "hand") || (c.cycling && !check(s, { type: "cycle", id: c.id }))) ||
       s.player.exile.some((c) => (c.onAdventure || c.playable) && castNow(c, "exile")) ||
-      s.player.graveyard.some((c) => c.flashback && castNow(c, "graveyard")) ||
+      s.player.graveyard.some((c) => (c.flashback || (c.mayhem && c.discardedThisTurn)) && castNow(c, "graveyard")) ||
+      s.player.hand.some((c) => c.handAbility && !check(s, { type: "channel", id: c.id })) ||
       s.player.battlefield.some((c) => abilitiesOf(c).some((ab) => !ab.sorcery && !abilityProblem(s, c, ab, 0)));
   }
 
@@ -2343,6 +2364,7 @@
     if (ab.crew && crewHelpers(s, card).reduce((t, id) => t + crewPower(find(s, id)), 0) < ab.crew) return `Your untapped creatures don't have ${ab.crew} total power to ${ab.saddle ? "saddle" : "crew"} it.`;
     if (ab.sorcery && !sorceryTime(s)) return `You can only ${ab.text || "do that"} during your main phase, with nothing on the stack.`;
     if (ab.stationAb && !crewHelpers(s, card).length) return `You have no other untapped creature to station ${card.name} with.`;
+    if (ab.discardCost && !s.player.hand.length) return "You have no card to discard.";   // "Discard a card: …"
     // CR 702.178a: "Max speed — [ability]": it has the ability only while your speed is 4
     if (ab.maxSpeed && !maxSpeed(s, "player")) return `${card.name} has that ability only at max speed (your speed is ${speedOf(s, "player")}).`;
     if (ab.exhaust && !exhaustReady(s, card, ab)) return `${card.name}'s exhaust ability has already been activated.`;
@@ -2371,7 +2393,8 @@
     const e = s.player.exile.find((c) => c.id === id && (c.onAdventure || c.playable || (c.plotted && !c.plottedNow)));
     if (e) return { card: e, zone: "exile" };
     // (or harmonize, CR 702.180a)
-    const g = s.player.graveyard.find((c) => c.id === id && (c.flashback || c.harmonize));
+    // (or mayhem, if you discarded it this turn, CR 702.187b)
+    const g = s.player.graveyard.find((c) => c.id === id && (c.flashback || c.harmonize || (c.mayhem && c.discardedThisTurn)));
     return g ? { card: g, zone: "graveyard" } : null;
   }
   // The spell as it's cast from where it is: from the graveyard by flashback, its flashback cost is paid rather than
@@ -2383,10 +2406,14 @@
     // CR 702.170d: a plotted card is cast without paying its mana cost (an alternative cost: nothing to pay)
     if (from.zone === "exile" && from.card.plotted) return { ...f, cost: "", plottedCast: true };
     // CR 702.185a: warp — cast it from your hand for its warp cost instead (a.warp)
-    if (a.warp && from.zone === "hand" && from.card.warp) return { ...f, cost: from.card.warp, warpCast: true };
+    if (a.warp && from.zone === "hand" && from.card.warp) return { ...f, cost: from.card.warp, warpCast: true, printedCost: f.cost };
+    // CR 702.188a: web-slinging — its web-slinging cost and returning a tapped creature you control (a.webSling) instead
+    if (a.webSling != null && from.zone === "hand" && from.card.webSlinging) return { ...f, cost: from.card.webSlinging, webSlung: true, printedCost: f.cost };
     if (from.zone !== "graveyard") return f;
     // harmonize (CR 702.180a): its harmonize cost instead of its mana cost; a creature may be tapped to reduce it (a.tapFor)
-    if (!from.card.flashback) return { ...f, cost: from.card.harmonize, harmonizing: true };
+    if (!from.card.flashback && from.card.harmonize) return { ...f, cost: from.card.harmonize, harmonizing: true, printedCost: f.cost };
+    // mayhem (CR 702.187b): its mayhem cost, from your graveyard, if you discarded it this turn
+    if (!from.card.flashback) return { ...f, cost: from.card.mayhem, mayhemCast: true, printedCost: f.cost };
     const { cost, behold } = from.card.flashback;
     return { ...f, cost, ...(behold ? { behold } : {}) };
   }
@@ -2445,6 +2472,18 @@
     }
     // CR 702.29a: cycling — "[Cost], Discard this card: Draw a card", an activated ability that works from your hand
     // (any time you have priority)
+    // an ability of a card in your hand whose cost discards it ("{1}{R}, Discard this card: …", CR 602.1, 113.6)
+    if (a.type === "channel") {
+      const card = s.player.hand.find((c) => c.id === a.id);
+      const h = card && card.handAbility;
+      if (!h) return "That card has no ability you can use from your hand.";
+      if (h.sorcery && !sorceryTime(s)) return "Only as a sorcery: your main phase, with nothing on the stack.";
+      if (!bestPayment(s, h.cost, { except: card.id })) return `Not enough mana for ${card.name}'s ability.`;
+      if (!h.targets) return null;
+      const legal = targetsFor(s, card, h.targets, h.filter);
+      if (!legal.length) return "There's no legal target.";
+      return a.target == null ? null : validTargets(a.target, legal, ONE);
+    }
     if (a.type === "renew") {
       const card = s.player.graveyard.find((c) => c.id === a.id);
       if (!card || !card.renew) return "Only a card with renew in your graveyard can be renewed.";
@@ -2475,6 +2514,11 @@
       if (a.faceDown && !from.card.disguise) return "Only a card with disguise can be cast face down.";
       if (a.faceDown && from.zone === "graveyard") return "You can't cast it face down from there.";
       if (a.warp && !(from.card.warp && from.zone === "hand")) return "Only a card with warp in your hand can be cast for its warp cost.";
+      if (a.webSling != null) {
+        if (!(from.card.webSlinging && from.zone === "hand")) return "Only a card with web-slinging in your hand can be cast that way.";
+        const back = find(s, a.webSling);
+        if (!back || sideOf(s, back) !== "player" || !isCreature(back) || !back.tapped) return "Web-slinging: return a tapped creature you control.";
+      }
       if (from.card.layout === "transform" && (a.face || 0) !== 0) return "A transforming card is cast with its front face up (CR 712.11).";
       const f = castFace(from, a);
       if (isLand(f)) return "Play it as a land instead.";
@@ -2502,6 +2546,12 @@
         if (blighted(a) && !blightOptions(s).includes(a.blight)) return "You can only blight a creature you control.";
       } else if (a.blight != null) return `${f.name} has no blight cost.`;
       if (a.offspring && !f.offspring) return `${f.name} has no offspring.`;
+      // "discard a card or pay {2}": a card from your hand (not this one), or pay
+      if (f.discardCost) {
+        if (a.discard === "pay" && !f.discardCost.orPay) return "That cost can't be paid with mana.";
+        if (a.discard != null && a.discard !== "pay" && !s.player.hand.some((c) => c.id === a.discard && c.id !== from.card.id)) return "Discard a card from your hand.";
+        if (a.discard == null && !f.discardCost.orPay && !s.player.hand.some((c) => c.id !== from.card.id)) return `${f.name} needs a card to discard.`;
+      } else if (a.discard != null) return `${f.name} has no discard cost.`;
       if (a.gift && !f.gift) return `${f.name} has no gift.`;
       // collect evidence N (CR 701.59a): exile cards from your graveyard with total mana value N or more (a.evidence)
       if (a.evidence != null) {
@@ -2545,6 +2595,7 @@
       if (why) return why;
       if (ab.craft && !craftOptions(s, card, ab.craft).includes(a.craft)) return "Choose something to craft with.";
       if (ab.stationAb && !(a.crew && a.crew.length === 1 && crewHelpers(s, card).includes(a.crew[0]))) return "Station: tap one other untapped creature you control.";
+      if (ab.discardCost && a.discard != null && !s.player.hand.some((c) => c.id === a.discard)) return "Discard a card from your hand.";
       if (ab.crew) {
         const crew = a.crew || [];
         if (new Set(crew).size !== crew.length || !crew.every((id) => crewHelpers(s, card).includes(id))) return `Only your other untapped creatures can ${ab.saddle ? "saddle" : "crew"} it.`;
@@ -2742,6 +2793,17 @@
       emit(s, { type: "becomesPlotted", obj: card, side: "player" }, ev);   // "When this card becomes plotted"
     }
 
+    if (a.type === "channel") {
+      const card = s.player.hand.find((c) => c.id === a.id);
+      const h = card.handAbility;
+      spend(s, bestPayment(s, h.cost, { except: card.id }), ev);
+      discardCard(s, card, ev);                                  // the discard is part of the cost (CR 602.2)
+      s.stack.unshift({ kind: "ability", name: `${card.name}'s ability`, id: card.id, a: { target: a.target }, ab: { targets: h.targets, filter: h.filter, effect: h.effect },
+        ctx: { src: card, side: "player", selfId: card.id } });
+      [...new Set([a.target].flat(2))].map((id) => id && find(s, id)).filter(Boolean)
+        .forEach((c) => emit(s, { type: "becomesTarget", obj: c, side: sideOf(s, c), by: "ability", controller: "you" }, ev));
+    }
+
     if (a.type === "renew") {
       // Renew — "[Cost], Exile this card from your graveyard: [Effect]. Activate only as a sorcery." (an activated
       // ability that works from the graveyard, CR 113.6); exiling it is a cost
@@ -2762,13 +2824,10 @@
       // CR 602.2: the ability goes on the stack, then its costs are paid — the mana, and discarding the card
       const card = s.player.hand.find((c) => c.id === a.id);
       spend(s, bestPayment(s, card.cycling, { except: card.id }), ev);
-      s.player.hand = s.player.hand.filter((c) => c !== card);
-      putCard(s, card, "player", replaceMove(s, card, "hand", "graveyard", "player"));
       ev.push({ type: "cycled", id: card.id });
       // CR 702.29c-d: "when you cycle this card" (it triggers from the graveyard, where the card went) and "whenever
       // you discard one or more cards" (once: one card was discarded)
-      emit(s, { type: "cycled", obj: card, side: "player" }, ev);
-      emit(s, { type: "discard", obj: card, side: "player", count: 1 }, ev);
+      discardCard(s, card, ev, () => emit(s, { type: "cycled", obj: card, side: "player" }, ev));
       s.stack.unshift({ kind: "ability", name: `${card.name}'s cycling`, id: card.id, a: {}, ab: { effect: { draw: 1 } },
         ctx: { src: card, side: "player", selfId: card.id } });
     }
@@ -2788,7 +2847,7 @@
       // A sacrificed creature's power is what it was at that moment (triggers from casting resolve later).
       const pay = castPayment(s, f, a, card.id);
       s.player[zone] = s.player[zone].filter((c) => c !== card);
-      ["playable", "plotted", "plottedNow"].forEach((k) => delete card[k]);
+      ["playable", "plotted", "plottedNow", "discardedThisTurn"].forEach((k) => delete card[k]);
       // collect evidence: the chosen cards go from your graveyard to exile (CR 701.59a); a permanent spell remembers it
       if (a.evidence != null) {
         const ids = [].concat(a.evidence);
@@ -2811,6 +2870,11 @@
       if (a.tapFor != null) tap(s, find(s, a.tapFor), ev);
       // warp (CR 702.185c): "a spell was warped this turn"; the permanent remembers it was cast for its warp cost
       if (f.warpCast) { s.warped = true; card.warped = true; }
+      // web-slinging: returning the tapped creature is part of the cost; the permanent remembers it ("if they were cast
+      // using web-slinging")
+      if (f.webSlung) { leave(s, find(s, a.webSling), "hand", ev); card.webSlung = true; }
+      // "As an additional cost, discard a card or pay {2}" (a.discard: the card, or "pay")
+      if (f.discardCost && a.discard != null && a.discard !== "pay") discardCard(s, s.player.hand.find((c) => c.id === a.discard), ev);
       // "whenever one or more cards leave your graveyard": cast from there (flashback, harmonize)
       if (zone === "graveyard") emit(s, { type: "leavesGraveyard", side: "player", obj: card }, ev);
       [4, 8].forEach((n) => { if (spentBefore < n && s.manaSpent >= n) emit(s, { type: "expend", n, side: "player" }, ev); });
@@ -2843,7 +2907,7 @@
       // Triggers from casting it (a creature that died from a blight or sacrifice) go on the stack above it and
       // resolve first; if one of yours needs a target, the spell waits for that choice
       // CR 601.2a / 405.1: the spell is on the stack; triggers from casting it go on top of it (CR 603.3)
-      s.stack.unshift({ kind: "spell", name: f.name, id: card.id, a, card, sacPower, ...(zone === "graveyard" ? { flashback: true } : {}) });
+      s.stack.unshift({ kind: "spell", name: f.name, id: card.id, a, card, sacPower, ...(zone === "graveyard" && !f.mayhemCast ? { flashback: true } : {}) });
     }
 
     if (a.type === "activate") {
@@ -2885,6 +2949,7 @@
         if (!card.counters[kind]) delete card.counters[kind];
       }
       if (ab.sacSelf) leave(s, card, "graveyard", ev, { sacrificed: true });
+      if (ab.discardCost) discardCard(s, s.player.hand.find((c) => c.id === a.discard) || s.player.hand[0], ev);
       ev.push({ type: "activate", id: card.id, index: a.index, target: a.target });
       [...new Set([a.target].flat(2))].map((id) => id && find(s, id)).filter(Boolean)
         .forEach((c) => emit(s, { type: "becomesTarget", obj: c, side: sideOf(s, c), by: "ability", controller: "you" }, ev));
@@ -2981,6 +3046,12 @@
     }
     return choices.map((target) => ({ target }));
   }
+  // Your tapped creatures (web-slinging returns one); the cards you could discard (unknown cards: one stands for all)
+  const tappedMine = (s) => s.player.battlefield.filter((c) => isCreature(c) && c.tapped).map((c) => c.id);
+  function discardChoices(s, except) {
+    const seen = new Set();
+    return s.player.hand.filter((c) => c.id !== except && (c.unknown ? !seen.has("?") && seen.add("?") : true)).map((c) => c.id);
+  }
   // Every legal play, cast (with each mode/color/X/sacrifice/target choice), activation, mana ability and attack right now
   function legalActions(s) {
     const out = [];
@@ -2998,7 +3069,12 @@
     const range = (n) => Array.from({ length: Math.max(n, 0) }, (_, i) => i + 1);
     const sources = [...s.player.hand.map((card) => ({ card, zone: "hand" })),
       ...s.player.exile.filter((c) => castable(s, c.id)).map((card) => ({ card, zone: "exile" })),
-      ...s.player.graveyard.filter((c) => c.flashback || c.harmonize).map((card) => ({ card, zone: "graveyard" }))];
+      ...s.player.graveyard.filter((c) => c.flashback || c.harmonize || (c.mayhem && c.discardedThisTurn)).map((card) => ({ card, zone: "graveyard" }))];
+    // abilities of cards in your hand that discard them ("{1}{R}, Discard this card: …")
+    s.player.hand.filter((c) => c.handAbility && !check(s, { type: "channel", id: c.id })).forEach((c) => {
+      const h = c.handAbility;
+      (h.targets ? targetsFor(s, c, h.targets, h.filter) : [undefined]).forEach((target) => out.push({ type: "channel", id: c.id, target }));
+    });
     // renew: an ability of a card in your graveyard (one per target)
     s.player.graveyard.filter((c) => c.renew && !check(s, { type: "renew", id: c.id })).forEach((c) =>
       targetsFor(s, c, c.renew.targets, c.renew.filter).forEach((target) => out.push({ type: "renew", id: c.id, target })));
@@ -3024,6 +3100,7 @@
           ...(f.bargainLess ? bargainOptions(s).map((bargain) => ({ bargain })) : []),
           ...(f.harmonizing ? convokeHelpers(s).map((tapFor) => ({ tapFor })) : []),               // (harmonize: a tapped creature)
           ...(zone === "hand" && card.warp ? [{ warp: true }] : []),                                // (its warp cost)
+          ...(zone === "hand" && card.webSlinging ? tappedMine(s).map((webSling) => ({ webSling })) : []),   // (web-slinging)
           ...(f.behold && f.behold.flash ? beholdOptions(s, f).slice(0, 1).map((behold) => ({ behold })) : [])];   // (flash by beholding)
         if (check(s, { type: "cast", id: card.id, face }) && !reducible.some((r) => !check(s, { type: "cast", id: card.id, face, ...r }))) continue;
         const n = f.chooseCount || 1;
@@ -3045,6 +3122,10 @@
         const tapFors = f.harmonizing ? [undefined, ...convokeHelpers(s)] : [undefined];
         // warp: cast it normally, or for its warp cost
         const warps = zone === "hand" && card.warp ? [undefined, true] : [undefined];
+        // web-slinging: normally, or returning each tapped creature of yours
+        const webSlings = zone === "hand" && card.webSlinging ? [undefined, ...tappedMine(s)] : [undefined];
+        // a discard cost: each other card in your hand (unknown cards are all alike: one of them), or pay
+        const discards = f.discardCost ? [...discardChoices(s, card.id), ...(f.discardCost.orPay ? ["pay"] : [])] : [undefined];
         const convokes = has(f, "convoke") ? subsets(convokeHelpers(s)).filter((l) => l.length <= manaValue(f.cost) + (f.behold && f.behold.orPay ? manaValue(f.behold.orPay) : 0)) : [undefined];
         // compleated: how many Phyrexian pips are paid with life (each costs the walker two loyalty)
         const lifePipsList = has(f, "compleated") ? [0, ...range(parseCost(f.cost).pips.filter((p) => /\/P$/.test(p)).length)] : [undefined];
@@ -3053,11 +3134,13 @@
         // collect evidence (optional): not, or each set of graveyard cards that's just enough
         const evidences = f.evidence ? [undefined, ...evidenceOptions(s, f.evidence)] : [undefined];
         for (const mode of modes) for (const color of colors) for (const x of xs) for (const sac of sacs) for (const bargain of bargains) for (const evidence of evidences)
-          for (const blight of blights) for (const behold of beholds) for (const convoke of convokes) for (const lifePips of lifePipsList) for (const offspring of offsprings) for (const gift of gifts) for (const tapFor of tapFors) for (const warp of warps) {
+          for (const blight of blights) for (const behold of beholds) for (const convoke of convokes) for (const lifePips of lifePipsList) for (const offspring of offsprings) for (const gift of gifts) for (const tapFor of tapFors) for (const warp of warps) for (const webSling of webSlings) for (const discard of discards) {
             for (const pick of castTargets(s, f, { mode, x, blight, bargain, evidence, gift, behold }, sac)) {
               const a = { type: "cast", id: card.id, face, mode, color, x, sac, ...pick };
               if (tapFor !== undefined) a.tapFor = tapFor;
               if (warp) a.warp = true;
+              if (webSling !== undefined) a.webSling = webSling;
+              if (discard !== undefined) a.discard = discard;
               if (evidence !== undefined) a.evidence = evidence;
               if (offspring) a.offspring = true;
               if (gift) a.gift = true;
@@ -3082,7 +3165,9 @@
           if (ab.craft) { craftOptions(s, card, ab.craft).forEach((m) => out.push({ type: "activate", id: card.id, index, craft: m })); return; }
           if (ab.stationAb) { crewHelpers(s, card).forEach((id) => out.push({ type: "activate", id: card.id, index, crew: [id] })); return; }
           const list = ab.targets ? targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)) : null;
-          (list ? targetChoices(list, ab.targetCount) : [undefined]).forEach((target) => out.push({ type: "activate", id: card.id, index, target, x }));
+          const discards = ab.discardCost ? discardChoices(s) : [undefined];
+          (list ? targetChoices(list, ab.targetCount) : [undefined]).forEach((target) => discards.forEach((discard) =>
+            out.push({ type: "activate", id: card.id, index, target, x, ...(discard !== undefined ? { discard } : {}) })));
         });
       });
     }
@@ -3219,6 +3304,7 @@
     if (a.type === "plot") return `plot ${nameOf(s, a.id)}`;
     if (a.type === "cycle") return `cycle ${nameOf(s, a.id)}`;
     if (a.type === "renew") return `renew ${nameOf(s, a.id)}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
+    if (a.type === "channel") return `discard ${nameOf(s, a.id)} for its ability${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
     if (a.type === "pass") return `resolve: ${s.stack[0] ? s.stack[0].name : "the stack"}`;
     if (a.type === "choice") return `${s.pending[0].name.replace(/:.*/, "")}: ${s.pending[0].labels[a.pick]}`;
     if (a.type === "order") return `put ${s.pending[a.pick] ? s.pending[a.pick].name : "a"}'s trigger on the stack first`;
@@ -3228,7 +3314,7 @@
     if (a.type === "activate") {
       const card = find(s, a.id);
       const ab = card && abilitiesOf(card)[a.index];
-      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : ab && ab.stationAb ? "stationed" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
+      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : ab && ab.stationAb ? "stationed" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.discard ? ` (discarding ${nameOf(s, a.discard)})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
     }
     const from = castable(s, a.id);
     const f = from ? castFace(from, a) : null;
@@ -3236,6 +3322,10 @@
     let d = `cast ${f ? f.name : nameOf(s, a.id)}${from && from.zone === "exile" ? " (from exile)" : from && from.zone === "graveyard" ? (from.card.flashback ? " (flashback)" : " (harmonize)") : ""}`;
     if (a.tapFor != null) d += ` (tapping ${nameOf(s, a.tapFor)})`;
     if (a.warp) d += " (warp)";
+    if (a.webSling != null) d += ` (web-slinging, returning ${nameOf(s, a.webSling)})`;
+    if (from && from.zone === "graveyard" && f && f.mayhemCast) d = d.replace(" (harmonize)", " (mayhem)");
+    if (a.discard === "pay") d += " (paying instead of discarding)";
+    else if (a.discard != null) d += ` (discarding ${nameOf(s, a.discard)})`;
     if (a.evidence != null) d += ` (collecting evidence: ${[].concat(a.evidence).map((id) => nameOf(s, id)).join(" + ")})`;
     if (f && f.modes && a.mode != null) d += ` (${[].concat(a.mode).map((m) => f.modes[m].text || "mode " + (m + 1)).join(" + ")})`;
     if (a.color) d += ` (${WORD_OF[a.color]})`;
