@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Find Lethal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap">
+<link rel="stylesheet" href="style.css">
+<script>
+  // apply saved (or system) theme before first paint to avoid a flash
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("theme"); } catch (e) {}
+    if (t !== "light" && t !== "dark") {
+      t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    }
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+</head>
+<body>
+<header class="topbar">
+  <div class="left">
+    <button id="back" class="ghost back" type="button" hidden>← Menu</button>
+    <div class="brand">Find <span>Lethal</span></div>
+  </div>
+  <div class="meta">
+    <span id="diff" class="badge"></span>
+    <span id="puzzle-title" class="ptitle"></span>
+    <button id="solution" class="ghost small-btn" type="button" title="Show the solution (for testing)">Solution</button>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light/dark mode" title="Toggle light/dark mode">
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- Main menu: pick a difficulty -->
+<section class="screen menu" id="menu">
+  <h1 class="menu-title">Find <span>Lethal</span></h1>
+  <p class="menu-sub">Pick a set</p>
+  <div class="diff-list" id="diff-list"></div>
+  <button id="open-creator" class="ghost make-btn" type="button">Puzzle creator</button>
+  <button id="show-rules" class="ghost make-btn" type="button">Puzzle rules</button>
+  <button id="clear-progress" class="ghost small-btn" type="button">Clear progress</button>
+</section>
+
+<!-- Puzzle creator: build a board by hand -->
+<section class="screen creator" id="creator">
+  <div class="cr-toolbar">
+    <input id="cr-title" type="text" maxlength="40" placeholder="Puzzle title" aria-label="Puzzle title">
+    <select id="cr-diff" aria-label="Difficulty">
+      <option value="easy">Easy</option><option value="medium">Medium</option>
+      <option value="hard">Hard</option><option value="very-hard">Very hard</option>
+    </select>
+    <button id="cr-add" class="primary" type="button">+ Add card</button>
+    <button id="cr-play" class="ghost" type="button">Play test</button>
+    <button id="cr-save" class="ghost" type="button">Save</button>
+    <select id="cr-load" aria-label="Saved puzzles"></select>
+    <button id="cr-copy" class="ghost" type="button">Copy as code</button>
+    <button id="cr-clear" class="ghost" type="button">Clear board</button>
+  </div>
+  <p class="cr-status" id="cr-status" aria-live="polite"></p>
+
+  <div class="cr-board">
+    <div class="cr-side opp">
+      <div class="cr-head">
+        <span class="cr-who">Opponent</span>
+        <div class="cr-life"><button type="button" data-life="opp" data-d="-1" aria-label="Opponent life minus 1">−</button>
+          <b id="cr-opp-life"></b><button type="button" data-life="opp" data-d="1" aria-label="Opponent life plus 1">+</button></div>
+      </div>
+      <div class="cr-zone cr-bf" data-zone="opp.battlefield" data-label="Opponent's battlefield"></div>
+      <div class="cr-piles">
+        <div class="cr-zone cr-pile" data-zone="opp.graveyard" data-label="Graveyard"></div>
+        <div class="cr-zone cr-pile" data-zone="opp.exile" data-label="Exile"></div>
+        <div class="cr-zone cr-pile" data-zone="opp.library" data-label="Library (top first)"></div>
+      </div>
+    </div>
+    <div class="cr-side you">
+      <div class="cr-head">
+        <span class="cr-who">You</span>
+        <div class="cr-life"><button type="button" data-life="you" data-d="-1" aria-label="Your life minus 1">−</button>
+          <b id="cr-you-life"></b><button type="button" data-life="you" data-d="1" aria-label="Your life plus 1">+</button>
+          <button type="button" id="cr-you-inf" class="cr-inf" title="Your life doesn't matter (∞)">∞</button></div>
+      </div>
+      <div class="cr-zone cr-bf" data-zone="you.battlefield" data-label="Your battlefield"></div>
+      <div class="cr-piles">
+        <div class="cr-zone cr-pile" data-zone="you.graveyard" data-label="Graveyard"></div>
+        <div class="cr-zone cr-pile" data-zone="you.exile" data-label="Exile"></div>
+        <div class="cr-zone cr-pile" data-zone="you.library" data-label="Library (top first)"></div>
+      </div>
+      <div class="cr-zone cr-hand" data-zone="you.hand" data-label="Your hand"></div>
+    </div>
+  </div>
+  <p class="cr-help">Drag cards between zones (cards in a library are drawn top first). Tap a card to tap/untap it, mark it as
+    just cast (summoning sick), add counters, attach an Aura or Equipment, or remove it.</p>
+</section>
+
+<!-- Creator: card search -->
+<div class="cr-modal" id="cr-search" hidden>
+  <div class="cr-search-box" role="dialog" aria-label="Add a card">
+    <input id="cr-q" type="search" placeholder="Type a card name…" autocomplete="off" aria-label="Card name">
+    <label class="cr-dest">Put it in
+      <select id="cr-dest">
+        <option value="you.battlefield">Your battlefield</option><option value="you.hand">Your hand</option>
+        <option value="opp.battlefield">Opponent's battlefield</option>
+        <option value="you.graveyard">Your graveyard</option><option value="opp.graveyard">Opponent's graveyard</option>
+        <option value="you.exile">Your exile</option><option value="opp.exile">Opponent's exile</option>
+        <option value="you.library">Your library</option><option value="opp.library">Opponent's library</option>
+      </select>
+    </label>
+    <ul class="cr-results" id="cr-results"></ul>
+    <p class="cr-search-msg" id="cr-search-msg"></p>
+    <div class="sheet-actions"><button id="cr-search-close" class="ghost" type="button">Done</button></div>
+  </div>
+</div>
+
+<!-- Creator: options for one card -->
+<div class="cr-menu" id="cr-menu" hidden></div>
+
+<!-- Puzzle grid for one difficulty -->
+<section class="screen levels" id="levels">
+  <h2 class="levels-title" id="levels-title"></h2>
+  <div class="grid" id="grid"></div>
+  <div class="legend">
+    <span><i class="tile-dot new"></i>Not tried</span>
+    <span><i class="tile-dot started"></i>In progress</span>
+    <span><i class="tile-dot failed"></i>Failed</span>
+    <span><i class="tile-dot solved"></i>Solved</span>
+  </div>
+  <div class="legend">
+    <span><i class="tier-bar easy"></i>Easy</span>
+    <span><i class="tier-bar medium"></i>Medium</span>
+    <span><i class="tier-bar hard"></i>Hard</span>
+  </div>
+</section>
+
+<main class="table" id="table">
+  <!-- Opponent -->
+  <section class="side opp" id="opp">
+    <div class="rail">
+      <div class="life" id="opp-life"><small>Opp. life</small><b>20</b></div>
+      <!-- poison counters: shown once the opponent has any (10 or more wins, CR 104.3d) -->
+      <div class="life poison" id="opp-poison" hidden><small>Poison</small><b>0</b></div>
+      <div class="pile" id="opp-library"><small>Library</small><b>0</b></div>
+      <div class="pile" id="opp-hand"><small>Hand</small><b>0</b></div>
+      <div class="pile" id="opp-gy"><small>Graveyard</small><b>0</b></div>
+      <div class="pile" id="opp-exile"><small>Exile</small><b>0</b></div>
+    </div>
+    <div class="lane" id="opp-lane"></div>
+  </section>
+
+  <div class="divider">
+    <button id="next-phase" class="ghost small-btn" type="button">Next phase ›</button>
+    <div class="phases" id="phases" role="group" aria-label="Turn steps: click a later step to move on"></div>
+    <span id="phase"></span>
+    <span id="pool" class="pool"></span>
+  </div>
+
+  <!-- Player -->
+  <section class="side you" id="you">
+    <div class="rail">
+      <div class="life" id="you-life"><small>Your life</small><b>20</b></div>
+      <div class="pile" id="you-library"><small>Library</small><b>0</b></div>
+      <div class="pile" id="you-gy"><small>Graveyard</small><b>0</b></div>
+      <div class="pile" id="you-exile"><small>Exile</small><b>0</b></div>
+    </div>
+    <div class="lane" id="you-lane"></div>
+  </section>
+
+  <div class="hand" id="hand-wrap">
+    <div class="hand-count" id="hand-count"></div>
+    <div class="hand-cards" id="hand"></div>
+  </div>
+</main>
+
+<footer class="bar">
+  <div class="prompt" id="prompt"></div>
+  <div class="actions">
+    <button id="reset" class="ghost" aria-label="Reset" title="Reset the puzzle"><span class="lbl">Reset</span></button>
+    <button id="done-targets" class="primary" type="button" hidden>Done</button>
+    <!-- choosing cards on the board for a cost (sacrifice, blight, behold, convoke) -->
+    <button id="pick-cancel" class="ghost" type="button" hidden>Cancel</button>
+    <button id="pick-alt" class="ghost" type="button" hidden></button>
+    <button id="pick-ok" class="primary" type="button" hidden>Confirm</button>
+    <button id="go" class="primary" disabled>Declare attackers</button>
+  </div>
+</footer>
+
+<!-- Graveyard / exile viewer (long press a pile) -->
+<div class="zoneview" id="zoneview" hidden>
+  <div class="zone-box" role="dialog" aria-labelledby="zone-title">
+    <h2 id="zone-title"></h2>
+    <div class="zone-cards" id="zone-cards"></div>
+    <p class="zone-note" id="zone-note"></p>
+    <p class="zone-hint">Press and hold a card to enlarge it.</p>
+    <div class="sheet-actions"><button id="zone-close" class="primary" type="button">Close</button></div>
+  </div>
+</div>
+
+<!-- The stack: what's waiting to resolve, top first (the eye hides it to look at the board or respond) -->
+<div class="stackview" id="stackview" hidden>
+  <div class="stack-box" role="dialog" aria-labelledby="stack-title">
+    <div class="stack-head">
+      <h2 id="stack-title">The stack</h2>
+      <button id="stack-hide" class="ghost eye" type="button" aria-label="Look at the board" title="Look at the board (or respond)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+    <p class="stack-note" id="stack-note"></p>
+    <div class="stack-cards" id="stack-cards"></div>
+    <div class="sheet-actions"><button id="stack-resolve" class="primary" type="button">Resolve</button></div>
+  </div>
+</div>
+<button id="stack-show" class="stack-pill primary" type="button" hidden></button>
+
+<!-- A choice made while casting: mode, color, X -->
+<div class="choice" id="choice" hidden>
+  <div class="choice-box" role="dialog" aria-labelledby="choice-title">
+    <h2 id="choice-title"></h2>
+    <div class="choice-options" id="choice-options"></div>
+    <div class="sheet-actions"><button id="choice-cancel" class="ghost" type="button">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Press-and-hold zoom -->
+<div class="zoom" id="zoom" aria-hidden="true"></div>
+
+<!-- Result sheet -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card">
+    <h2 id="sheet-title"></h2>
+    <p id="sheet-body"></p>
+    <div class="sheet-actions">
+      <button id="sheet-alt" class="ghost" hidden></button>
+      <button id="sheet-btn" class="primary"></button>
+    </div>
+  </div>
+</div>
+
+<div class="credit">Card images &amp; data © Scryfall / Wizards of the Coast. Fan project, not affiliated.</div>
+
+<script src="engine.js"></script>
+<script src="puzzles.js"></script>
+<script src="game.js"></script>
+<script src="cardtext.js"></script>
+<script src="creator.js"></script><script>
+  document.getElementById("theme-toggle").addEventListener("click", function () {
+    var root = document.documentElement;
+    var t = root.dataset.theme === "light" ? "dark" : "light";
+    root.dataset.theme = t;
+    try { localStorage.setItem("theme", t); } catch (e) {}
+  });
+</script>
+</body>
+</html>
