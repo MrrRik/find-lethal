@@ -1369,6 +1369,69 @@
       text: "Choose one — • Create a 1/1 colorless Robot artifact creature token. • Target creature gets +3/+0 and gains first strike until end of turn." }
   });
 
+  // ---- Secrets of Strixhaven (SOS): prepared (prepare spells), opus, repartee, increment, infusion ----
+  // (prepare: the prepare spell; entersPrepared; opus effects use insteadIf.spentAtLeast for "five or more mana")
+  const PREP = "This creature enters prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)";
+  const INCREMENT = "Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)";
+  const repartee = (effect, more = {}) => ({ on: "cast", filter: { controller: "you", instantOrSorcery: true, targetsCreature: true }, effect, ...more });
+  const opus = (effect, five) => ({ on: "cast", filter: { controller: "you", instantOrSorcery: true }, effect: { ...effect, insteadIf: { spentAtLeast: 5, effect: five } } });
+  Object.assign(CARDS, {
+    // prepared
+    "Quill-Blade Laureate": { type: "Creature — Human Cleric", cost: "{1}{W}", pt: "1/1", kw: ["double strike"], entersPrepared: true,
+      prepare: { name: "Twofold Intent", type: "Sorcery", cost: "{1}{W}", targets: "creature", effect: { pump: [1, 0], grant: ["double strike"] },
+        text: "Target creature gets +1/+0 and gains double strike until end of turn." },
+      text: `Double strike. ${PREP} // Twofold Intent {1}{W} (Sorcery): Target creature gets +1/+0 and gains double strike until end of turn.` },
+    "Honorbound Page": { type: "Creature — Cat Cleric", cost: "{3}{W}", pt: "3/3", kw: ["first strike"], entersPrepared: true,
+      prepare: { name: "Forum's Favor", type: "Sorcery", cost: "{W}", targets: "creature", effect: { pump: [1, 0], grant: ["flying"] },
+        text: "Target creature gets +1/+0 and gains flying until end of turn." },
+      text: `First strike. ${PREP} // Forum's Favor {W} (Sorcery): Target creature gets +1/+0 and gains flying until end of turn.` },
+    "Adventurous Eater": { type: "Creature — Human Warlock", cost: "{2}{B}", pt: "3/2", entersPrepared: true,
+      prepare: { name: "Have a Bite", type: "Sorcery", cost: "{B}", targets: "creature", effect: { counters: { "+1/+1": 1 }, gainLife: 1 },
+        text: "Put a +1/+1 counter on target creature. You gain 1 life." },
+      text: `${PREP} // Have a Bite {B} (Sorcery): Put a +1/+1 counter on target creature. You gain 1 life.` },
+    "Leech Collector": { type: "Creature — Human Warlock", cost: "{1}{B}", pt: "2/2",
+      triggers: [{ on: "gainLife", filter: { controller: "you" }, oncePerTurn: true, effect: { becomePrepared: true, self: true } }],
+      prepare: { name: "Bloodletting", type: "Sorcery", cost: "{B}", effect: { lifeLoss: 2, to: "opp" }, text: "Each opponent loses 2 life." },
+      text: "Whenever you gain life for the first time each turn, this creature becomes prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.) // Bloodletting {B} (Sorcery): Each opponent loses 2 life." },
+    "Blazing Firesinger": { type: "Creature — Dwarf Bard", cost: "{2}{R}", pt: "2/3", entersPrepared: true,
+      prepare: { name: "Seething Song", type: "Instant", cost: "{2}{R}", effect: { addMana: "RRRRR" }, text: "Add {R}{R}{R}{R}{R}." },
+      text: `${PREP} // Seething Song {2}{R} (Instant): Add {R}{R}{R}{R}{R}.` },
+    // opus
+    "Expressive Firedancer": { type: "Creature — Human Sorcerer", cost: "{1}{R}", pt: "2/2",
+      triggers: [opus({ pump: [1, 1], self: true }, { pump: [1, 1], grant: ["double strike"], self: true })],
+      text: "Opus — Whenever you cast an instant or sorcery spell, this creature gets +1/+1 until end of turn. If five or more mana was spent to cast that spell, this creature also gains double strike until end of turn." },
+    "Thunderdrum Soloist": { type: "Creature — Dwarf Bard", cost: "{1}{R}", pt: "1/3", kw: ["reach"],
+      triggers: [opus({ damage: 1, to: "opp" }, { damage: 3, to: "opp" })],
+      text: "Reach. Opus — Whenever you cast an instant or sorcery spell, this creature deals 1 damage to each opponent. If five or more mana was spent to cast that spell, this creature deals 3 damage to each opponent instead." },
+    "Tackle Artist": { type: "Creature — Orc Sorcerer", cost: "{3}{R}", pt: "4/3", kw: ["trample"],
+      triggers: [opus({ counters: { "+1/+1": 1 }, self: true }, { counters: { "+1/+1": 2 }, self: true })],
+      text: "Trample. Opus — Whenever you cast an instant or sorcery spell, put a +1/+1 counter on this creature. If five or more mana was spent to cast that spell, put two +1/+1 counters on this creature instead." },
+    "Spectacular Skywhale": { type: "Creature — Elemental Whale", cost: "{2}{U}{R}", pt: "1/4", kw: ["flying"],
+      triggers: [opus({ pump: [3, 0], self: true }, { counters: { "+1/+1": 3 }, self: true })],
+      text: "Flying. Opus — Whenever you cast an instant or sorcery spell, this creature gets +3/+0 until end of turn. If five or more mana was spent to cast that spell, put three +1/+1 counters on this creature instead." },
+    // repartee
+    "Rehearsed Debater": { type: "Creature — Djinn Bard", cost: "{2}{W}", pt: "3/3", kw: ["vigilance"], triggers: [repartee({ pump: [1, 1], self: true })],
+      text: "Vigilance. Repartee — Whenever you cast an instant or sorcery spell that targets a creature, this creature gets +1/+1 until end of turn." },
+    "Melancholic Poet": { type: "Creature — Elf Bard", cost: "{1}{B}", pt: "2/2", triggers: [repartee({ lifeLoss: 1, to: "opp", gainLife: 1 })],
+      text: "Repartee — Whenever you cast an instant or sorcery spell that targets a creature, each opponent loses 1 life and you gain 1 life." },
+    "Lecturing Scornmage": { type: "Creature — Human Warlock", cost: "{B}", pt: "1/1", triggers: [repartee({ counters: { "+1/+1": 1 }, self: true })],
+      text: "Repartee — Whenever you cast an instant or sorcery spell that targets a creature, put a +1/+1 counter on this creature." },
+    "Snooping Page": { type: "Creature — Human Cleric", cost: "{1}{W}{B}", pt: "2/3", triggers: [repartee({ grant: ["unblockable"], self: true }), { on: "combatDamage", self: true, effect: { draw: 1 } }],
+      text: "Repartee — Whenever you cast an instant or sorcery spell that targets a creature, this creature can't be blocked this turn. Whenever this creature deals combat damage to a player, you draw a card and lose 1 life." },
+    // infusion
+    "Ulna Alley Shopkeep": { type: "Creature — Goblin Warlock", cost: "{2}{B}", pt: "2/3", kw: ["menace"], conditional: [{ if: { infusion: true }, pump: [2, 0] }],
+      text: "Menace. Infusion — This creature gets +2/+0 as long as you gained life this turn." },
+    "Thornfist Striker": { type: "Creature — Elf Druid", cost: "{2}{G}", pt: "3/3", kw: ["ward 1"], static: { team: { pump: [1, 0], grant: ["trample"] }, if: { infusion: true } },
+      text: "Ward {1}. Infusion — Creatures you control get +1/+0 and have trample as long as you gained life this turn." },
+    "Foolish Fate": { type: "Instant", cost: "{2}{B}", targets: "creature", effect: { destroy: true, insteadIf: { if: { infusion: true }, effect: { controllerLoses: 3, destroy: true } } },
+      text: "Destroy target creature. Infusion — If you gained life this turn, that creature's controller loses 3 life." },
+    "Efflorescence": { type: "Instant", cost: "{2}{G}", targets: "creature", effect: { counters: { "+1/+1": 2 }, ifCond: { if: { infusion: true }, grant: ["trample", "indestructible"] } },
+      text: "Put two +1/+1 counters on target creature. Infusion — If you gained life this turn, that creature also gains trample and indestructible until end of turn." },
+    // increment
+    "Cuboid Colony": { type: "Creature — Insect", cost: "{G}{U}", pt: "1/1", kw: ["flash", "flying", "trample", "increment"], text: `Flash. Flying, trample. ${INCREMENT}` },
+    "Hungry Graffalon": { type: "Creature — Giraffe", cost: "{3}{G}", pt: "3/4", kw: ["reach", "increment"], text: `Reach. ${INCREMENT}` }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -3503,6 +3566,129 @@ LETHAL: Attack with Raphael, Musicians, Bears, Ogre; the Nestguard blocks the Mu
   1 = 13. Against every block the opponent could make, only returning Raphael always reaches 11 (solver-checked).
 RULES: Sneak trigger "if his sneak cost was paid"; alliance.
 WRONG LINES: Keeping Raphael for his ping and returning a 2-power creature: the opponent's best block keeps it under 11.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= SECRETS OF STRIXHAVEN (set SOS) ======================= */
+  // Prepared creatures (prepare spells), opus, repartee, increment, infusion
+  window.PUZZLES.push(
+    puzzle({
+      id: "sos-01-soloist", title: "Soloist", set: "sos", tier: "easy",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Shock")], battlefield: [c("Thunderdrum Soloist"), c("Mountain")] },
+      explanation: "Opus: casting an instant or sorcery makes Thunderdrum Soloist deal 1 damage. Shock the opponent: 2 + 1.",
+      notes: `
+LETHAL: Shock the opponent: opus: Thunderdrum Soloist 1 (2), Shock 2. 0.
+RULES: Opus triggers on casting an instant or sorcery.
+WRONG LINES: Attacking: the Nestguard blocks.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-02-twofold-intent", title: "Twofold Intent", set: "sos", tier: "easy",
+      opp: { life: 6, battlefield: [c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Quill-Blade Laureate", { prepared: true }), c("Snooping Page"), c("Plains"), c("Plains")] },
+      explanation: "Quill-Blade Laureate is prepared: you may cast a copy of its spell, Twofold Intent. Cast it on Snooping Page: +1/+0 and double strike, and repartee makes the Page unblockable. 3 + 3.",
+      notes: `
+LETHAL: Cast the copy of Twofold Intent ({1}{W}) from the prepared Quill-Blade Laureate, targeting Snooping Page: 3/3 double
+  strike; repartee: it can't be blocked. 6.
+RULES: Prepare spells (722.3): a prepared permanent lets you cast a copy of its spell; that unprepares it.
+WRONG LINES: Twofold Intent on the Laureate: the Nestguard blocks it.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-03-shopkeep", title: "Infusion", set: "sos", tier: "easy",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { battlefield: [c("Adventurous Eater", { prepared: true }), c("Ulna Alley Shopkeep"), c("Swamp")] },
+      explanation: "Cast Have a Bite from the prepared Adventurous Eater on Ulna Alley Shopkeep: a +1/+1 counter, and you gained life — infusion gives it +2/+0. A 5/4 with menace: the Bears alone can't block it.",
+      notes: `
+LETHAL: Have a Bite ({B}, the Eater's prepare spell) on Ulna Alley Shopkeep: +1/+1 counter, you gain 1 life: infusion
+  +2/+0: 5/4 menace. Attack: 5.
+RULES: Infusion: "as long as you gained life this turn".
+WRONG LINES: Attacking with the Eater too: no difference; without the Bite: 2/3.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-04-cuboid-colony", title: "Increment", set: "sos", tier: "easy",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Lightning Strike")], battlefield: [c("Cuboid Colony"), c("Mountain"), c("Mountain")] },
+      explanation: "Increment: Lightning Strike costs 2, more than Cuboid Colony's power or toughness (1): it gets a +1/+1 counter. Strike the opponent (3) and fly over for 2.",
+      notes: `
+LETHAL: Lightning Strike the opponent: 3; increment: Cuboid Colony 2/2. Attack (flying): 2. 5.
+RULES: Increment (702.191a): mana spent greater than its power or toughness.
+WRONG LINES: Attacking first: 1 + 3 = 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-05-leech-collector", title: "Leech Collector", set: "sos", tier: "medium",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Adventurous Eater", { prepared: true }), c("Leech Collector"), c("Swamp"), c("Swamp")] },
+      explanation: "Have a Bite gains you life — and Leech Collector becomes prepared when you gain life the first time each turn. Then cast its Bloodletting: 2. Attack with both: the Nestguard blocks the Eater, the 3/3 Leech hits.",
+      notes: `
+LETHAL: Have a Bite ({B}) on Leech Collector: 3/3, you gain 1: Leech Collector becomes prepared. Bloodletting ({B}): 2.
+  Attack with both: the Nestguard blocks the Eater: 3. 5.
+RULES: "Becomes prepared" (722.3a): its prepare spell can be cast now.
+WRONG LINES: Bite on the Eater: the Nestguard blocks the Eater, Leech 2: 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-06-foolish-fate", title: "Foolish Fate", set: "sos", tier: "medium",
+      opp: { life: 7, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Foolish Fate")], battlefield: [c("Adventurous Eater", { prepared: true, tapped: true }), c("Hill Giant"), ...many(4, "Swamp")] },
+      explanation: "Gain life first: Have a Bite on Hill Giant (4/4, +1 life). Now Foolish Fate's infusion is on: destroy the Nestguard and its controller loses 3. Giant attacks for 4.",
+      notes: `
+LETHAL: Have a Bite ({B}) on Hill Giant: 4/4, gain 1. Foolish Fate ({2}{B}) on Krotiq Nestguard: destroyed, infusion: the
+  opponent loses 3 (4). Hill Giant: 4. 0.
+RULES: Infusion is checked as Foolish Fate resolves.
+WRONG LINES: Foolish Fate first: no life loss. Bite elsewhere: Giant 3: 6.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-07-skywhale", title: "Spectacular Skywhale", set: "sos", tier: "hard",
+      opp: { life: 11, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Pedal to the Metal")], battlefield: [c("Blazing Firesinger", { prepared: true }), c("Spectacular Skywhale"), ...many(3, "Mountain")] },
+      explanation: "Cast Seething Song (the Firesinger's prepare spell): opus +3/+0, and {R}{R}{R}{R}{R}. Spend all five on Pedal to the Metal with X=4: five mana spent, so opus puts three +1/+1 counters on the Skywhale instead — and Pedal gives +4/+0. 1 + 3 + 3 + 4 = 11 in the air.",
+      notes: `
+LETHAL: Seething Song ({2}{R}, the prepared Firesinger's copy): opus +3/+0; add {R}{R}{R}{R}{R}. Pedal to the Metal X=4
+  ({4}{R}): five mana spent: opus: three +1/+1 counters; +4/+0 first strike. Skywhale 11/7 flying: 11.
+RULES: "If five or more mana was spent to cast that spell" — Pedal with X=4 costs five.
+WRONG LINES: Pedal with X=3: four mana: only +3/+0 from opus: 10.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-08-tackle-artist", title: "Tackle Artist", set: "sos", tier: "hard",
+      opp: { life: 7, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Pedal to the Metal")], battlefield: [c("Blazing Firesinger", { prepared: true, tapped: true }), c("Tackle Artist"), ...many(3, "Mountain")] },
+      explanation: "Seething Song gives Tackle Artist a counter and five red mana. Pedal to the Metal with X=4 is a five-mana spell: two more counters, +4/+0 and first strike. An 11/6 trampler: 7 over the Nestguard.",
+      notes: `
+LETHAL: Seething Song: opus: +1/+1 counter (5/4); {R}x5. Pedal to the Metal X=4: five spent: two counters (7/6); +4/+0,
+  first strike: 11/6 trample. The Nestguard blocks: 4 to it, 7 to the opponent.
+RULES: Opus; trample assigns lethal damage to the blocker first.
+WRONG LINES: Smaller X: fewer counters and less power.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-09-firedancer", title: "Firedancer", set: "sos", tier: "hard",
+      opp: { life: 9, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Pedal to the Metal")], battlefield: [c("Blazing Firesinger", { prepared: true, tapped: true }), c("Expressive Firedancer"), c("Thunderdrum Soloist"), ...many(3, "Mountain")] },
+      explanation: "Two spells, two opus triggers each. Seething Song: Soloist 1, Firedancer +1/+1. Pedal to the Metal (X=4, five mana) on Thunderdrum Soloist: Soloist deals 3, Firedancer gets +1/+1 and double strike. Attack with both: whichever the Bears block, enough gets through.",
+      notes: `
+LETHAL: Seething Song: Soloist 1 (8), Firedancer 3/3. Pedal X=4 on Thunderdrum Soloist (5/3 first strike): Soloist 3 (5),
+  Firedancer 4/4 double strike. Attack with both: the Bears block the Firedancer: Soloist 5. 0.
+RULES: Opus with five or more mana spent: the bigger effect.
+WRONG LINES: Pedal on the Firedancer: the Bears block it.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "sos-10-repartee", title: "Repartee", set: "sos", tier: "hard",
+      opp: { life: 9, battlefield: [c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Quill-Blade Laureate", { prepared: true, tapped: true }), c("Snooping Page"), c("Melancholic Poet"), c("Lecturing Scornmage"), c("Plains"), c("Plains")] },
+      explanation: "One spell that targets a creature triggers three repartee abilities. Cast Twofold Intent on Snooping Page: it's unblockable with double strike (6), Melancholic Poet drains 1, Lecturing Scornmage gets a counter. Attack with all three: the Nestguard blocks one of the 2-power creatures.",
+      notes: `
+LETHAL: Twofold Intent (the Laureate's prepare spell) on Snooping Page: 3/3 double strike, unblockable; Poet: drain 1 (8);
+  Scornmage 2/2. Attack with the Page, the Poet and the Scornmage: the Nestguard blocks one: 6 + 2 = 8. 0.
+RULES: Repartee: "an instant or sorcery spell that targets a creature".
+WRONG LINES: Twofold Intent on another creature: the Page can still be unblockable, but has no double strike: 7.
 UNIQUENESS: Solver-checked.`
     })
   );

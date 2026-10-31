@@ -483,7 +483,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -492,7 +492,7 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn", "sneaked",
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn", "sneaked", "prepared",
     "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
@@ -701,7 +701,7 @@
   // (statics that read counters or poison — perCounter, conditional — can change without a board change: then also
   // when the poison counters or the counters on permanents differ from the last rebuild)
   const LAST = new WeakMap();
-  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.player.speed || 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
+  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.player.speed || 0}|${s.gainedLife ? 1 : 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
     [...s.player.battlefield, ...s.opponent.battlefield].map((c) => (c.counters ? c.id + JSON.stringify(c.counters) : "")).join();
   const refresh = (s) => { if (CHANGED.has(s) || (s.dynamicStatics && LAST.get(s) !== dynamicKey(s))) recomputeStatics(s); };
   function recomputeStatics(s) {
@@ -903,6 +903,8 @@
   // (your own life is only tracked when the puzzle shows it; otherwise it's irrelevant, effectively infinite)
   function changeLife(s, who, n, ev) {
     const side = s[who === "opp" ? "opponent" : "player"];
+    // (gaining life counts even when your life total doesn't matter: infusion, "whenever you gain life")
+    if (n > 0 && who === "you") { s.gainedLife = true; emit(s, { type: "gainLife", side: "player" }, ev); }
     if (!n || side.life == null) return;
     side.life += n;
     ev.push({ type: "life", who, amount: n });
@@ -1043,7 +1045,9 @@
     // CR 702.163a: when this Equipment enters, create a 2/2 red Rebel creature token, then attach this Equipment to it
     "for mirrodin!": { on: "enters", self: true, effect: { forMirrodin: true } },
     // CR 702.182a: job select — when this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it
-    "job select": { on: "enters", self: true, effect: { jobSelect: true } }
+    "job select": { on: "enters", self: true, effect: { jobSelect: true } },
+    // CR 702.191a: increment (the "if" is checked in emit)
+    increment: { on: "cast", filter: { controller: "you" }, increment: true, effect: { counters: { "+1/+1": 1 }, self: true } }
   };
   // Speed: the events anything in this puzzle can trigger on, worked out when the puzzle loads (its cards are known)
   // and kept up to date as new objects appear (tokens) or keywords are gained; emit() skips all other events
@@ -1177,6 +1181,7 @@
     if (f.artifactOrCreature && !isArtifact(e.obj) && !isCreature(e.obj)) return false;   // "another creature or artifact"
     // "a spell with mana value 4 or greater" (its printed cost, even if cast for an alternative cost, CR 118.9c)
     if (f.minManaValue && manaValue(e.obj.printedCost != null ? e.obj.printedCost : e.obj.cost) < f.minManaValue) return false;
+    if (f.targetsCreature && !e.targetsCreature) return false;   // repartee: "an instant or sorcery spell that targets a creature"
     if (t.on === "unlock" && t.door != null && e.door !== t.door) return false;   // "when you unlock this door"
     if (f.level && e.level !== f.level) return false;                     // "when this Class becomes level 3"
     if (t.byYou && e.controller !== "you") return false;                  // valiant: "a spell or ability you control"
@@ -1214,6 +1219,7 @@
     if (cond.saddled && !(self && self.saddled)) return false;
     if (cond.webSlung && !(self && self.webSlung)) return false;    // "if they were cast using web-slinging"
     if (cond.sneaked && !(self && self.sneaked)) return false;      // "if its sneak cost was paid"
+    if (cond.infusion && !(side === "player" && s.gainedLife)) return false;   // Infusion (SOS): "if you gained life this turn"
     // Disappear (TMT): "if a permanent left the battlefield under your control this turn"
     if (cond.disappear && !(side === "player" && s.leftYours)) return false;
     // "as long as there's a Lesson card in your graveyard" (lessons: how many)
@@ -1267,12 +1273,16 @@
         if (t.maxSpeed && !maxSpeed(s, side)) continue;                     // "Max speed — [triggered ability]" (CR 702.178a)
         // an ability an Equipment gives ("Equipped creature has 'Whenever you cast …'"): only while it's attached
         if (t.equipped && !(card.attachedTo && find(s, card.attachedTo))) continue;
+        // CR 702.191a: increment — "if this permanent is a creature and the amount of mana spent to cast that spell is
+        // greater than this creature's power or this creature's toughness"
+        if (t.increment && !(isCreature(card) && ((e.spent || 0) > power(card) || (e.spent || 0) > toughness(card)))) continue;
         // "This ability triggers only once each turn"
         if (t.oncePerTurn) { const k = `${card.id}#${defId(t)}`; if ((s.once || []).includes(k)) continue; s.once = [...(s.once || []), k]; }
         // a source that already left (a look-back trigger, like a dying Blood Artist's): keep its last known information
         if ((zone || "battlefield") === "battlefield" && !find(s, card.id)) (s.lki = s.lki || {})[card.id] = lastKnown(card);
         s.triggered.push({ side, name: card.name, srcId: card.id, td: defId(t), ...(zone && zone !== "battlefield" ? { zone } : {}),
-          event: { id: e.obj && e.obj.id, side: e.side, controller: e.controller, ...(e.count != null ? { count: e.count } : {}), ...(e.vehicle ? { vehicle: e.vehicle } : {}) } });
+          event: { id: e.obj && e.obj.id, side: e.side, controller: e.controller, ...(e.count != null ? { count: e.count } : {}), ...(e.vehicle ? { vehicle: e.vehicle } : {}),
+            ...(e.spent != null ? { spent: e.spent } : {}) } });
       }
     }
   }
@@ -1458,9 +1468,11 @@
   function applyEffect(s, eff, target, ctx, ev) {
     if (!eff) return;
     // "… instead if [condition]" (Void — Plasma Bolt deals 3 damage instead): the other effect when it holds as it resolves
+    // (opus: "if five or more mana was spent to cast that spell" — spentAtLeast, read from the triggering cast)
     if (eff.insteadIf) {
       const { insteadIf, ...normal } = eff;
-      return applyEffect(s, conditionHolds(s, insteadIf.if, ctx.side, ctx.src) ? insteadIf.effect : normal, target, ctx, ev);
+      const holds = insteadIf.spentAtLeast != null ? ((ctx.event && ctx.event.spent) || 0) >= insteadIf.spentAtLeast : conditionHolds(s, insteadIf.if, ctx.side, ctx.src);
+      return applyEffect(s, holds ? insteadIf.effect : normal, target, ctx, ev);
     }
     // "damage can't be prevented this turn" (Stomp; Banefire with X of 5 or more)
     if (eff.noPrevention || (eff.noPreventionIfX && (ctx.x || 0) >= eff.noPreventionIfX)) s.noPrevention = true;
@@ -1728,6 +1740,8 @@
         applyEffect(s, eff.mayBlight.then, target, ctx, ev);
       }
     }
+    // CR 722.3a: it becomes prepared (only a permanent with a prepare spell; not if it already is)
+    if (eff.becomePrepared && tgt && tgt.prepare && !tgt.prepared) { tgt.prepared = true; ev.push({ type: "prepared", id: tgt.id }); }
     // firebending (CR 702.189a): {R}s that last until end of combat
     if (eff.fireMana && ctx.side === "player") { s.firePool = (s.firePool || 0) + eff.fireMana; ev.push({ type: "firebending", n: eff.fireMana }); }
     // CR 701.65a: airbend — exile it; while it's exiled, its owner may cast it for {2} rather than its mana cost
@@ -2119,6 +2133,8 @@
       const kinds = typeof w === "object" ? w : { "+1/+1": w === "X" ? x || 0 : w };
       Object.entries(kinds).forEach(([k, n]) => { if (n) perm.counters = { ...(perm.counters || {}), [k]: ((perm.counters || {})[k] || 0) + n }; });
     }
+    // CR 722.3a: "This creature enters prepared."
+    if (perm.entersPrepared && perm.prepare) perm.prepared = true;
     // CR 714.3a: a Saga enters with a lore counter (its chapter I ability triggers, 714.2b)
     const sagaEnters = perm.chapters && !(perm.counters && perm.counters.lore);
     if (sagaEnters) perm.counters = { ...(perm.counters || {}), lore: 1 };
@@ -2236,6 +2252,7 @@
       s.player.exile.some((c) => (c.onAdventure || c.playable || c.airbent) && castNow(c, "exile")) ||
       s.player.graveyard.some((c) => (c.flashback || (c.mayhem && c.discardedThisTurn)) && castNow(c, "graveyard")) ||
       s.player.hand.some((c) => c.handAbility && !check(s, { type: "channel", id: c.id })) ||
+      s.player.battlefield.some((c) => c.prepared && c.prepare && castNow(preparedSpell(c), "prepared")) ||
       s.player.battlefield.some((c) => abilitiesOf(c).some((ab) => !ab.sorcery && !abilityProblem(s, c, ab, 0)));
   }
 
@@ -2459,11 +2476,18 @@
     return list.every((t) => legal.includes(t)) ? null : "That isn't a legal target.";
   }
 
+  // The copy of a prepared permanent's prepare spell (CR 722.3c): only the prepare spell's characteristics
+  const preparedSpell = (p) => compile({ ...clone(p.prepare), id: `${p.id}#prep`, owner: "player", preparedFrom: p.id });
   // Where a card can be cast from: your hand, exile if it went on an Adventure (then only its creature face), or your
   // graveyard if it has flashback (CR 702.34a)
   function castable(s, id) {
     const h = s.player.hand.find((c) => c.id === id);
     if (h) return { card: h, zone: "hand" };
+    // CR 722.3c: a prepared permanent's prepare spell: a copy you may cast ("<permanent id>#prep")
+    if (typeof id === "string" && id.endsWith("#prep")) {
+      const p = s.player.battlefield.find((c) => c.id === id.slice(0, -5) && c.prepared && c.prepare);
+      return p ? { card: preparedSpell(p), zone: "prepared", source: p } : null;
+    }
     // (or a card exiled with "you may play that card this turn", or a card plotted on an earlier turn, CR 702.170d)
     // (or airbent: castable for {2}, CR 701.65a)
     const e = s.player.exile.find((c) => c.id === id && (c.onAdventure || c.playable || (c.plotted && !c.plottedNow) || c.airbent));
@@ -2940,12 +2964,14 @@
     }
 
     if (a.type === "cast") {
-      const { card, zone } = castable(s, a.id);
+      const { card, zone, source } = castable(s, a.id);
       const f = castFace({ card, zone }, a);
       // Casting (601.2): face, mode, X and targets are chosen, mana abilities are activated, then costs are paid.
       // A sacrificed creature's power is what it was at that moment (triggers from casting resolve later).
       const pay = castPayment(s, f, a, card.id);
-      s.player[zone] = s.player[zone].filter((c) => c !== card);
+      // a prepare spell's copy: casting it unprepares the permanent (CR 722.3c)
+      if (zone === "prepared") { delete source.prepared; changed(s); }
+      else s.player[zone] = s.player[zone].filter((c) => c !== card);
       ["playable", "plotted", "plottedNow", "discardedThisTurn", "airbent"].forEach((k) => delete card[k]);
       // collect evidence: the chosen cards go from your graveyard to exile (CR 701.59a); a permanent spell remembers it
       if (a.evidence != null) {
@@ -2996,7 +3022,10 @@
       ev.push({ type: "cast", id: card.id, target: a.target, sac: a.sac });
       // CR 601.2i: once cast, "whenever you cast" abilities trigger (prowess), and targeted permanents "become the
       // target of a spell" (Bonecrusher Giant); these go on the stack above the spell and resolve first
-      emit(s, { type: "cast", obj: f, side: "player", targetCount: new Set([a.target].flat(2).filter((x) => x != null)).size, spellNumber: countSpell(s, "player") }, ev);
+      // (with how much mana was spent — opus, increment — and whether it targets a creature — repartee)
+      const castTargetsCreature = [a.target].flat(2).some((id) => id && find(s, id) && isCreature(find(s, id)));
+      emit(s, { type: "cast", obj: f, side: "player", targetCount: new Set([a.target].flat(2).filter((x) => x != null)).size, spellNumber: countSpell(s, "player"),
+        spent: manaPaid, targetsCreature: castTargetsCreature }, ev);
       commitCrime(s, a.target, "player", ev);
       if (!isPermanent(f) || f.aura) {
         [...new Set([a.target].flat(2))].map((id) => id && find(s, id)).filter(Boolean)
@@ -3008,7 +3037,8 @@
       // Triggers from casting it (a creature that died from a blight or sacrifice) go on the stack above it and
       // resolve first; if one of yours needs a target, the spell waits for that choice
       // CR 601.2a / 405.1: the spell is on the stack; triggers from casting it go on top of it (CR 603.3)
-      s.stack.unshift({ kind: "spell", name: f.name, id: card.id, a, card, sacPower, ...(zone === "graveyard" && !f.mayhemCast ? { flashback: true } : {}) });
+      s.stack.unshift({ kind: "spell", name: f.name, id: card.id, a, card, sacPower, ...(zone === "graveyard" && !f.mayhemCast ? { flashback: true } : {}),
+        ...(zone === "prepared" ? { copy: true } : {}) });
     }
 
     if (a.type === "activate") {
@@ -3179,7 +3209,9 @@
     const range = (n) => Array.from({ length: Math.max(n, 0) }, (_, i) => i + 1);
     const sources = [...s.player.hand.map((card) => ({ card, zone: "hand" })),
       ...s.player.exile.filter((c) => castable(s, c.id)).map((card) => ({ card, zone: "exile" })),
-      ...s.player.graveyard.filter((c) => c.flashback || c.harmonize || (c.mayhem && c.discardedThisTurn)).map((card) => ({ card, zone: "graveyard" }))];
+      ...s.player.graveyard.filter((c) => c.flashback || c.harmonize || (c.mayhem && c.discardedThisTurn)).map((card) => ({ card, zone: "graveyard" })),
+      // a prepared permanent's prepare spell (a copy you may cast, CR 722.3c)
+      ...s.player.battlefield.filter((c) => c.prepared && c.prepare).map((p) => ({ card: preparedSpell(p), zone: "prepared" }))];
     // abilities of cards in your hand that discard them ("{1}{R}, Discard this card: …")
     s.player.hand.filter((c) => c.handAbility && !check(s, { type: "channel", id: c.id })).forEach((c) => {
       const h = c.handAbility;

@@ -263,6 +263,7 @@
     if (c.solved) gainedKw.unshift("solved");
     if (c.levels) gainedKw.unshift(`level ${c.level || 1}`);       // a Class's level
     if (c.exhausted && c.exhausted.length) gainedKw.unshift("exhaust used");   // its exhaust ability was activated
+    if (c.prepared) gainedKw.unshift("prepared");                  // it may cast a copy of its prepare spell
     // a Room: which doors are unlocked
     if (c.layout === "room" && c.unlocked) gainedKw.unshift(...c.faces.map((f, i) => `${f.name}: ${c.unlocked[i] ? "unlocked" : "locked"}`));
     if (gainedKw.length) {
@@ -442,13 +443,17 @@
     const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted || c.airbent);
     // (and graveyard cards with harmonize, cast from there, or renew, an ability used from there)
     const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn));
-    fill($("hand"), [...hand, ...adventures, ...flashbacks]);
+    // a prepared creature's prepare spell: a copy you may cast (shown with your hand)
+    const prepared = p.player.battlefield.filter((c) => c.prepared && c.prepare)
+      .map((c) => ({ ...c.prepare, id: `${c.id}#prep`, token: true, text: c.prepare.text, preparedFrom: c.name }));
+    fill($("hand"), [...hand, ...adventures, ...flashbacks, ...prepared]);
     const mark = (c, label) => {
       const el = document.querySelector(`#hand .card[data-id="${c.id}"]`);
       if (el) { el.classList.add("adventure"); el.append(Object.assign(document.createElement("div"), { className: "attachchip", textContent: label })); }
     };
     adventures.forEach((c) => mark(c, c.plotted ? (c.plottedNow ? "Plotted (cast it free on a later turn)" : "Plotted: cast it free (main phase)")
       : c.playable ? "Exiled: you may play it this turn" : c.airbent ? "Airbent: cast it for {2}" : "On an adventure (exile)"));
+    prepared.forEach((c) => mark(c, `Prepared (${c.preparedFrom}): cast a copy`));
     flashbacks.forEach((c) => mark(c, c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)`
       : c.renew ? `Renew ${c.renew.cost} (graveyard)` : `Mayhem ${c.mayhem} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
