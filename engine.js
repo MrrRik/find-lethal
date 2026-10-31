@@ -1540,7 +1540,9 @@
     // ("X damage, where X is 2 plus the number of other spells you've cast this turn": { plusOtherSpells: 2 })
     // ("deals that much damage": how many cards the event was about — "whenever you discard one or more cards")
     // ("X is 2 plus the number of Mounts and Vehicles you control": { plus: 2, per: { mountOrVehicle: true } })
+    // (vivid: the number of colors among permanents you control)
     const amount = (d) => (d === "sacrificed" ? ctx.sacPower : d === "power" ? srcPower() : d === "eventCount" ? (ctx.event && ctx.event.count) || 0
+      : d === "vivid" ? vividCount(s, ctx.side)
       : typeof d === "object" && d.per ? (d.plus || 0) + s[ctx.side].battlefield.filter((c) => matches(s, c, d.per, ctx.side)).length
       // ("2 plus the number of Lesson cards in your graveyard": { plus: 2, perGraveyard: "Lesson" })
       : typeof d === "object" && d.perGraveyard ? (d.plus || 0) + s[ctx.side].graveyard.filter((c) => subtypes(c).includes(d.perGraveyard)).length
@@ -1548,7 +1550,7 @@
     // ("this creature deals …" in an ability an Equipment or Aura gives: the creature it's attached to is the source)
     const dmgSrc = (eff.byAttached && ctx.src && ctx.src.attachedTo && find(s, ctx.src.attachedTo)) || ctx.src;
     if (eff.damage != null) dealDamage(s, dmgSrc, ctx.side, to, amount(eff.damage), ev);
-    if (eff.lifeLoss && isPlayer) changeLife(s, to, -eff.lifeLoss, ev);
+    if (eff.lifeLoss && isPlayer) changeLife(s, to, -amount(eff.lifeLoss), ev);
     // "each opponent gets a poison counter" (CR 122.1f)
     if (eff.poison && isPlayer) {
       const z = s[to === "opp" ? "opponent" : "player"];
@@ -1562,7 +1564,7 @@
       z.hand.splice(0, eff.discard).forEach((c) => putCard(s, c, "opponent", replaceMove(s, c, "hand", "graveyard", "opponent")));
       ev.push({ type: "discard", who: "opp", amount: eff.discard });
     }
-    if (eff.gainLife) changeLife(s, ctx.side === "player" ? "you" : "opp", eff.gainLife, ev);
+    if (eff.gainLife) changeLife(s, ctx.side === "player" ? "you" : "opp", amount(eff.gainLife), ev);
     // "Each opponent sacrifices a creature or Vehicle of their choice. Each opponent who can't discards a card." (the
     // opponent's choice: the one that leaves you no way to win, if there is one)
     if (eff.edict && to === "opp") {
@@ -1709,6 +1711,17 @@
       applyEffect(s, more, tgt.id, ctx, ev);
     }
     if (eff.manifestDread) manifestDread(s, ctx.side, ev);
+    // "you may blight N. If you do, …" (CR 701.68a: N -1/-1 counters on a creature you control; you choose which, or not)
+    if (eff.mayBlight && ctx.side === "player") {
+      const mine = s.player.battlefield.filter(isCreature);
+      const pick = mine.length ? choose(s, `Blight ${eff.mayBlight.n}?`, ["Don't blight", ...mine.map((c) => `Blight ${c.name}`)], "player") : 0;
+      if (pick > 0) {
+        const b = mine[pick - 1];
+        b.counters = { ...(b.counters || {}), "-1/-1": ((b.counters || {})["-1/-1"] || 0) + eff.mayBlight.n };
+        ev.push({ type: "blight", id: b.id, n: eff.mayBlight.n });
+        applyEffect(s, eff.mayBlight.then, target, ctx, ev);
+      }
+    }
     // firebending (CR 702.189a): {R}s that last until end of combat
     if (eff.fireMana && ctx.side === "player") { s.firePool = (s.firePool || 0) + eff.fireMana; ev.push({ type: "firebending", n: eff.fireMana }); }
     // CR 701.65a: airbend — exile it; while it's exiled, its owner may cast it for {2} rather than its mana cost
@@ -2416,6 +2429,7 @@
     if (ab.sorcery && !sorceryTime(s)) return `You can only ${ab.text || "do that"} during your main phase, with nothing on the stack.`;
     if (ab.stationAb && !crewHelpers(s, card).length) return `You have no other untapped creature to station ${card.name} with.`;
     if (ab.discardCost && !s.player.hand.length) return "You have no card to discard.";   // "Discard a card: …"
+    if (ab.blight && !s.player.battlefield.some(isCreature)) return "You have no creature to blight.";   // "{T}, Blight 1: …"
     // CR 702.178a: "Max speed — [ability]": it has the ability only while your speed is 4
     if (ab.maxSpeed && !maxSpeed(s, "player")) return `${card.name} has that ability only at max speed (your speed is ${speedOf(s, "player")}).`;
     if (ab.exhaust && !exhaustReady(s, card, ab)) return `${card.name}'s exhaust ability has already been activated.`;
@@ -2650,6 +2664,7 @@
       if (ab.craft && !craftOptions(s, card, ab.craft).includes(a.craft)) return "Choose something to craft with.";
       if (ab.stationAb && !(a.crew && a.crew.length === 1 && crewHelpers(s, card).includes(a.crew[0]))) return "Station: tap one other untapped creature you control.";
       if (ab.discardCost && a.discard != null && !s.player.hand.some((c) => c.id === a.discard)) return "Discard a card from your hand.";
+      if (ab.blight && a.blight != null && !blightOptions(s).includes(a.blight)) return "You can only blight a creature you control.";
       if (a.waterTap != null) {
         const helpers = waterHelpers(s, card, ab), l = a.waterTap;
         if (!ab.waterbend || new Set(l).size !== l.length || !l.every((id) => helpers.includes(id)) || l.length > parseCost(withX(ab.cost, a.x)).generic) return "Waterbend: tap your untapped artifacts and creatures, one per generic mana.";
@@ -3010,6 +3025,12 @@
       }
       if (ab.sacSelf) leave(s, card, "graveyard", ev, { sacrificed: true });
       if (ab.discardCost) discardCard(s, s.player.hand.find((c) => c.id === a.discard) || s.player.hand[0], ev);
+      // a blight cost (CR 701.68a): -1/-1 counters on the chosen creature of yours (it may be this one)
+      if (ab.blight) {
+        const b = find(s, a.blight) || s.player.battlefield.find(isCreature);
+        b.counters = { ...(b.counters || {}), "-1/-1": ((b.counters || {})["-1/-1"] || 0) + ab.blight };
+        ev.push({ type: "blight", id: b.id, n: ab.blight });
+      }
       ev.push({ type: "activate", id: card.id, index: a.index, target: a.target });
       [...new Set([a.target].flat(2))].map((id) => id && find(s, id)).filter(Boolean)
         .forEach((c) => emit(s, { type: "becomesTarget", obj: c, side: sideOf(s, c), by: "ability", controller: "you" }, ev));
@@ -3225,11 +3246,11 @@
           if (ab.craft) { craftOptions(s, card, ab.craft).forEach((m) => out.push({ type: "activate", id: card.id, index, craft: m })); return; }
           if (ab.stationAb) { crewHelpers(s, card).forEach((id) => out.push({ type: "activate", id: card.id, index, crew: [id] })); return; }
           const list = ab.targets ? targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)) : null;
-          const discards = ab.discardCost ? discardChoices(s) : [undefined];
+          const discards = ab.discardCost ? discardChoices(s) : ab.blight ? blightOptions(s).map((b) => ({ blight: b })) : [undefined];
           // waterbend: which artifacts and creatures help pay (each set up to the generic amount)
           const waters = ab.waterbend ? subsets(waterHelpers(s, card, ab)).filter((l) => l.length <= parseCost(ab.cost).generic && !check(s, { type: "activate", id: card.id, index, waterTap: l, target: list ? list[0] : undefined })) : [undefined];
           (list ? targetChoices(list, ab.targetCount) : [undefined]).forEach((target) => discards.forEach((discard) => waters.forEach((waterTap) =>
-            out.push({ type: "activate", id: card.id, index, target, x, ...(discard !== undefined ? { discard } : {}), ...(waterTap !== undefined ? { waterTap } : {}) }))));
+            out.push({ type: "activate", id: card.id, index, target, x, ...(discard !== undefined ? (typeof discard === "object" ? discard : { discard }) : {}), ...(waterTap !== undefined ? { waterTap } : {}) }))));
         });
       });
     }
@@ -3376,7 +3397,7 @@
     if (a.type === "activate") {
       const card = find(s, a.id);
       const ab = card && abilitiesOf(card)[a.index];
-      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : ab && ab.stationAb ? "stationed" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.discard ? ` (discarding ${nameOf(s, a.discard)})` : ""}${a.waterTap && a.waterTap.length ? ` (waterbending: tapping ${a.waterTap.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
+      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : ab && ab.stationAb ? "stationed" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.discard ? ` (discarding ${nameOf(s, a.discard)})` : ""}${a.blight ? ` (blighting ${nameOf(s, a.blight)})` : ""}${a.waterTap && a.waterTap.length ? ` (waterbending: tapping ${a.waterTap.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
     }
     const from = castable(s, a.id);
     const f = from ? castFace(from, a) : null;

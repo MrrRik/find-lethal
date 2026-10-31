@@ -1278,6 +1278,34 @@
       text: "Flying. This creature gets +1/+1 as long as there's a Lesson card in your graveyard." }
   });
 
+  // ---- more Lorwyn Eclipsed (ECL): blight costs, "you may blight", vivid counts ----
+  const GOBLIN_BR = { name: "Goblin", type: "Token Creature — Goblin", pt: "1/1", colors: ["B", "R"] };
+  Object.assign(CARDS, {
+    "Goblin": { ...GOBLIN_BR, token: true, text: "" },
+    "Explosive Prodigy": { type: "Creature — Elemental Sorcerer", cost: "{1}{R}", pt: "1/1", etb: { damage: "vivid" }, targets: "opponent-creature",
+      text: "Vivid — When this creature enters, it deals X damage to target creature an opponent controls, where X is the number of colors among permanents you control." },
+    "Shimmercreep": { type: "Creature — Elemental", cost: "{4}{B}", pt: "3/5", kw: ["menace"], etb: { lifeLoss: "vivid", to: "opp", gainLife: "vivid" },
+      text: "Menace. Vivid — When this creature enters, each opponent loses X life and you gain X life, where X is the number of colors among permanents you control." },
+    "Sting-Slinger": { type: "Creature — Goblin Warrior", cost: "{2}{R}", pt: "3/3",
+      abilities: [{ cost: "{1}{R}", tap: true, blight: 1, effect: { damage: 2, to: "opp" }, text: "{1}{R}, {T}, Blight 1: 2 damage to each opponent" }],
+      text: "{1}{R}, {T}, Blight 1: This creature deals 2 damage to each opponent." },
+    "Sourbread Auntie": { type: "Creature — Goblin Warrior", cost: "{2}{R}{R}", pt: "4/3", etb: { mayBlight: { n: 2, then: { create: { ...GOBLIN_BR, count: 2 } } } },
+      text: "When this creature enters, you may blight 2. If you do, create two 1/1 black and red Goblin creature tokens." },
+    "Boggart Mischief": { type: "Kindred Enchantment — Goblin", cost: "{2}{B}", etb: { mayBlight: { n: 1, then: { create: { ...GOBLIN_BR, count: 2 } } } },
+      triggers: [{ on: "dies", filter: { controller: "you", type: "Goblin", creature: true }, effect: { lifeLoss: 1, to: "opp", gainLife: 1 } }],
+      text: "When this enchantment enters, you may blight 1. If you do, create two 1/1 black and red Goblin creature tokens. Whenever a Goblin creature you control dies, each opponent loses 1 life and you gain 1 life." },
+    "Blight Rot": { type: "Instant", cost: "{2}{B}", targets: "creature", effect: { counters: { "-1/-1": 4 } }, text: "Put four -1/-1 counters on target creature." },
+    "Bogslither's Embrace": { type: "Sorcery", cost: "{1}{B}", blight: { n: 1, orPay: "{3}" }, targets: "creature", effect: { exile: true },
+      text: "As an additional cost to cast this spell, blight 1 or pay {3}. Exile target creature." },
+    "Kinsbaile Aspirant": { type: "Creature — Kithkin Citizen", cost: "{W}", pt: "2/1", behold: { type: "Kithkin", orPay: "{2}" },
+      triggers: [{ on: "enters", other: true, filter: { controller: "you", creature: true }, effect: { pump: [1, 1], self: true } }],
+      text: "As an additional cost to cast this spell, behold a Kithkin or pay {2}. Whenever another creature you control enters, this creature gets +1/+1 until end of turn." },
+    "Silvergill Mentor": { type: "Creature — Merfolk Wizard", cost: "{1}{U}", pt: "2/1", behold: { type: "Merfolk", orPay: "{2}" },
+      etb: { create: { name: "Merfolk", type: "Token Creature — Merfolk", pt: "1/1", colors: ["W", "U"] } },
+      text: "As an additional cost to cast this spell, behold a Merfolk or pay {2}. When this creature enters, create a 1/1 white and blue Merfolk creature token." },
+    "Dawn's Light Archer": { type: "Creature — Elf Archer", cost: "{2}{G}", pt: "4/2", kw: ["flash", "reach"], text: "Flash. Reach" }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -3163,6 +3191,129 @@ LETHAL: Iroh's Demonstration ({1}{R}), 4 damage to Krotiq Nestguard. Combustion 
   Pride of the Road. Attack: 3 + 2 = 5.
 RULES: The Lesson count is checked as Combustion Technique resolves.
 WRONG LINES: Combustion first: 4 damage, Pride survives; Iroh's 4 can't kill it either.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= LORWYN ECLIPSED (set ECL) ======================= */
+  // Blight, behold, vivid, changelings, Kindred
+  window.PUZZLES.push(
+    puzzle({
+      id: "ecl-01-cinder-strike", title: "Cinder Strike", set: "ecl", tier: "easy",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Cinder Strike")], battlefield: [c("Hill Giant"), c("Gray Ogre", { sick: true }), c("Mountain")] },
+      explanation: "Blight 1 makes Cinder Strike deal 4. Put the -1/-1 counter on the summoning-sick Gray Ogre (it can't attack anyway), kill the Nestguard, and Hill Giant hits for 3.",
+      notes: `
+LETHAL: Cinder Strike ({R}), blighting Gray Ogre: 4 damage to Krotiq Nestguard. Hill Giant: 3.
+RULES: Blight N (701.68a): N -1/-1 counters on a creature you control, here as an optional additional cost.
+WRONG LINES: Blighting the Giant: 2/2: 2 damage. Not blighting: 2 damage, the Nestguard lives.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-02-silvergill-mentor", title: "Silvergill Mentor", set: "ecl", tier: "easy",
+      opp: { life: 5 },
+      you: { hand: [c("Silvergill Mentor")], battlefield: [c("Mischievous Sneakling"), c("Kinsbaile Aspirant"), c("Island"), c("Island")] },
+      explanation: "Mischievous Sneakling is a changeling — a Merfolk too — so behold it instead of paying {2}. Silvergill Mentor and its Merfolk token enter: Kinsbaile Aspirant gets +1/+1 twice. Attack with the Aspirant (4) and the Sneakling (2).",
+      notes: `
+LETHAL: Silvergill Mentor ({1}{U}, beholding Mischievous Sneakling). The Mentor and its 1/1 Merfolk token enter: Kinsbaile
+  Aspirant +2/+2 (4/3). Attack with the Aspirant and the Sneakling: 6.
+RULES: Behold (701.4a). Changeling (702.73a): every creature type.
+WRONG LINES: Paying {2}: 4 mana, you have 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-03-shimmercreep", title: "Shimmercreep", set: "ecl", tier: "easy",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Shimmercreep")], battlefield: [c("Gray Ogre"), c("Grizzly Bears"), ...many(5, "Swamp")] },
+      explanation: "Vivid counts the colors among your permanents: red (Ogre), green (Bears) and black (Shimmercreep itself). It drains 3.",
+      notes: `
+LETHAL: Shimmercreep ({4}{B}): vivid: red, green, black = 3: the opponent loses 3.
+RULES: Vivid counts colors as the ability resolves; lands are colorless.
+WRONG LINES: Attacking: the Nestguard blocks one.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-04-explosive-prodigy", title: "Explosive Prodigy", set: "ecl", tier: "easy",
+      opp: { life: 10, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Explosive Prodigy")], battlefield: [c("Hill Giant"), c("Grizzly Bears"), c("Silvergill Mentor"), c("Kinsbaile Aspirant"), c("Mountain"), c("Mountain")] },
+      explanation: "Red, green, blue and white among your permanents: Explosive Prodigy deals 4 to the Nestguard. With no blocker left, everything attacks — Kinsbaile Aspirant got +1/+1 from the Prodigy entering.",
+      notes: `
+LETHAL: Explosive Prodigy ({1}{R}): vivid 4: Krotiq Nestguard dies. Kinsbaile Aspirant +1/+1. Attack with Hill Giant (3),
+  Grizzly Bears (2), Silvergill Mentor (2), Aspirant (3): 10.
+RULES: Vivid (colors among permanents you control).
+WRONG LINES: Attacking into the Nestguard: it blocks the Giant: 7.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-05-bogslither", title: "Bogslither's Embrace", set: "ecl", tier: "medium",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Bogslither's Embrace")], battlefield: [c("Hill Giant"), c("Grizzly Bears", { sick: true }), c("Swamp"), c("Swamp")] },
+      explanation: "Bogslither's Embrace costs blight 1 or {3} more. With two lands, blight — but not the Giant: put the counter on the summoning-sick Bears. Exile the Nestguard and attack for 3.",
+      notes: `
+LETHAL: Bogslither's Embrace ({1}{B}, blighting Grizzly Bears): exile Krotiq Nestguard. Hill Giant: 3.
+RULES: "Blight 1 or pay {3}" — an additional cost with a choice.
+WRONG LINES: Blighting the Giant: 2/2: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-06-cursetosser", title: "Cursetosser", set: "ecl", tier: "medium",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard"), c("Grizzly Bears")] },
+      you: { hand: [c("Cinder Strike")], battlefield: [c("Hill Giant"), c("Mudbutton Cursetosser"), c("Mountain")] },
+      explanation: "Blight the Mudbutton Cursetosser for Cinder Strike: the 2/1 dies, and its death trigger destroys the Bears (power 2). Cinder Strike's 4 damage kills the Nestguard. Hill Giant attacks into an empty board.",
+      notes: `
+LETHAL: Cinder Strike, blighting Mudbutton Cursetosser (it dies): 4 damage to Krotiq Nestguard; the Cursetosser's trigger:
+  destroy Grizzly Bears (power 2 or less). Hill Giant: 3.
+RULES: The blight is a cost: the Cursetosser dies (state-based action) before the spell resolves; its trigger targets then.
+WRONG LINES: Blighting the Giant, or not blighting: a blocker stays.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-07-kindle", title: "Kindle the Inner Flame", set: "ecl", tier: "hard",
+      opp: { life: 20, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Kindle the Inner Flame")], battlefield: [c("Squawkroaster"), c("Mischievous Sneakling"), c("Grizzly Bears"), ...many(6, "Mountain")] },
+      explanation: "Squawkroaster's power is the number of colors you control: red, blue and black (the Sneakling is hybrid), green: 4, double strike. Kindle the Inner Flame makes a hasty copy. Then flash it back by beholding three Elementals — both Squawkroasters and the changeling Sneakling — for a second copy. Three 4/4 double strikers.",
+      notes: `
+LETHAL: Kindle the Inner Flame ({3}{R}) on Squawkroaster: a hasty token copy. Flashback ({1}{R}, behold three Elementals:
+  Squawkroaster, the token, Mischievous Sneakling): another copy. Squawkroaster power: R, U, B, G = 4, double strike.
+  Attack with all three, the Bears and the Sneakling: the Nestguard blocks a Squawkroaster: 8 + 8 + 2 + 2 = 20.
+RULES: Flashback with a behold cost (702.34a, 701.4a); changeling counts as Elemental; a hybrid card has both colors.
+WRONG LINES: Copying something else: smaller.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-08-boggart-mischief", title: "Boggart Mischief", set: "ecl", tier: "hard",
+      opp: { life: 10 },
+      you: { hand: [c("Boggart Mischief")], battlefield: [c("Boneclub Berserker"), c("Goblin"), ...many(3, "Swamp")] },
+      explanation: "Boggart Mischief is a Kindred Goblin enchantment — another Goblin for Boneclub Berserker. Its blight 1 makes two Goblin tokens. Put the counter on the Berserker itself: 1/3, but +2/+0 for each of four other Goblins: 9. Plus the Goblin token: 10.",
+      notes: `
+LETHAL: Boggart Mischief ({2}{B}): blight 1 on Boneclub Berserker (1/3); two Goblin tokens. Other Goblins: the old token,
+  two new ones, Boggart Mischief (Kindred Goblin): +8/+0: 9/3. Attack with it and the old Goblin: 10.
+RULES: A Kindred permanent has creature types (205.3d): "each other Goblin you control" counts it.
+WRONG LINES: Blighting the old Goblin: it dies (drain 1), Berserker 2 + 6 = 8: 9. Not blighting: 6 + 1 = 7.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-09-spinerock", title: "Spinerock Tyrant", set: "ecl", tier: "hard",
+      opp: { life: 9, battlefield: [c("Krotiq Nestguard"), c("Krotiq Nestguard")] },
+      you: { hand: [c("Cinder Strike")], battlefield: [c("Spinerock Tyrant"), c("Hill Giant"), c("Gray Ogre", { sick: true }), c("Mountain")] },
+      explanation: "Spinerock Tyrant copies single-target instants and sorceries, and the copies have wither. Blight Gray Ogre so Cinder Strike deals 4: the copy keeps that choice. Both Nestguards get four -1/-1 counters. Attack: 6 in the air + 3.",
+      notes: `
+LETHAL: Cinder Strike (blighting Gray Ogre) at one Krotiq Nestguard; Spinerock Tyrant copies it (new target: the other):
+  both 4 damage, with wither: both die. Attack with the Tyrant (6 flying) and Hill Giant (3): 9.
+RULES: A copy of a spell copies the choices made, including paid additional costs (707.10).
+WRONG LINES: Blighting the Giant or the Tyrant: 8. Not blighting: 2 damage each.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "ecl-10-prism", title: "Prism", set: "ecl", tier: "hard",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Shimmercreep"), c("Feisty Spikeling"), c("Mischievous Sneakling")], battlefield: [c("Grizzly Bears"), ...many(4, "Swamp"), ...many(3, "Mountain"), c("Island"), c("Plains")] },
+      explanation: "Shimmercreep drains one per color. The two hybrid changelings add two colors each: Feisty Spikeling red and white, Mischievous Sneakling blue and black. Have both out when Shimmercreep's ability resolves (the Sneakling has flash): green, red, white, blue, black: 5.",
+      notes: `
+LETHAL: Feisty Spikeling ({1}{R/W}), Mischievous Sneakling ({1}{U/B}, flash), Shimmercreep ({4}{B}): colors G, R, W, U, B:
+  the opponent loses 5. (9 lands: 2 + 2 + 5.)
+RULES: A hybrid card is all of its colors (202.2d); vivid counts when the ability resolves.
+WRONG LINES: Shimmercreep first, without the others: 2-3.
 UNIQUENESS: Solver-checked.`
     })
   );

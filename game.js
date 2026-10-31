@@ -832,6 +832,11 @@
           confirm: (l) => (l.length ? `Waterbend (${l.length})` : "Mana only"), complete: (l) => sets.some((set) => same(set, l)),
           canAdd: (l) => sets.some((set) => l.every((x) => set.includes(x))), then: (l) => again("waterTap")(l) });
       }
+      // "{T}, Blight 1: …": which creature of yours gets the -1/-1 counter
+      if (ab.blight && casting.blight === undefined) {
+        return pickCards({ ids: E.blightOptions(state), confirm: `Blight ${ab.blight}`,
+          prompt: `Choose a creature you control to blight ${ab.blight} for ${card.name}'s ability.`, then: (picked) => again("blight")(Array.isArray(picked) ? picked[0] : picked) });
+      }
       // "Discard a card: …": which card
       if (ab.discardCost && casting.discard === undefined) {
         return pickCards({ ids: state.player.hand.map((c) => c.id), confirm: "Discard",
@@ -1139,7 +1144,7 @@
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
     : casting.renew ? { type: "renew", id: casting.card.id, target }
     : casting.channel ? { type: "channel", id: casting.card.id, target }
-    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined }
+    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
