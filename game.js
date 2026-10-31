@@ -217,8 +217,9 @@
     face.querySelector(".t").textContent = c.type || "";
     // a face-down card: you may look at your own (CR 708.5), never at the opponent's
     const mine = state && state.player.battlefield.includes(c);
+    const turnUp = (h) => (h.disguise ? `: turn it face up for ${h.disguise}.` : c.manifested && /creature/i.test(h.type || "") ? `: turn it face up for ${h.cost}.` : ". It can't be turned face up.");
     face.querySelector(".x").textContent = c.faceDown
-      ? `Ward {2}. A face-down 2/2.` + (mine && c.hidden ? ` It's your ${c.hidden.name}` + (c.hidden.disguise ? `: turn it face up for ${c.hidden.disguise}.` : ".") : "")
+      ? (c.manifested ? "A manifested face-down 2/2." : "Ward {2}. A face-down 2/2.") + (mine && c.hidden ? ` It's your ${c.hidden.name}${turnUp(c.hidden)}` : "")
       : E.textOf(c);
     if (c.pt) face.querySelector(".p").textContent = c.pt;
     el.appendChild(face);
@@ -261,6 +262,8 @@
     if (c.saddled) gainedKw.unshift("saddled");
     if (c.solved) gainedKw.unshift("solved");
     if (c.levels) gainedKw.unshift(`level ${c.level || 1}`);       // a Class's level
+    // a Room: which doors are unlocked
+    if (c.layout === "room" && c.unlocked) gainedKw.unshift(...c.faces.map((f, i) => `${f.name}: ${c.unlocked[i] ? "unlocked" : "locked"}`));
     if (gainedKw.length) {
       const k = document.createElement("div");
       k.className = "kwchips";

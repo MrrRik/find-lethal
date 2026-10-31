@@ -674,6 +674,57 @@
       text: "Gift a tapped Fish (You may promise an opponent a gift as you cast this spell. If you do, they create a tapped 1/1 blue Fish creature token before its other effects.) Choose target creature you control and target creature you don't control. Put a +1/+1 counter on the creature you control if the gift was promised. Then those creatures fight each other." }
   };
 
+  // ---- Duskmourn (DSK): Rooms, eerie, survival, delirium, manifest dread ----
+  // A Room: the whole card (name "A // B") with its two doors as faces; its triggers name a door (on: "unlock" + door,
+  // or if: { door } for an unlocked door's ability). On the battlefield, unlocked: [left, right].
+  const GLIMMER = { name: "Glimmer", type: "Token Enchantment Creature — Glimmer", pt: "1/1", colors: ["W"] };
+  const room = (faces, triggers, text) => ({ type: "Enchantment — Room", layout: "room",
+    faces: faces.map((f) => ({ type: "Enchantment — Room", ...f })), triggers, text });
+  Object.assign(CARDS, {
+    "Glimmer": { ...GLIMMER, token: true, text: "" },
+    "Grand Entryway // Elegant Rotunda": room(
+      [{ name: "Grand Entryway", cost: "{1}{W}", text: "When you unlock this door, create a 1/1 white Glimmer enchantment creature token." },
+        { name: "Elegant Rotunda", cost: "{2}{W}", text: "When you unlock this door, put a +1/+1 counter on each of up to two target creatures." }],
+      [{ on: "unlock", self: true, door: 0, effect: { create: GLIMMER } },
+        { on: "unlock", self: true, door: 1, targets: "creature", count: { min: 0, max: 2 }, effect: { counters: { "+1/+1": 1 } } }],
+      "Grand Entryway {1}{W}: When you unlock this door, create a 1/1 white Glimmer enchantment creature token. // Elegant Rotunda {2}{W}: When you unlock this door, put a +1/+1 counter on each of up to two target creatures. (You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.)"),
+    "Glassworks // Shattered Yard": room(
+      [{ name: "Glassworks", cost: "{2}{R}", text: "When you unlock this door, this Room deals 4 damage to target creature an opponent controls." },
+        { name: "Shattered Yard", cost: "{4}{R}", text: "At the beginning of your end step, this Room deals 1 damage to each opponent." }],
+      [{ on: "unlock", self: true, door: 0, targets: "opponent-creature", effect: { damage: 4 } },
+        { on: "endStep", filter: { controller: "you" }, if: { door: 1 }, effect: { damage: 1, to: "opp" } }],
+      "Glassworks {2}{R}: When you unlock this door, this Room deals 4 damage to target creature an opponent controls. // Shattered Yard {4}{R}: At the beginning of your end step, this Room deals 1 damage to each opponent. (You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.)"),
+    "Ticket Booth // Tunnel of Hate": room(
+      [{ name: "Ticket Booth", cost: "{2}{R}", text: "When you unlock this door, manifest dread." },
+        { name: "Tunnel of Hate", cost: "{4}{R}{R}", text: "Whenever you attack, target attacking creature gains double strike until end of turn." }],
+      [{ on: "unlock", self: true, door: 0, effect: { manifestDread: true } },
+        { on: "youAttack", filter: { controller: "you" }, if: { door: 1 }, targets: "creature", targetFilter: { controller: "you", attacking: true }, effect: { grant: ["double strike"] } }],
+      "Ticket Booth {2}{R}: When you unlock this door, manifest dread. // Tunnel of Hate {4}{R}{R}: Whenever you attack, target attacking creature gains double strike until end of turn. (You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.)"),
+    "Dashing Bloodsucker": { type: "Creature — Vampire Warrior", cost: "{3}{B}", pt: "2/5", eerie: { effect: { pump: [2, 0], grant: ["lifelink"], self: true } },
+      text: "Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, this creature gets +2/+0 and gains lifelink until end of turn." },
+    "Balemurk Leech": { type: "Creature — Leech", cost: "{1}{B}", pt: "2/2", eerie: { effect: { lifeLoss: 1, to: "opp" } },
+      text: "Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, each opponent loses 1 life." },
+    "Erratic Apparition": { type: "Creature — Spirit", cost: "{2}{U}", pt: "1/3", kw: ["flying", "vigilance"], eerie: { effect: { pump: [1, 1], self: true } },
+      text: "Flying, vigilance. Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, this creature gets +1/+1 until end of turn." },
+    "Infernal Phantom": { type: "Creature — Spirit", cost: "{3}{R}", pt: "2/3", eerie: { effect: { pump: [2, 0], self: true } },
+      onDeath: { effect: { damage: "power" }, targets: "any" },
+      text: "Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, this creature gets +2/+0 until end of turn. When this creature dies, it deals damage equal to its power to any target." },
+    "Optimistic Scavenger": { type: "Creature — Human Scout", cost: "{W}", pt: "1/1", eerie: { targets: "creature", effect: { counters: { "+1/+1": 1 } } },
+      text: "Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, put a +1/+1 counter on target creature." },
+    "Glimmer Seeker": { type: "Creature — Human Survivor", cost: "{2}{W}", pt: "3/3",
+      survival: { effect: { ifControlElse: { filter: { type: "Glimmer", creature: true }, yes: { draw: 1 }, no: { create: GLIMMER } } } },
+      text: "Survival — At the beginning of your second main phase, if this creature is tapped, draw a card if you control a Glimmer creature. If you don't control a Glimmer creature, create a 1/1 white Glimmer enchantment creature token." },
+    "Hand That Feeds": { type: "Creature — Mutant", cost: "{1}{R}", pt: "2/2",
+      triggers: [{ on: "attacks", self: true, if: { delirium: true }, effect: { pump: [2, 0], grant: ["menace"], self: true } }],
+      text: "Delirium — Whenever this creature attacks while there are four or more card types among cards in your graveyard, it gets +2/+0 and gains menace until end of turn." },
+    "Violent Urge": { type: "Instant", cost: "{R}", targets: "creature", effect: { pump: [1, 0], grant: ["first strike"], ifCond: { if: { delirium: true }, grant: ["double strike"] } },
+      text: "Target creature gets +1/+0 and gains first strike until end of turn. Delirium — If there are four or more card types among cards in your graveyard, that creature gains double strike until end of turn." },
+    "Manifest Dread": { type: "Sorcery", cost: "{1}{G}", effect: { manifestDread: true },
+      text: "Manifest dread. (Look at the top two cards of your library. Put one onto the battlefield face down as a 2/2 creature and the other into your graveyard. Turn it face up any time for its mana cost if it's a creature card.)" },
+    "Wildfire Wickerfolk": { type: "Artifact Creature — Scarecrow", cost: "{R}{G}", pt: "3/2", kw: ["haste"], conditional: [{ if: { delirium: true }, pump: [1, 1], grant: ["trample"] }],
+      text: "Haste. Delirium — This creature gets +1/+1 and has trample as long as there are four or more card types among cards in your graveyard." }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -1652,6 +1703,143 @@ LETHAL: Giant Growth on Heartfire Hero: valiant: +1/+1 counter (2/2), +3/+3: 5/5
   death trigger uses its last power: 6.
 RULES: Leaves-the-battlefield triggers use last known information (603.10a, 608.2h). Gift (702.174f).
 WRONG LINES: No gift: 5/5 fights, dies, 5 damage. Attacking: the Dreadmaw blocks.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= DUSKMOURN: HOUSE OF HORROR (set DSK) ======================= */
+  // Rooms (doors, unlocking), eerie, survival, delirium, manifest dread
+  const GE = "Grand Entryway // Elegant Rotunda", GW = "Glassworks // Shattered Yard", TB = "Ticket Booth // Tunnel of Hate";
+  window.PUZZLES.push(
+    puzzle({
+      id: "dsk-01-grand-entrance", title: "Grand Entrance", set: "dsk", tier: "easy",
+      opp: { life: 6 },
+      you: { hand: [c(GE)], battlefield: [c("Dashing Bloodsucker"), c("Plains"), c("Plains")] },
+      explanation: "Eerie triggers whenever an enchantment you control enters. Grand Entryway is one, and unlocking it makes a Glimmer, an enchantment creature: two eerie triggers, so Dashing Bloodsucker is a 6/5.",
+      notes: `
+LETHAL: Cast Grand Entryway ({1}{W}): the Room (an enchantment) enters: eerie +2/+0. The door unlocks: a Glimmer
+  (enchantment creature) token enters: eerie +2/+0. Dashing Bloodsucker 6/5 lifelink: 6.
+RULES: Rooms (709.5d, h): the cast door is unlocked as it enters, and that counts as unlocking it.
+WRONG LINES: Elegant Rotunda costs 3: you have 2 lands.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-02-violent-urge", title: "Violent Urge", set: "dsk", tier: "easy",
+      opp: { life: 10 },
+      you: { hand: [c("Shock"), c("Violent Urge")], battlefield: [c("Hill Giant"), c("Mountain"), c("Mountain")],
+        graveyard: [c("Forest"), c("Grizzly Bears"), c("Over the Edge")] },
+      explanation: "Your graveyard has three card types: land, creature, sorcery. Shock the opponent first: an instant goes to your graveyard, that's four types (delirium). Now Violent Urge gives Hill Giant double strike: 2 + 8.",
+      notes: `
+LETHAL: Shock the opponent (2): the instant goes to your graveyard: land, creature, sorcery, instant = delirium. Violent
+  Urge on Hill Giant: +1/+0, first strike, and (delirium) double strike: 4 + 4. Total 10.
+RULES: Delirium: four or more card types among cards in your graveyard; checked as Violent Urge resolves.
+WRONG LINES: Violent Urge first (no delirium yet: first strike only): 4 + 2 = 6.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-03-feeding-time", title: "Feeding Time", set: "dsk", tier: "easy",
+      opp: { life: 4, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Manifest Dread")], battlefield: [c("Hand That Feeds"), c("Forest"), c("Forest")],
+        library: [c("Shock"), c("Mountain")], graveyard: [c("Forest"), c("Gray Ogre")] },
+      explanation: "Manifest dread: put the Mountain face down and Shock into your graveyard. With Manifest Dread itself, that's land, creature, instant and sorcery: delirium. Hand That Feeds attacks as a 4/2 with menace.",
+      notes: `
+LETHAL: Manifest Dread ({1}{G}): manifest the Mountain (a face-down 2/2), Shock to the graveyard. Graveyard: Forest,
+  Gray Ogre, Shock, Manifest Dread: land, creature, instant, sorcery. Hand That Feeds attacks: delirium: +2/+0, menace.
+  Grizzly Bears alone can't block it: 4.
+RULES: Manifest dread (701.62a). A sorcery is put into the graveyard as it finishes resolving.
+WRONG LINES: Manifesting Shock: the Mountain adds no new type (3 types).
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-04-glassworks", title: "Glassworks", set: "dsk", tier: "easy",
+      opp: { life: 4, battlefield: [c("Hill Giant")] },
+      you: { battlefield: [c(GW, { unlocked: [false, true] }), c("Hill Giant"), ...many(3, "Mountain")] },
+      explanation: "Your Room has Shattered Yard unlocked (1 damage at your end step). Unlock the other door, Glassworks, for its mana cost: 4 damage kills their Hill Giant. Yours hits for 3, and the end step does the last 1.",
+      notes: `
+LETHAL: Unlock Glassworks ({2}{R}, a special action in your main phase): 4 damage to the opponent's Hill Giant (dies).
+  Attack: 3 (1 left). End step: Shattered Yard deals 1.
+RULES: Unlocking a door (709.5e, 116.2m) doesn't use the stack; "when you unlock this door" triggers (709.5h).
+WRONG LINES: Attacking into their Giant: blocked; only the end step's 1.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-05-survivors", title: "Survivors", set: "dsk", tier: "medium",
+      opp: { life: 5, battlefield: [c("Wall of Wood")] },
+      you: { hand: [c(GE)], battlefield: [c("Glimmer Seeker"), c("Balemurk Leech"), c("Plains"), c("Plains")] },
+      explanation: "Attack with both. In your second main phase, Glimmer Seeker is tapped: survival makes a Glimmer (you have none yet), and Balemurk Leech drains 1. Only then cast Grand Entryway: the Room and its Glimmer drain 2 more.",
+      notes: `
+LETHAL: Attack with Glimmer Seeker and Balemurk Leech: the Wall blocks the Seeker (Leech 2; 3 left) or the Leech
+  (Seeker 3; 2 left). Second main phase: Seeker's survival: no Glimmer: create one (an enchantment): Leech drains 1.
+  Grand Entryway: the Room enters (drain 1), a Glimmer enters (drain 1). 3 + 2 = 5 at least.
+RULES: Survival: at the beginning of your second main phase, if it's tapped (attacking tapped it). Eerie.
+WRONG LINES: Grand Entryway before combat: you already control a Glimmer, so survival only draws: 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-06-tunnel-of-hate", title: "Tunnel of Hate", set: "dsk", tier: "medium",
+      opp: { life: 4, battlefield: [c("Wall of Wood")] },
+      you: { battlefield: [c("Erratic Apparition"), c(TB, { unlocked: [true, false] }), ...many(6, "Mountain")] },
+      explanation: "Unlock Tunnel of Hate: the Room is fully unlocked, and eerie makes Erratic Apparition 2/4. When you attack, the Tunnel gives it double strike: 4 in the air.",
+      notes: `
+LETHAL: Unlock Tunnel of Hate ({4}{R}{R}): fully unlocked: Erratic Apparition's eerie: +1/+1 (2/4). Attack: the
+  Tunnel's trigger: double strike. 2 + 2 = 4 (flying: the Wall can't block it).
+RULES: "Fully unlock" (709.5i) triggers eerie. A door's ability works only while it's unlocked.
+WRONG LINES: Attacking without unlocking: 1.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-07-ticket-booth", title: "Ticket Booth", set: "dsk", tier: "hard",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c(TB)], battlefield: [c("Hill Giant"), ...many(8, "Mountain")], library: [c("Quaketusk Boar"), c("Shock")] },
+      explanation: "Ticket Booth manifests dread: put Quaketusk Boar onto the battlefield face down. A manifested creature card can be turned face up for its mana cost: the Boar has haste and trample. Attack with it and Hill Giant.",
+      notes: `
+LETHAL: Ticket Booth ({2}{R}): manifest dread: Quaketusk Boar face down (Shock to the graveyard). Turn it face up for
+  {3}{R}{R}: 5/5 reach, trample, haste. Attack with the Boar and Hill Giant: the Bears block the Giant: 5; block the
+  Boar: 3 over + 3.
+RULES: Manifest (701.40a-b): turn a manifested creature card face up for its mana cost, any time you have priority.
+WRONG LINES: Manifesting Shock: it can never be turned up. Tunnel of Hate (6) leaves no mana.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-08-infernal", title: "Infernal", set: "dsk", tier: "hard",
+      opp: { life: 8, battlefield: [c("Typhoid Rats")] },
+      you: { hand: [c(GE)], battlefield: [c("Infernal Phantom"), c("Balemurk Leech"), c("Plains"), c("Plains")] },
+      explanation: "Grand Entryway: two eerie triggers (the Room, then the Glimmer). Balemurk Leech drains 2, Infernal Phantom becomes 6/3. Attack with the Phantom: unblocked it deals 6; blocked by the deathtouch Rats it dies and deals 6 anyway.",
+      notes: `
+LETHAL: Grand Entryway: Room enters, Glimmer enters: two eerie events: Leech drains 2 (6); Infernal Phantom +4/+0 (6/3).
+  Attack with the Phantom: no block: 6. Typhoid Rats block: deathtouch kills it: "deals damage equal to its power"
+  (last known: 6) to the opponent.
+RULES: Dies triggers use last known information (603.10a): the +4/+0 counts.
+WRONG LINES: Attacking with the Leech too: the Rats block the Leech, the Phantom still deals 6 (same plan). Without the
+  Room: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-09-wickerfolk", title: "Wickerfolk", set: "dsk", tier: "hard",
+      opp: { life: 11 },
+      you: { hand: [c("Wildfire Wickerfolk"), c("Manifest Dread"), c("Violent Urge"), c("Shock")], battlefield: [c("Forest"), c("Forest"), ...many(4, "Mountain")],
+        library: [c("Lightning Bolt"), c("Grizzly Bears")], graveyard: [c("Forest"), c("Over the Edge")] },
+      explanation: "Build delirium before Violent Urge: Manifest Dread (manifest Lightning Bolt, Grizzly Bears into the graveyard: creature), then Shock the opponent (instant). Four types. Violent Urge then gives Wildfire Wickerfolk double strike: 5 trample, twice.",
+      notes: `
+LETHAL: Wildfire Wickerfolk ({R}{G}, haste). Manifest Dread: manifest Lightning Bolt, Grizzly Bears to the graveyard.
+  Graveyard: Forest, Over the Edge, Grizzly Bears, Manifest Dread: land, sorcery, creature. Shock the opponent (2): +
+  instant = delirium: Wickerfolk 4/3 trample. Violent Urge: +1/+0, double strike: 5 + 5. Total 12.
+RULES: Delirium, manifest dread. A manifested Lightning Bolt can't be turned face up (it's not a creature card).
+WRONG LINES: Manifesting the Bears (Bolt into the graveyard is an instant, like Shock): three types, no double strike.
+  Violent Urge before Shock.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dsk-10-dread", title: "Dread", set: "dsk", tier: "hard",
+      opp: { life: 8 },
+      you: { hand: [c(TB), c("Violent Urge")], battlefield: [c("Hill Giant"), ...many(4, "Mountain")],
+        library: [c("Grizzly Bears"), c("Mountain")], graveyard: [c("Shock"), c("Over the Edge"), c("Forest")] },
+      explanation: "Instant, sorcery, land: three types. Ticket Booth's manifest dread must send Grizzly Bears to the graveyard (creature, the fourth type), so manifest the Mountain. Then Violent Urge: double strike Hill Giant, 4 + 4.",
+      notes: `
+LETHAL: Ticket Booth ({2}{R}): manifest the Mountain; Grizzly Bears to the graveyard: instant, sorcery, land, creature.
+  Violent Urge ({R}) on Hill Giant: 4/3, first strike, delirium: double strike. 8.
+RULES: Manifest dread (701.62a): you choose which card is manifested. The Room on the battlefield isn't in the graveyard.
+WRONG LINES: Manifesting the Bears: the Mountain adds no type (land is there): 4.
 UNIQUENESS: Solver-checked.`
     })
   );

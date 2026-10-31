@@ -98,10 +98,12 @@
   // cost or other abilities. The card itself is kept in c.hidden (its controller may look at it, CR 708.5).
   const FACE_DOWN = { name: "Face-down creature", type: "Creature", pt: "2/2", kw: ["ward 2"], colors: [] };
   const FACE_DOWN_KEEP = ["id", "owner", "tapped", "sick", "counters", "dmg", "attachedTo", "ts", "deathtouched", "wasCast", "suspected"];
-  function faceDownOf(card) {
+  // (manifested — CR 701.40a, manifest dread: a 2/2 with no abilities at all, no ward; it can be turned face up for its
+  // mana cost if it's a creature card, 701.40b)
+  function faceDownOf(card, { manifest = false } = {}) {
     const hidden = { ...card };
-    [...FACE_DOWN_KEEP.filter((k) => k !== "id" && k !== "owner"), "faceDown", "st", "tk"].forEach((k) => delete hidden[k]);
-    const out = { ...FACE_DOWN, kw: [...FACE_DOWN.kw], faceDown: true, hidden };
+    [...FACE_DOWN_KEEP.filter((k) => k !== "id" && k !== "owner"), "faceDown", "st", "tk", "manifested"].forEach((k) => delete hidden[k]);
+    const out = { ...FACE_DOWN, kw: manifest ? [] : [...FACE_DOWN.kw], faceDown: true, hidden, ...(manifest || card.manifested ? { manifested: true, kw: [] } : {}) };
     FACE_DOWN_KEEP.forEach((k) => { if (k in card && k !== "faceDown") out[k] = card[k]; });
     return out;
   }
@@ -114,7 +116,17 @@
   function abilitiesOf(c) {
     // CR 702.168d / 116.2b: turning a face-down disguise card face up is a special action, any time you have priority
     // (not an ability: it doesn't use the stack and can't be lost). It's offered like an ability with `special`.
-    if (c.faceDown) return c.hidden && c.hidden.disguise ? [{ special: "turnFaceUp", cost: c.hidden.disguise, text: `Turn face up ${c.hidden.disguise}` }] : [];
+    if (c.faceDown) {
+      const h = c.hidden || {}, out = [];
+      if (h.disguise) out.push({ special: "turnFaceUp", cost: h.disguise, text: `Turn face up ${h.disguise}` });
+      // a manifested creature card: for its mana cost (CR 701.40b)
+      if (c.manifested && !h.unknown && /creature/i.test(h.type || "") && h.cost != null) out.push({ special: "turnFaceUp", cost: h.cost, text: `Turn face up ${h.cost || "{0}"}` });
+      return out;
+    }
+    // CR 709.5e / 116.2m: unlocking a locked door of a Room is a special action (main phase, empty stack)
+    if (c.layout === "room" && c.unlocked) {
+      return c.faces.map((f, i) => (c.unlocked[i] ? null : { special: "unlock", door: i, cost: f.cost, sorcery: true, text: `Unlock ${f.name} (${f.cost})` })).filter(Boolean);
+    }
     if (c.st && c.st.lost) return [];                          // it lost all its abilities (CR 613.1f)
     const list = [...(c.abilities || [])];
     if (c.equip) list.push({ cost: c.equip.cost, targets: "creature", filter: { controller: "you" }, sorcery: true, effect: { attach: true },
@@ -425,7 +437,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -434,7 +446,7 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid",
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested",
     "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
@@ -499,6 +511,36 @@
     changed(s);
     ev.push({ type: "turnedFaceUp", id: c.id });
     emit(s, { type: "turnedFaceUp", obj: c, side: sideOf(s, c) }, ev);
+  }
+
+  // CR 709.5c-i: a Room door gets its unlocked designation: "when you unlock this door" triggers (also as the Room
+  // enters with the cast door unlocked, 709.5h), and with both doors unlocked now, "fully unlock" triggers (709.5i)
+  function unlockDoor(s, c, door, ev) {
+    if (!c || !c.unlocked || c.unlocked[door]) return;
+    c.unlocked = c.unlocked.map((u, i) => u || i === door);
+    changed(s);
+    ev.push({ type: "unlocked", id: c.id, door });
+    emit(s, { type: "unlock", obj: c, side: sideOf(s, c), door }, ev);
+    if (c.unlocked.every(Boolean)) emit(s, { type: "fullyUnlocked", obj: c, side: sideOf(s, c) }, ev);
+  }
+
+  // CR 701.62a / 701.40a: manifest dread — look at the top two cards of your library, put one onto the battlefield face
+  // down as a 2/2 (manifested) and the other into your graveyard. (Cards below the known ones are unknown: one of those
+  // can still be manifested — a 2/2 that can't be turned face up — or put into the graveyard, as one more card there.)
+  function manifestDread(s, side, ev) {
+    const z = s[side], two = [];
+    for (let i = 0; i < 2; i++) {
+      const c = z.library.shift() || (!(z.libraryCount > 0) ? z.libraryBottom.shift() : null);
+      if (c) two.push(c);
+      else if (z.libraryCount > 0) { z.libraryCount--; two.push({ id: `unknown-${s.nextId++}`, name: "Unknown card", type: "Card", unknown: true }); }
+    }
+    if (!two.length) return;
+    const pick = choose(s, "Manifest dread: which card goes onto the battlefield face down?", two.map((c) => c.name), side);
+    const perm = faceDownOf({ ...two[pick], owner: side }, { manifest: true });
+    perm.sick = true;
+    two.filter((_, i) => i !== pick).forEach((c) => putCard(s, c, side, "graveyard"));
+    ev.push({ type: "manifested", id: perm.id });
+    enter(s, perm, { side }, ev);
   }
 
   // Targets on the stack pointing at an object that left become "gone" (a new object with the same card id isn't it)
@@ -886,7 +928,7 @@
   // Compiled triggers live outside the game state, in one table keyed by the card's definition, so states stay
   // small for the solver (it copies and compares every state it visits); a card only carries its key (tk).
   const TRIGGER_TABLE = new Map(), TRIGGER_KEYS = new Map();
-  const TRIGGER_FIELDS = ["triggers", "etb", "onDeath", "onAttack", "landfall", "onTreasureSac", "onTargetedBySpell", "returnsToHand", "backup",
+  const TRIGGER_FIELDS = ["triggers", "etb", "onDeath", "onAttack", "landfall", "onTreasureSac", "onTargetedBySpell", "returnsToHand", "backup", "eerie", "survival",
     "targets", "targetFilter", "targetCount"];
   // Rules text is only for showing the card; it's kept here by name, outside the state, for the same reason
   const CARD_TEXT = new Map();
@@ -914,6 +956,13 @@
     if (card.onTargetedBySpell) list.push({ on: "becomesTarget", self: true, by: "spell", effect: { damage: card.onTargetedBySpell, to: "eventController" } });
     // Rancor: "When this Aura is put into a graveyard from the battlefield, return it to its owner's hand."
     if (card.returnsToHand) list.push({ on: "leaves", self: true, toZone: "graveyard", effect: { returnFromGraveyard: true } });
+    // Eerie — "Whenever an enchantment you control enters and whenever you fully unlock a Room, …" (two trigger events)
+    if (card.eerie) {
+      list.push({ on: "enters", filter: { controller: "you", enchantment: true }, ...card.eerie });
+      list.push({ on: "fullyUnlocked", filter: { controller: "you" }, ...card.eerie });
+    }
+    // Survival — "At the beginning of your second main phase, if this creature is tapped, …"
+    if (card.survival) list.push({ on: "main2", filter: { controller: "you" }, if: { selfTapped: true }, ...card.survival });
     return list;
   }
   const KEYWORD_TRIGGERS = {
@@ -1048,6 +1097,8 @@
     if (f.maxPower != null && power(e.obj) > f.maxPower) return false;   // "another creature … with power 2 or less enters"
     if (f.spellNumber && e.spellNumber !== f.spellNumber) return false;  // "whenever you cast your second spell each turn"
     if (f.expend && e.n !== f.expend) return false;                       // "whenever you expend 4"
+    if (f.enchantment && !typeHas(e.obj, /enchantment/i)) return false;  // "whenever an enchantment you control enters"
+    if (t.on === "unlock" && t.door != null && e.door !== t.door) return false;   // "when you unlock this door"
     if (f.level && e.level !== f.level) return false;                     // "when this Class becomes level 3"
     if (t.byYou && e.controller !== "you") return false;                  // valiant: "a spell or ability you control"
     return true;
@@ -1075,6 +1126,10 @@
     if (cond.threshold && !(s[side].graveyard.length >= 7)) return false;
     if (cond.level != null && !(self && levelOf(self) >= cond.level)) return false;
     if (cond.offspringPaid && !(self && self.offspringPaid)) return false;
+    // Delirium: four or more card types among cards in your graveyard; survival: "if this creature is tapped"
+    if (cond.delirium && !(cardTypesIn(s, side) >= 4)) return false;
+    if (cond.selfTapped && !(self && self.tapped)) return false;
+    if (cond.door != null && !(self && self.unlocked && self.unlocked[cond.door])) return false;   // a Room door's ability
     if (cond.saddled && !(self && self.saddled)) return false;
     // "if it was bargained" (CR 702.166c)
     if (cond.bargained && !(self && self.bargained)) return false;
@@ -1093,6 +1148,10 @@
     }
     return true;
   }
+  // (delirium: the card types among cards in a player's graveyard, CR 205.2a)
+  const CARD_TYPES = ["artifact", "battle", "creature", "enchantment", "instant", "kindred", "land", "planeswalker", "sorcery"];
+  const cardTypesIn = (s, side) => new Set(s[side].graveyard.flatMap((c) =>
+    [c, ...(c.faces && c.layout !== "transform" && c.layout !== "modal" ? c.faces : [])].flatMap((f) => CARD_TYPES.filter((t) => new RegExp(`\\b${t}\\b`, "i").test((f.type || "").split("—")[0]))))).size;
   // (descend: the permanent cards — not tokens — in a player's graveyard)
   const permanentCardsIn = (s, side) => s[side].graveyard.filter((c) => isPermanent(faceOf(c, {}))).length;
   const objectIs = (c, f) => (!f.artifact || isArtifact(c)) && (!f.creature || isCreature(c)) && (!f.land || isLand(c)) &&
@@ -1505,6 +1564,18 @@
     if (eff.ifYouControl && tgt && s[ctx.side].battlefield.some((c) => objectIs(c, eff.ifYouControl.filter))) {
       const { filter, ...more } = eff.ifYouControl;
       applyEffect(s, more, tgt.id, ctx, ev);
+    }
+    if (eff.manifestDread) manifestDread(s, ctx.side, ev);
+    // "Delirium — If there are four or more card types among cards in your graveyard, that creature gains double strike":
+    // part of the effect that applies only if a condition holds as it resolves (eff.ifCond: { if, …effect })
+    if (eff.ifCond && conditionHolds(s, eff.ifCond.if, ctx.side, ctx.src)) {
+      const { if: _, ...more } = eff.ifCond;
+      applyEffect(s, more, tgt ? tgt.id : target, ctx, ev);
+    }
+    // "draw a card if you control a Glimmer creature. If you don't, create a 1/1 Glimmer …" (eff.ifControlElse)
+    if (eff.ifControlElse) {
+      const { filter, yes, no } = eff.ifControlElse;
+      applyEffect(s, s[ctx.side].battlefield.some((c) => objectIs(c, filter)) ? yes : no, target, ctx, ev);
     }
     // CR 716.2a: the Class's level becomes N ("when this Class becomes level N" triggers)
     if (eff.levelUp && tgt) { tgt.level = eff.levelUp; changed(s); emit(s, { type: "levelUp", obj: tgt, side: ctx.side, level: eff.levelUp }, ev); }
@@ -2060,6 +2131,7 @@
     if (step === "end") emit(s, { type: "endStep", side: "player" }, ev);
     // "at the beginning of combat on your turn" (CR 507.1: triggers as the step begins)
     if (step === "boc") emit(s, { type: "beginningOfCombat", side: "player" }, ev);
+    if (step === "main2") emit(s, { type: "main2", side: "player" }, ev);        // "at the beginning of your second main phase"
     if (step === "attackers") s.attacked = true;              // no attackers declared: combat is over
     if (!s.combat) return;
     if (step === "blockers") declareBlocks(s, blocks, ev);
@@ -2353,6 +2425,13 @@
       if (card.layout === "transform" && a.face === 1) perm.transformed = true;   // cast transformed (CR 712.14)
       perm.wasCast = true;                                                         // ("When this enters, if you cast it")
       delete perm.onAdventure;
+      // CR 709.5d: a Room is the whole card on the battlefield, with the door that was cast unlocked
+      if (card.layout === "room") {
+        const room = { ...card, sick: true, wasCast: true, unlocked: [false, false] };
+        enter(s, room, {}, ev);
+        unlockDoor(s, room, a.face || 0, ev);
+        return void sba(s, ev);
+      }
       enter(s, perm, { x: a.x, lifePips: a.lifePips }, ev);
     } else {
       // A spell whose targets have all become illegal doesn't resolve (608.2b); otherwise each part resolves in order
@@ -2521,6 +2600,7 @@
       spend(s, pay, ev);
       // a special action (CR 116.2b): it happens now, without using the stack
       if (ab.special === "turnFaceUp") { turnFaceUp(s, card, ev); sba(s, ev); settle(s, ev); return { state: s, events: ev }; }
+      if (ab.special === "unlock") { unlockDoor(s, card, ab.door, ev); sba(s, ev); settle(s, ev); return { state: s, events: ev }; }
       if (ab.tap) tap(s, card, ev);
       (ab.crew ? a.crew : []).forEach((id) => tap(s, find(s, id), ev));   // the crew cost
       if (ab.craft) {                                                     // the craft cost: exile it and the material
