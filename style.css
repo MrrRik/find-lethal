@@ -438,6 +438,8 @@ body:not([data-screen="creator"]) #creator{display:none}
 .tile.tier-hard::after{background:#e57f3a}
 .life.poison b{color:#7fbf3f}
 .life.poison[hidden]{display:none}       /* (the phone layout gives .life a display, which would show it) */
+.life.speed b{color:#e5a93a}
+.life.speed[hidden]{display:none}
 .tier-bar{display:inline-block;width:1.1rem;height:.25rem;border-radius:.2rem;vertical-align:middle}
 .tier-bar.easy{background:var(--green)} .tier-bar.medium{background:var(--gold)} .tier-bar.hard{background:#e57f3a}
 /* set-themed categories sit a little apart from the difficulties */

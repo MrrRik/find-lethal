@@ -111,6 +111,18 @@
   const levelOf = (c) => c.level || 1;
   // CR 701.60: a suspected creature has menace and "This creature can't block" for as long as it's suspected
   const ownKw = (c) => (c.suspected ? [...(c.kw || []), "menace", "can't block"] : c.kw || []);
+  // CR 702.179b, f: a player has no speed until something sets it (0 for effects that read it); max speed is 4 (702.179e)
+  const speedOf = (s, side) => s[side].speed || 0;
+  const maxSpeed = (s, side) => speedOf(s, side) >= 4;
+  // Vehicles (CR 301.7) and Mounts (CR 702.171): "target creature or Vehicle", "Mounts and Vehicles you control"
+  const isVehicle = (c) => subtypes(c).includes("Vehicle");
+  const isMount = (c) => subtypes(c).includes("Mount");
+  // The power a creature crews or saddles with: "as though its power were 2 greater" (crewBonus), "using its toughness
+  // rather than its power" (crewByToughness) — both gone if it lost its abilities
+  const crewPower = (c) => {
+    const own = !(c.st && c.st.lost);
+    return Math.max((own && c.crewByToughness ? toughness(c) : power(c)) + (own && c.crewBonus ? c.crewBonus : 0), 0);
+  };
 
   // A permanent's activated abilities; Equipment's equip ability is one of them (sorcery speed)
   function abilitiesOf(c) {
@@ -305,7 +317,8 @@
   // e.g. a creature that is being tapped for the ability being paid for)
   function manaSources(s, exclude = []) {
     const pool = s.pool.map((sym, i) => ({ id: "pool:" + i, colors: sym === "*" ? "WUBRG" : sym, kind: "pool" }));
-    const field = s.player.battlefield.filter((c) => !exclude.includes(c.id))
+    // ("Max speed — {T}: Add {R}{R}": maxSpeedMana — a mana ability it has only at max speed, CR 702.178a)
+    const field = s.player.battlefield.filter((c) => !exclude.includes(c.id) && !(c.maxSpeedMana && !maxSpeed(s, "player")))
       .map((c) => ({ id: c.id, colors: produces(c), kind: isTreasure(c) ? "treasure" : isLand(c) ? "land" : "other" }))
       .filter((x) => x.colors !== null);
     // More mana from one tap: "Add {C}{C}" (manaAmount), and triggered mana abilities — "whenever enchanted Forest is
@@ -437,7 +450,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -446,7 +459,7 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested",
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted",
     "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
@@ -655,7 +668,7 @@
   // (statics that read counters or poison — perCounter, conditional — can change without a board change: then also
   // when the poison counters or the counters on permanents differ from the last rebuild)
   const LAST = new WeakMap();
-  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
+  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.player.speed || 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
     [...s.player.battlefield, ...s.opponent.battlefield].map((c) => (c.counters ? c.id + JSON.stringify(c.counters) : "")).join();
   const refresh = (s) => { if (CHANGED.has(s) || (s.dynamicStatics && LAST.get(s) !== dynamicKey(s))) recomputeStatics(s); };
   function recomputeStatics(s) {
@@ -804,6 +817,10 @@
     let again = true;
     while (again) {
       again = false;
+      // CR 704.5aa / 702.179a: a player with no speed who controls a permanent with start your engines! gets speed 1
+      ["player", "opponent"].forEach((side) => {
+        if (s[side].speed == null && s[side].battlefield.some((c) => has(c, "start your engines!"))) { s[side].speed = 1; ev.push({ type: "speed", side, speed: 1 }); }
+      });
       refresh(s);
       for (const c of [...s.player.battlefield, ...s.opponent.battlefield]) {
         const k = c.counters;
@@ -850,6 +867,12 @@
     if (!n || side.life == null) return;
     side.life += n;
     ev.push({ type: "life", who, amount: n });
+    // CR 702.179d: your speed's inherent trigger — "Whenever one or more opponents lose life during your turn, if your
+    // speed is less than 4, your speed increases by 1. This ability triggers only once each turn." (no source)
+    if (n < 0 && who === "opp" && speedOf(s, "player") >= 1 && speedOf(s, "player") < 4 && !s.speedTriggered) {
+      s.speedTriggered = true;
+      s.triggered.push({ side: "player", name: "Speed", srcId: "speed", td: defId(SPEED_TRIGGER), event: {} });
+    }
   }
 
   // Damage from any source (spell, ability or combat): protection prevents it; wither and infect
@@ -1054,6 +1077,8 @@
   // CR 310.12b: a Siege's intrinsic "When the last defense counter is removed from this permanent, exile it, then you may
   // cast it transformed without paying its mana cost."
   const SIEGE_TRIGGER = { on: "defeated", self: true, effect: { siegeDefeated: true } };
+  // CR 702.179d: the speed trigger (put on the stack by changeLife; the "if" is checked again as it resolves, CR 603.4)
+  const SPEED_TRIGGER = { on: "speed", if: { speedBelow4: true }, effect: { speedUp: 1 } };
 
   // The objects whose abilities can trigger now: permanents on the battlefield, plus cards in other zones whose
   // triggers say they function there (CR 113.6b). `battlefield` replaces the battlefield part for look-back events.
@@ -1101,6 +1126,7 @@
     if (t.on === "unlock" && t.door != null && e.door !== t.door) return false;   // "when you unlock this door"
     if (f.level && e.level !== f.level) return false;                     // "when this Class becomes level 3"
     if (t.byYou && e.controller !== "you") return false;                  // valiant: "a spell or ability you control"
+    if (t.mainPhase && !e.main) return false;                             // "… crews a Vehicle during your main phase"
     return true;
   }
   // An intervening "if" (CR 603.4): { controls: { filter, min } } — "if you control N or more …"
@@ -1131,6 +1157,9 @@
     if (cond.selfTapped && !(self && self.tapped)) return false;
     if (cond.door != null && !(self && self.unlocked && self.unlocked[cond.door])) return false;   // a Room door's ability
     if (cond.saddled && !(self && self.saddled)) return false;
+    // speed (CR 702.179): "Max speed — …" abilities (702.178a); the speed trigger's "if your speed is less than 4"
+    if (cond.maxSpeed && !maxSpeed(s, side)) return false;
+    if (cond.speedBelow4 && !(speedOf(s, side) < 4)) return false;
     // "if it was bargained" (CR 702.166c)
     if (cond.bargained && !(self && self.bargained)) return false;
     // Celebration (WOE): "two or more nonland permanents entered the battlefield under your control this turn"
@@ -1166,14 +1195,17 @@
     if (e.type === "enters") refresh(s);                       // (its power as it is on the battlefield, for "power 2 or less")
     for (const { card, side, zone } of triggerSources(s, lookBack)) {
       for (const t of triggersOf(card)) {
+        // CR 113.6: an ability works only in the zones it says (the battlefield unless it says otherwise)
+        if (!(t.zones || ["battlefield"]).includes(zone || "battlefield")) continue;
         if (!eventMatches(t, card, side, e)) continue;
         if (t.if && !conditionHolds(s, t.if, side, card)) continue;        // CR 603.4: checked as it triggers
+        if (t.maxSpeed && !maxSpeed(s, side)) continue;                     // "Max speed — [triggered ability]" (CR 702.178a)
         // "This ability triggers only once each turn"
         if (t.oncePerTurn) { const k = `${card.id}#${defId(t)}`; if ((s.once || []).includes(k)) continue; s.once = [...(s.once || []), k]; }
         // a source that already left (a look-back trigger, like a dying Blood Artist's): keep its last known information
         if ((zone || "battlefield") === "battlefield" && !find(s, card.id)) (s.lki = s.lki || {})[card.id] = lastKnown(card);
         s.triggered.push({ side, name: card.name, srcId: card.id, td: defId(t), ...(zone && zone !== "battlefield" ? { zone } : {}),
-          event: { id: e.obj && e.obj.id, side: e.side, controller: e.controller } });
+          event: { id: e.obj && e.obj.id, side: e.side, controller: e.controller, ...(e.count != null ? { count: e.count } : {}), ...(e.vehicle ? { vehicle: e.vehicle } : {}) } });
       }
     }
   }
@@ -1222,6 +1254,7 @@
     if (f.artifactOrEnchantment && !isArtifact(c) && !typeHas(c, /enchantment/i)) return false;   // "target artifact or enchantment"
     if (f.artifactOrCreature && !isArtifact(c) && !isCreature(c)) return false;                     // "target artifact or creature"
     if (f.equipped && ![...s.player.battlefield, ...s.opponent.battlefield].some((e) => e.equip && e.attachedTo === c.id)) return false;   // "equipped creatures"
+    if (f.mountOrVehicle && !isMount(c) && !isVehicle(c)) return false;   // "Mounts and Vehicles you control"
     return true;
   }
 
@@ -1255,6 +1288,12 @@
     const creatures = (kind === "opponent-creature" ? s[side === "player" ? "opponent" : "player"].battlefield.filter(isCreature) : all)
       .filter((c) => matches(s, c, filter, side) && canTarget(s, src, side, c.id)).map((c) => c.id);
     if (kind === "creature" || kind === "opponent-creature") return creatures;
+    // "target creature or Vehicle": also Vehicles that aren't creatures right now
+    if (kind === "creature-or-vehicle") {
+      const vehicles = [...s.player.battlefield, ...s.opponent.battlefield].filter((c) => isVehicle(c) && !isCreature(c))
+        .filter((c) => matches(s, c, filter, side) && canTarget(s, src, side, c.id)).map((c) => c.id);
+      return [...creatures, ...vehicles];
+    }
     if (kind === "player") return ["opp", "you"];
     // planeswalkers (not also creatures): "any target" (CR 115.4) and "target creature or planeswalker"
     const walkers = [...s.player.battlefield, ...s.opponent.battlefield].filter((c) => isPlaneswalker(c) && !isCreature(c))
@@ -1296,9 +1335,10 @@
   // Crews worth trying (solver): sets with enough power where no creature could be left out. A creature tapped for
   // nothing only matters if something cares about creatures becoming tapped, and then every set is tried.
   function crewChoices(s, vehicle, n) {
-    const ids = crewHelpers(s, vehicle), pw = (id) => Math.max(power(find(s, id)), 0);
+    const ids = crewHelpers(s, vehicle), pw = (id) => crewPower(find(s, id));
     const enough = subsets(ids).filter((l) => l.reduce((t, id) => t + pw(id), 0) >= n);
-    if (s.listens.includes("becomesTapped")) return enough;
+    // (… or about creatures crewing: "whenever this creature crews a Vehicle")
+    if (s.listens.includes("becomesTapped") || s.listens.includes("crews")) return enough;
     return enough.filter((l) => l.every((id) => l.reduce((t, x) => t + pw(x), 0) - pw(id) < n));
   }
   // The payment options for casting f as `a`: convoke helpers (all must help), or any of them when not chosen yet
@@ -1332,6 +1372,7 @@
     if (to === "eventObject") return ctx.event && ctx.event.id;
     if (to === "eventController") return ctx.event && ctx.event.controller;
     if (to === "enchanted") return ctx.src && ctx.src.attachedTo;      // "enchanted creature" (an Aura's own trigger)
+    if (to === "eventVehicle") return ctx.event && ctx.event.vehicle;  // "that Mount or Vehicle" (it was crewed / saddled)
     return to;
   }
 
@@ -1420,7 +1461,10 @@
     // last existed if it has left (CR 608.2h)
     const srcPower = () => { const now = ctx.selfId && find(s, ctx.selfId); return Math.max(now ? power(now) : ctx.src.lastPower ?? power(ctx.src), 0); };
     // ("X damage, where X is 2 plus the number of other spells you've cast this turn": { plusOtherSpells: 2 })
-    const amount = (d) => (d === "sacrificed" ? ctx.sacPower : d === "power" ? srcPower()
+    // ("deals that much damage": how many cards the event was about — "whenever you discard one or more cards")
+    // ("X is 2 plus the number of Mounts and Vehicles you control": { plus: 2, per: { mountOrVehicle: true } })
+    const amount = (d) => (d === "sacrificed" ? ctx.sacPower : d === "power" ? srcPower() : d === "eventCount" ? (ctx.event && ctx.event.count) || 0
+      : typeof d === "object" && d.per ? (d.plus || 0) + s[ctx.side].battlefield.filter((c) => matches(s, c, d.per, ctx.side)).length
       : typeof d === "object" ? d.plusOtherSpells + Math.max((ctx.side === "player" ? s.spellsCast || 0 : 0) - 1, 0) : d);
     if (eff.damage != null) dealDamage(s, ctx.src, ctx.side, to, amount(eff.damage), ev);
     if (eff.lifeLoss && isPlayer) changeLife(s, to, -eff.lifeLoss, ev);
@@ -1438,6 +1482,16 @@
       ev.push({ type: "discard", who: "opp", amount: eff.discard });
     }
     if (eff.gainLife) changeLife(s, ctx.side === "player" ? "you" : "opp", eff.gainLife, ev);
+    // "Each opponent sacrifices a creature or Vehicle of their choice. Each opponent who can't discards a card." (the
+    // opponent's choice: the one that leaves you no way to win, if there is one)
+    if (eff.edict && to === "opp") {
+      const z = s[ctx.side === "player" ? "opponent" : "player"];
+      const opts = z.battlefield.filter((c) => isCreature(c) || isVehicle(c));
+      if (opts.length) leave(s, opts[choose(s, "Which does the opponent sacrifice?", opts.map((c) => c.name), "opponent")], "graveyard", ev, { sacrificed: true });
+      else applyEffect(s, { discard: 1 }, "opp", ctx, ev);
+    }
+    // "deals 2 damage to each player who doesn't have max speed" (CR 702.179e)
+    if (eff.damageSlow) ["player", "opponent"].forEach((side) => { if (!maxSpeed(s, side)) dealDamage(s, ctx.src, ctx.side, side === "player" ? "you" : "opp", eff.damageSlow, ev); });
     if (eff.controllerLoses && tgt) changeLife(s, sideOf(s, tgt) === "player" ? "you" : "opp", -eff.controllerLoses, ev);   // before it leaves
     if (eff.destroy && tgt && !indestructible(tgt)) leave(s, tgt, "graveyard", ev);
     if (eff.exile && tgt) leave(s, tgt, "exile", ev);
@@ -1445,7 +1499,7 @@
     if (eff.sacrifice && tgt) leave(s, tgt, "graveyard", ev, { sacrificed: true });   // "sacrifice it" (e.g. Ball Lightning)
     if (eff.counters && tgt) {                                   // e.g. { "+1/+1": 1 }; opposite counters then cancel (SBA)
       tgt.counters = { ...(tgt.counters || {}) };
-      Object.entries(eff.counters).forEach(([type, n]) => { tgt.counters[type] = (tgt.counters[type] || 0) + n; });
+      Object.entries(eff.counters).forEach(([type, n]) => { tgt.counters[type] = (tgt.counters[type] || 0) + amount(n); });
       ev.push({ type: "counters", id: tgt.id, counters: eff.counters });
     }
     // "-5/-5 … Descend 4 — -10/-10 instead if there are four or more permanent cards in your graveyard"
@@ -1566,6 +1620,12 @@
       applyEffect(s, more, tgt.id, ctx, ev);
     }
     if (eff.manifestDread) manifestDread(s, ctx.side, ev);
+    // CR 702.179c-d: your speed increases (to at most 4)
+    if (eff.speedUp) {
+      const z = s[ctx.side];
+      z.speed = Math.min(4, speedOf(s, ctx.side) + eff.speedUp);
+      ev.push({ type: "speed", side: ctx.side, speed: z.speed });
+    }
     // "Delirium — If there are four or more card types among cards in your graveyard, that creature gains double strike":
     // part of the effect that applies only if a condition holds as it resolves (eff.ifCond: { if, …effect })
     if (eff.ifCond && conditionHolds(s, eff.ifCond.if, ctx.side, ctx.src)) {
@@ -1638,7 +1698,8 @@
       }
     }
     if (eff.team) {
-      s[ctx.side].battlefield.filter(isCreature).filter((c) => matches(s, c, eff.team.filter, ctx.side) && !(eff.team.other && c.id === ctx.selfId)).forEach((c) => {
+      // ("Creatures and Vehicles you control gain haste": team.vehicles — a Vehicle that isn't a creature yet too)
+      s[ctx.side].battlefield.filter((c) => isCreature(c) || (eff.team.vehicles && isVehicle(c))).filter((c) => matches(s, c, eff.team.filter, ctx.side) && !(eff.team.other && c.id === ctx.selfId)).forEach((c) => {
         if (eff.team.pump) addMod(s, c, eff.team.pump);
         if (eff.team.grant) grant(c, eff.team.grant, s);
       });
@@ -1811,6 +1872,9 @@
     abilities: [{ cost: "{1}", tap: true, sacSelf: true, sorcery: true, targets: "creature", filter: { controller: "you" }, effect: { explore: 1 },
       text: "{1}, {T}, Sacrifice: target creature you control explores" }],
     text: "{1}, {T}, Sacrifice this token: Target creature you control explores. Activate only as a sorcery." };
+  // DFT's Pilot token: a 1/1 colorless Pilot that "saddles Mounts and crews Vehicles as though its power were 2 greater"
+  const PILOT = { name: "Pilot", type: "Token Creature — Pilot", pt: "1/1", colors: [], crewBonus: 2,
+    text: "This token saddles Mounts and crews Vehicles as though its power were 2 greater." };
   // CR 111.10j-r: Role tokens — colorless Aura Role enchantment tokens with enchant creature (eff.role: the name)
   const role = (name, stat, text, extra = {}) => ({ name, type: "Token Enchantment — Aura Role", colors: [], aura: { targets: "creature", static: stat }, text, ...extra });
   const ROLES = {
@@ -1980,7 +2044,7 @@
     // (asked card by card — "could this be cast or activated right now?" — instead of listing every legal move)
     const castNow = (c, zone) => !c.unknown && (c.faces ? (zone === "exile" && c.onAdventure ? [0] : c.faces.map((_, i) => i)) : [undefined])
       .some((face) => fast(faceOf(c, { face })) && !check(s, { type: "cast", id: c.id, face }));
-    return s.player.hand.some((c) => castNow(c, "hand")) ||
+    return s.player.hand.some((c) => castNow(c, "hand") || (c.cycling && !check(s, { type: "cycle", id: c.id }))) ||
       s.player.exile.some((c) => (c.onAdventure || c.playable) && castNow(c, "exile")) ||
       s.player.graveyard.some((c) => c.flashback && castNow(c, "graveyard")) ||
       s.player.battlefield.some((c) => abilitiesOf(c).some((ab) => !ab.sorcery && !abilityProblem(s, c, ab, 0)));
@@ -2141,6 +2205,22 @@
   }
 
   /* ---------- activated abilities ---------- */
+  // CR 702.177a: "Exhaust — [Cost]: [Effect]" means "… Activate only once." (each object: c.exhausted lists the used
+  // ones by their place in c.abilities). CR 702.177b: during your turn, as long as you haven't begun to activate an
+  // exhaust ability this turn, Elvish Refueler (refuelsExhaust) lets you activate them as though they hadn't been.
+  const exhaustSlot = (card, ab) => (card.abilities || []).indexOf(ab);
+  const exhaustReady = (s, card, ab) => !(card.exhausted || []).includes(exhaustSlot(card, ab)) ||
+    (!s.exhaustedThisTurn && s.player.battlefield.some((c) => c.refuelsExhaust && !(c.st && c.st.lost)));
+  // What activating it costs: X filled in; "Exhaust abilities of other permanents you control cost {2} less to activate"
+  // (exhaustLess, Boom Scholar) — only the generic part goes down (CR 601.2f, 602.2b)
+  function abilityCost(s, card, ab, x) {
+    const cost = withX(ab.cost, x);
+    if (!ab.exhaust) return cost;
+    const less = s.player.battlefield.filter((c) => c !== card && c.exhaustLess && !(c.st && c.st.lost)).reduce((t, c) => t + c.exhaustLess, 0);
+    if (!less) return cost;
+    const p = parseCost(cost), generic = Math.max(0, p.generic - less);
+    return (generic ? `{${generic}}` : "") + p.pips.map((y) => `{${y}}`).join("");
+  }
   // A creature's {T} abilities can't be used while it's summoning sick (unless it has haste); equip is sorcery speed.
   function abilityProblem(s, card, ab, x) {
     // loyalty abilities (CR 606.3): your main phase with an empty stack, one per permanent per turn; a minus cost
@@ -2157,9 +2237,12 @@
     if (rc && ((card.counters || {})[rc.kind] || 0) < (rc.n || 1)) return `${card.name} doesn't have ${rc.n || 1} ${rc.kind} counter${(rc.n || 1) > 1 ? "s" : ""}.`;
     if (ab.craft && !craftOptions(s, card, ab.craft).length) return `${card.name} has nothing to craft with.`;
     // (tapping creatures to crew isn't a {T} cost: summoning-sick creatures can crew, CR 302.6 only covers {T}/{Q})
-    if (ab.crew && crewHelpers(s, card).reduce((t, id) => t + Math.max(power(find(s, id)), 0), 0) < ab.crew) return `Your untapped creatures don't have ${ab.crew} total power to ${ab.saddle ? "saddle" : "crew"} it.`;
+    if (ab.crew && crewHelpers(s, card).reduce((t, id) => t + crewPower(find(s, id)), 0) < ab.crew) return `Your untapped creatures don't have ${ab.crew} total power to ${ab.saddle ? "saddle" : "crew"} it.`;
     if (ab.sorcery && !sorceryTime(s)) return `You can only ${ab.text || "do that"} during your main phase, with nothing on the stack.`;
-    if (ab.cost && !bestPayment(s, withX(ab.cost, x), { exclude: ab.tap ? [card.id] : [] })) return "Not enough mana.";
+    // CR 702.178a: "Max speed — [ability]": it has the ability only while your speed is 4
+    if (ab.maxSpeed && !maxSpeed(s, "player")) return `${card.name} has that ability only at max speed (your speed is ${speedOf(s, "player")}).`;
+    if (ab.exhaust && !exhaustReady(s, card, ab)) return `${card.name}'s exhaust ability has already been activated.`;
+    if (ab.cost && !bestPayment(s, abilityCost(s, card, ab, x), { exclude: ab.tap ? [card.id] : [] })) return "Not enough mana.";
     if (ab.targets && !targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)).length) return "There's no legal target.";
     return null;
   }
@@ -2251,6 +2334,14 @@
       if (n && a.payLife && !canPayLife(s, n)) return `You don't have ${n} life to pay.`;
       return null;
     }
+    // CR 702.29a: cycling — "[Cost], Discard this card: Draw a card", an activated ability that works from your hand
+    // (any time you have priority)
+    if (a.type === "cycle") {
+      const card = s.player.hand.find((c) => c.id === a.id);
+      if (!card || !card.cycling) return "Only a card with cycling in your hand can be cycled.";
+      if (!bestPayment(s, card.cycling, { except: card.id })) return `Not enough mana to cycle ${card.name}.`;
+      return null;
+    }
     // CR 702.170a / 116.2k: plot — exile it from your hand and pay its plot cost, during your main phase with an empty stack
     if (a.type === "plot") {
       const card = s.player.hand.find((c) => c.id === a.id);
@@ -2333,7 +2424,7 @@
       if (ab.crew) {
         const crew = a.crew || [];
         if (new Set(crew).size !== crew.length || !crew.every((id) => crewHelpers(s, card).includes(id))) return `Only your other untapped creatures can ${ab.saddle ? "saddle" : "crew"} it.`;
-        if (crew.reduce((t, id) => t + Math.max(power(find(s, id)), 0), 0) < ab.crew) return `Choose creatures with ${ab.crew} or more total power to ${ab.saddle ? "saddle" : "crew"} it.`;
+        if (crew.reduce((t, id) => t + crewPower(find(s, id)), 0) < ab.crew) return `Choose creatures with ${ab.crew} or more total power to ${ab.saddle ? "saddle" : "crew"} it.`;
       }
       if (a.target != null) return validTargets(a.target, targetsFor(s, card, ab.targets, ab.filter), ab.targetCount);
       return null;
@@ -2525,6 +2616,21 @@
       emit(s, { type: "becomesPlotted", obj: card, side: "player" }, ev);   // "When this card becomes plotted"
     }
 
+    if (a.type === "cycle") {
+      // CR 602.2: the ability goes on the stack, then its costs are paid — the mana, and discarding the card
+      const card = s.player.hand.find((c) => c.id === a.id);
+      spend(s, bestPayment(s, card.cycling, { except: card.id }), ev);
+      s.player.hand = s.player.hand.filter((c) => c !== card);
+      putCard(s, card, "player", replaceMove(s, card, "hand", "graveyard", "player"));
+      ev.push({ type: "cycled", id: card.id });
+      // CR 702.29c-d: "when you cycle this card" (it triggers from the graveyard, where the card went) and "whenever
+      // you discard one or more cards" (once: one card was discarded)
+      emit(s, { type: "cycled", obj: card, side: "player" }, ev);
+      emit(s, { type: "discard", obj: card, side: "player", count: 1 }, ev);
+      s.stack.unshift({ kind: "ability", name: `${card.name}'s cycling`, id: card.id, a: {}, ab: { effect: { draw: 1 } },
+        ctx: { src: card, side: "player", selfId: card.id } });
+    }
+
     if (a.type === "mana") {
       // {T}, sacrifice: add one mana of any color. A mana ability: no stack, usable whenever you have priority.
       const t = find(s, a.id);
@@ -2594,7 +2700,7 @@
     if (a.type === "activate") {
       const card = find(s, a.id);
       const ab = abilitiesOf(card)[a.index];
-      const pay = ab.cost ? bestPayment(s, withX(ab.cost, a.x), { exclude: ab.tap ? [card.id] : [] }) : [];
+      const pay = ab.cost ? bestPayment(s, abilityCost(s, card, ab, a.x), { exclude: ab.tap ? [card.id] : [] }) : [];
       // CR 602.2: the ability goes on the stack, then its costs are paid; it's independent of its source (CR 113.7a)
       const ctx = { src: lastKnown(card), side: "player", sacPower: Math.max(power(card), 0), selfId: card.id, x: a.x };
       spend(s, pay, ev);
@@ -2602,7 +2708,18 @@
       if (ab.special === "turnFaceUp") { turnFaceUp(s, card, ev); sba(s, ev); settle(s, ev); return { state: s, events: ev }; }
       if (ab.special === "unlock") { unlockDoor(s, card, ab.door, ev); sba(s, ev); settle(s, ev); return { state: s, events: ev }; }
       if (ab.tap) tap(s, card, ev);
-      (ab.crew ? a.crew : []).forEach((id) => tap(s, find(s, id), ev));   // the crew cost
+      // the crew / saddle cost; CR 702.122d, 702.171c: each creature tapped for it "crews the Vehicle" / "saddles the Mount"
+      (ab.crew ? a.crew : []).forEach((id) => {
+        const m = find(s, id);
+        tap(s, m, ev);
+        emit(s, { type: "crews", obj: m, side: "player", vehicle: card.id, main: inMain(s) }, ev);
+      });
+      // an exhaust ability is used up (CR 702.177a); "whenever you activate an exhaust ability" triggers (CR 602.2)
+      if (ab.exhaust) {
+        card.exhausted = [...new Set([...(card.exhausted || []), exhaustSlot(card, ab)])].sort();
+        s.exhaustedThisTurn = true;
+        emit(s, { type: "exhaust", obj: card, side: "player" }, ev);
+      }
       if (ab.craft) {                                                     // the craft cost: exile it and the material
         const mat = find(s, a.craft);
         if (mat) leave(s, mat, "exile", ev);
@@ -2734,6 +2851,7 @@
     for (const { card, zone } of sources) {
       if (card.unknown) continue;
       if (zone === "hand" && card.plot && !check(s, { type: "plot", id: card.id })) out.push({ type: "plot", id: card.id });
+      if (zone === "hand" && card.cycling && !check(s, { type: "cycle", id: card.id })) out.push({ type: "cycle", id: card.id });
       // disguise: cast it face down for {3}
       if (card.disguise && !check(s, { type: "cast", id: card.id, faceDown: true })) out.push({ type: "cast", id: card.id, faceDown: true });
       const faces = card.faces ? (zone === "exile" || card.layout === "transform" ? [0] : card.faces.map((_, i) => i)) : [undefined];
@@ -2795,8 +2913,9 @@
         const xs = parseCost(ab.cost).x ? range(manaAvailable(s, ab.tap ? [card.id] : []) - manaValue(ab.cost)) : [undefined];
         xs.forEach((x) => {
           if (abilityProblem(s, card, ab, x)) return;
-          // crewing a Vehicle that's already a creature does nothing more (solver: only crews that matter)
-          if (ab.crew) { if (ab.saddle ? !card.saddled : !isCreature(card)) crewChoices(s, card, ab.crew).forEach((crew) => out.push({ type: "activate", id: card.id, index, crew })); return; }
+          // crewing a Vehicle that's already a creature does nothing more (solver: only crews that matter) — unless
+          // something triggers on crewing
+          if (ab.crew) { if ((ab.saddle ? !card.saddled : !isCreature(card)) || s.listens.includes("crews")) crewChoices(s, card, ab.crew).forEach((crew) => out.push({ type: "activate", id: card.id, index, crew })); return; }
           if (ab.craft) { craftOptions(s, card, ab.craft).forEach((m) => out.push({ type: "activate", id: card.id, index, craft: m })); return; }
           const list = ab.targets ? targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)) : null;
           (list ? targetChoices(list, ab.targetCount) : [undefined]).forEach((target) => out.push({ type: "activate", id: card.id, index, target, x }));
@@ -2934,6 +3053,7 @@
     if (a.type === "scry") return `scry: keep ${a.top.map((id) => nameOf(s, id)).join(", ") || "nothing"} on top` + (a.away.length ? `, away ${a.away.map((id) => nameOf(s, id)).join(", ")}` : "");
     if (a.type === "mana") return `sacrifice ${nameOf(s, a.id)} for mana`;
     if (a.type === "plot") return `plot ${nameOf(s, a.id)}`;
+    if (a.type === "cycle") return `cycle ${nameOf(s, a.id)}`;
     if (a.type === "pass") return `resolve: ${s.stack[0] ? s.stack[0].name : "the stack"}`;
     if (a.type === "choice") return `${s.pending[0].name.replace(/:.*/, "")}: ${s.pending[0].labels[a.pick]}`;
     if (a.type === "order") return `put ${s.pending[a.pick] ? s.pending[a.pick].name : "a"}'s trigger on the stack first`;
@@ -3042,6 +3162,7 @@
     STEPS, at, init, check, apply, won, lost, canPayLife, turnOver, blightOptions, beholdOptions, convokeHelpers, castPayment, CLUE, evidenceOptions, manyModes, MERCENARY,
     hasType, vividCount, colorsOf, subsets, textOf, pendingTrigger, currentPT, isPlaneswalker, loyaltyOf, isBattle, defenseOf, INCUBATOR, FOOD, ROLES, MAP, bargainOptions, legalActions, nextStep, solve, describe, opponentBlocks, blockOptions, nextStop,
     targetsFor, targetChoices, spellSpec, plan, faceOf, compositions, scryChoices, castable, abilitiesOf, sacrificeOptions, canAttackNow, inMain, parseCost, manaValue, manaAvailable,
-    abilityProblem, isCreature, isLand, isInstant, isTreasure, has, power, toughness, slug, makeSearch, WORD_OF
+    abilityProblem, isCreature, isLand, isInstant, isTreasure, has, power, toughness, slug, makeSearch, WORD_OF,
+    speedOf, maxSpeed, isVehicle, PILOT, crewPower, exhaustReady
   };
 })(typeof window !== "undefined" ? window : globalThis);

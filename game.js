@@ -262,6 +262,7 @@
     if (c.saddled) gainedKw.unshift("saddled");
     if (c.solved) gainedKw.unshift("solved");
     if (c.levels) gainedKw.unshift(`level ${c.level || 1}`);       // a Class's level
+    if (c.exhausted && c.exhausted.length) gainedKw.unshift("exhaust used");   // its exhaust ability was activated
     // a Room: which doors are unlocked
     if (c.layout === "room" && c.unlocked) gainedKw.unshift(...c.faces.map((f, i) => `${f.name}: ${c.unlocked[i] ? "unlocked" : "locked"}`));
     if (gainedKw.length) {
@@ -423,6 +424,11 @@
     $("opp-hand").querySelector("b").textContent = p.opponent.handCount ?? 0;
     $("opp-gy").querySelector("b").textContent = p.opponent.graveyard.length;
     $("you-life").querySelector("b").textContent = p.player.life ?? "∞";   // not shown = irrelevant
+    // speed (CR 702.179): shown once a player has one; 4 is max speed
+    [["you-speed", p.player], ["opp-speed", p.opponent]].forEach(([el, z]) => {
+      $(el).hidden = z.speed == null;
+      $(el).querySelector("b").textContent = z.speed >= 4 ? "4 (max)" : z.speed ?? 0;
+    });
     $("you-library").querySelector("b").textContent = p.player.library.length + (p.player.libraryCount ?? 0);
     $("you-gy").querySelector("b").textContent = p.player.graveyard.length;
     $("opp-exile").querySelector("b").textContent = p.opponent.exile.length;
@@ -576,6 +582,9 @@
   function stackSource(x) {
     if (x.kind === "spell" && x.a.faceDown) return { id: x.card.id, name: "Face-down spell", type: "Creature", pt: "2/2", faceDown: true, hidden: x.card };
     if (x.kind === "spell") return x.card.faces ? { ...x.card, ...x.card.faces[x.a.face || 0], id: x.card.id } : x.card;
+    // your speed's own trigger has no source (CR 702.179d)
+    if (x.kind === "trigger" && x.srcId === "speed") return { id: "speed", name: "Speed", type: "Speed", token: true, colors: [],
+      text: "Whenever one or more opponents lose life during your turn, if your speed is less than 4, your speed increases by 1. This ability triggers only once each turn." };
     const id = x.kind === "trigger" ? x.srcId : x.id;
     const here = [...state.player.battlefield, ...state.opponent.battlefield, ...state.player.graveyard, ...state.opponent.graveyard,
       ...state.player.exile, ...state.opponent.exile].find((c) => c.id === id);
@@ -789,7 +798,7 @@
       // crew: tap your other untapped creatures with enough total power (summoning-sick ones too)
       if (ab.crew && casting.crew === undefined) {
         const ids = crewIds(card);
-        const pw = (l) => l.reduce((t, id) => t + Math.max(E.power(state.player.battlefield.find((c) => c.id === id)), 0), 0);
+        const pw = (l) => l.reduce((t, id) => t + E.crewPower(state.player.battlefield.find((c) => c.id === id)), 0);
         return pickCards({ ids, min: 1, max: ids.length,
           prompt: ab.saddle ? `Saddle ${ab.crew}: tap your other creatures with ${ab.crew} or more total power to saddle ${card.name}.`
             : `Crew ${ab.crew}: tap your creatures with ${ab.crew} or more total power to make ${card.name} a creature.`,
@@ -835,6 +844,19 @@
     }
     if (casting.plot) {
       const a = { type: "plot", id: card.id };
+      const why = E.check(state, a);
+      cancelCast();
+      return why ? rulesNote(why) : perform(a);
+    }
+    // cycling (a card in your hand): cast it, or cycle it (pay the cycling cost and discard it: draw a card)
+    if (card.cycling && casting.cycle === undefined && state.player.hand.includes(card)) {
+      const canCycle = !E.check(state, { type: "cycle", id: card.id });
+      const canCast = !E.check(state, { type: "cast", id: card.id });
+      if (canCycle && canCast) return askChoice(`${card.name}: cast or cycle?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Cycle it for ${card.cycling} (discard it, draw a card)`]], again("cycle"));
+      casting.cycle = canCycle && !canCast;
+    }
+    if (casting.cycle) {
+      const a = { type: "cycle", id: card.id };
       const why = E.check(state, a);
       cancelCast();
       return why ? rulesNote(why) : perform(a);

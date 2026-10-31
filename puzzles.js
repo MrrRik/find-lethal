@@ -725,6 +725,165 @@
       text: "Haste. Delirium — This creature gets +1/+1 and has trample as long as there are four or more card types among cards in your graveyard." }
   });
 
+  // ---- Aetherdrift (DFT): start your engines! / max speed, exhaust, cycling, Vehicles and Mounts, Pilots ----
+  // (a player's speed is set in the puzzle: you: { speed: 3 }; max speed abilities use if: { maxSpeed } or maxSpeed: true;
+  // exhaust abilities exhaust: true — a permanent may list exhausted: [index] for one already used; cycling: its cost)
+  const SYE = "start your engines!";
+  const SYE_TEXT = "Start your engines! (If you have no speed, it starts at 1. It increases once on each of your turns when an opponent loses life. Max speed is 4.)";
+  const THOPTER = { name: "Thopter", type: "Token Artifact Creature — Thopter", pt: "1/1", kw: ["flying"], colors: [] };
+  const crewText = (n) => `Crew ${n} (Tap any number of creatures you control with total power ${n} or more: This Vehicle becomes an artifact creature until end of turn.)`;
+  const saddleText = (n) => `Saddle ${n} (Tap any number of other creatures you control with total power ${n} or more: This Mount becomes saddled until end of turn. Saddle only as a sorcery.)`;
+  const cycleText = (cost) => `Cycling ${cost} (${cost}, Discard this card: Draw a card.)`;
+  Object.assign(CARDS, {
+    // speed
+    "Gastal Thrillseeker": { type: "Creature — Lizard Berserker", cost: "{B}{R}", pt: "2/3", kw: [SYE],
+      etb: { damage: 1, gainLife: 1 }, targets: "opponent", conditional: [{ if: { maxSpeed: true }, grant: ["deathtouch", "haste"] }],
+      text: `${SYE_TEXT} When this creature enters, it deals 1 damage to target opponent and you gain 1 life. Max speed — This creature has deathtouch and haste.` },
+    "Walking Sarcophagus": { type: "Artifact Creature — Zombie Cat", cost: "{2}", pt: "2/1", kw: [SYE], conditional: [{ if: { maxSpeed: true }, pump: [1, 2] }],
+      text: `${SYE_TEXT} Max speed — This creature gets +1/+2.` },
+    "Endrider Catalyzer": { type: "Creature — Human Warrior", cost: "{1}{R}", pt: "3/1", kw: [SYE], produces: "R", manaAmount: 2, maxSpeedMana: true,
+      text: `${SYE_TEXT} Max speed — {T}: Add {R}{R}.` },
+    "Pride of the Road": { type: "Creature — Zombie Cat Warrior", cost: "{3}{W}", pt: "2/5", kw: ["vigilance", SYE],
+      triggers: [{ on: "beginningOfCombat", filter: { controller: "you" }, maxSpeed: true, targets: "creature-or-vehicle", targetFilter: { controller: "you" }, effect: { grant: ["double strike"] } }],
+      text: `Vigilance. ${SYE_TEXT} Max speed — At the beginning of combat on your turn, target creature or Vehicle you control gains double strike until end of turn.` },
+    "Amonkhet Raceway": { type: "Land", produces: "C", kw: [SYE],
+      abilities: [{ maxSpeed: true, tap: true, targets: "creature", effect: { grant: ["haste"] }, text: "Max speed — {T}: Target creature gains haste" }],
+      text: `${SYE_TEXT} {T}: Add {C}. Max speed — {T}: Target creature gains haste until end of turn.` },
+    "Streaking Oilgorger": { type: "Creature — Vampire", cost: "{4}{B}", pt: "3/3", kw: ["flying", "haste", SYE], conditional: [{ if: { maxSpeed: true }, grant: ["lifelink"] }],
+      text: `Flying, haste. ${SYE_TEXT} Max speed — This creature has lifelink.` },
+    "Goblin Surveyor": { type: "Creature — Goblin Scout", cost: "{2}{R}", pt: "3/2", kw: ["trample", SYE],
+      text: `Trample. ${SYE_TEXT} Max speed — {3}, Exile this card from your graveyard: Draw a card.` },
+    "Mutant Surveyor": { type: "Creature — Mutant Scout", cost: "{2}{B}", pt: "2/3", kw: [SYE],
+      abilities: [{ cost: "{2}", effect: { pump: [1, 1], self: true }, text: "{2}: +1/+1" }],
+      text: `${SYE_TEXT} {2}: This creature gets +1/+1 until end of turn. Max speed — {3}, Exile this card from your graveyard: Draw a card.` },
+    "Leonin Surveyor": { type: "Creature — Cat Scout", cost: "{1}{W}", pt: "2/2", kw: [SYE, "first strike"],
+      text: `${SYE_TEXT} During your turn, this creature has first strike. Max speed — {3}, Exile this card from your graveyard: Draw a card.` },
+    "Momentum Breaker": { type: "Enchantment", cost: "{1}{B}", kw: [SYE], etb: { edict: true, to: "opp" },
+      text: `${SYE_TEXT} When this enchantment enters, each opponent sacrifices a creature or Vehicle of their choice. Each opponent who can't discards a card. {2}, Sacrifice this enchantment: You gain life equal to your speed.` },
+    "Outpace Oblivion": { type: "Enchantment", cost: "{2}{R}", kw: [SYE], etb: { damage: 5 }, targets: "creature-or-planeswalker", targetCount: { min: 0, max: 1 },
+      abilities: [{ cost: "{2}", sacSelf: true, effect: { damageSlow: 2 }, text: "{2}, Sacrifice: 2 damage to each player without max speed" }],
+      text: `${SYE_TEXT} When this enchantment enters, it deals 5 damage to up to one target creature or planeswalker. {2}, Sacrifice this enchantment: It deals 2 damage to each player who doesn't have max speed.` },
+    "Pactdoll Terror": { type: "Artifact Creature — Toy", cost: "{3}{B}", pt: "3/4",
+      triggers: [{ on: "enters", filter: { controller: "you", artifact: true }, effect: { lifeLoss: 1, to: "opp", gainLife: 1 } }],
+      text: "Whenever this creature or another artifact you control enters, each opponent loses 1 life and you gain 1 life." },
+    // exhaust
+    "Pacesetter Paragon": { type: "Creature — Human Pilot", cost: "{2}{R}", pt: "2/3",
+      abilities: [{ cost: "{2}{R}", exhaust: true, effect: { counters: { "+1/+1": 1 }, grant: ["double strike"], self: true }, text: "Exhaust — {2}{R}: +1/+1 counter, double strike" }],
+      text: "Exhaust — {2}{R}: Put a +1/+1 counter on this creature. It gains double strike until end of turn. (Activate each exhaust ability only once.)" },
+    "Prowcatcher Specialist": { type: "Creature — Goblin Warrior", cost: "{1}{R}", pt: "2/1", kw: ["haste"],
+      abilities: [{ cost: "{3}{R}", exhaust: true, effect: { counters: { "+1/+1": 2 }, self: true }, text: "Exhaust — {3}{R}: two +1/+1 counters" }],
+      text: "Haste. Exhaust — {3}{R}: Put two +1/+1 counters on this creature. (Activate each exhaust ability only once.)" },
+    "Adrenaline Jockey": { type: "Creature — Minotaur Pilot", cost: "{2}{R}", pt: "3/3",
+      triggers: [{ on: "exhaust", filter: { controller: "you" }, effect: { counters: { "+1/+1": 1 }, self: true } }],
+      text: "Whenever a player casts a spell, if it's not their turn, this creature deals 4 damage to them. Whenever you activate an exhaust ability, put a +1/+1 counter on this creature." },
+    "Stampeding Scurryfoot": { type: "Creature — Mouse", cost: "{G}", pt: "1/1",
+      abilities: [{ cost: "{3}{G}", exhaust: true, effect: { counters: { "+1/+1": 1 }, self: true, create: { name: "Elephant", type: "Token Creature — Elephant", pt: "3/3", colors: ["G"] } }, text: "Exhaust — {3}{G}: +1/+1 counter, 3/3 Elephant" }],
+      text: "Exhaust — {3}{G}: Put a +1/+1 counter on this creature. Create a 3/3 green Elephant creature token. (Activate each exhaust ability only once.)" },
+    "Greenbelt Guardian": { type: "Creature — Elf Ranger", cost: "{1}{G}", pt: "2/2",
+      abilities: [{ cost: "{G}", targets: "creature", effect: { grant: ["trample"] }, text: "{G}: Target creature gains trample" },
+        { cost: "{3}{G}", exhaust: true, effect: { counters: { "+1/+1": 3 }, self: true }, text: "Exhaust — {3}{G}: three +1/+1 counters" }],
+      text: "{G}: Target creature gains trample until end of turn. Exhaust — {3}{G}: Put three +1/+1 counters on this creature. (Activate each exhaust ability only once.)" },
+    "Elvish Refueler": { type: "Creature — Elf Druid", cost: "{2}{G}", pt: "2/3", refuelsExhaust: true,
+      abilities: [{ cost: "{1}{G}", exhaust: true, effect: { counters: { "+1/+1": 1 }, self: true }, text: "Exhaust — {1}{G}: +1/+1 counter" }],
+      text: "During your turn, as long as you haven't activated an exhaust ability this turn, you may activate exhaust abilities as though they haven't been activated. Exhaust — {1}{G}: Put a +1/+1 counter on this creature. (Activate each exhaust ability only once.)" },
+    "Boom Scholar": { type: "Creature — Goblin Advisor", cost: "{1}{R}{G}", pt: "3/3", exhaustLess: 2,
+      abilities: [{ cost: "{4}{R}{G}", exhaust: true, effect: { team: { grant: ["trample"], vehicles: true }, counters: { "+1/+1": 2 }, self: true }, text: "Exhaust — {4}{R}{G}: team trample, two +1/+1 counters" }],
+      text: "Exhaust abilities of other permanents you control cost {2} less to activate. Exhaust — {4}{R}{G}: Creatures and Vehicles you control gain trample until end of turn. Put two +1/+1 counters on this creature. (Activate each exhaust ability only once.)" },
+    "Rangers' Aetherhive": { type: "Artifact — Vehicle", cost: "{1}{G}{U}", pt: "3/5", kw: ["vigilance", "crew 1"],
+      triggers: [{ on: "exhaust", filter: { controller: "you" }, effect: { create: THOPTER } }],
+      text: `Vigilance. Whenever you activate an exhaust ability, create a 1/1 colorless Thopter artifact creature token with flying. ${crewText(1)}` },
+    "Rocketeer Boostbuggy": { type: "Artifact — Vehicle", cost: "{R}{G}", pt: "3/2", kw: ["crew 1"],
+      onAttack: { effect: { create: { name: "Treasure", type: "Token Artifact — Treasure", colors: [] } } },
+      abilities: [{ cost: "{3}", exhaust: true, effect: { becomeCreature: true, counters: { "+1/+1": 1 }, self: true }, text: "Exhaust — {3}: becomes a creature, +1/+1 counter" }],
+      text: `Whenever this Vehicle attacks, create a Treasure token. Exhaust — {3}: This Vehicle becomes an artifact creature. Put a +1/+1 counter on it. (Activate each exhaust ability only once.) ${crewText(1)}` },
+    "Camera Launcher": { type: "Artifact Creature — Construct", cost: "{3}", pt: "2/2",
+      abilities: [{ cost: "{3}", exhaust: true, effect: { counters: { "+1/+1": 1 }, self: true, create: THOPTER }, text: "Exhaust — {3}: +1/+1 counter, Thopter" }],
+      text: "Exhaust — {3}: Put a +1/+1 counter on this creature. Create a 1/1 colorless Thopter artifact creature token with flying. (Activate each exhaust ability only once.)" },
+    "Skystreak Engineer": { type: "Creature — Human Pilot", cost: "{1}{U}", pt: "1/3", kw: ["flying"],
+      abilities: [{ cost: "{4}{U}", exhaust: true, effect: { counters: { "+1/+1": 2 }, self: true }, text: "Exhaust — {4}{U}: two +1/+1 counters" }],
+      text: "Flying. Exhaust — {4}{U}: Put two +1/+1 counters on this creature. (Activate each exhaust ability only once.)" },
+    // cycling and discarding
+    "Magmakin Artillerist": { type: "Creature — Elemental Pirate", cost: "{2}{R}", pt: "1/4", cycling: "{1}{R}",
+      triggers: [{ on: "discard", filter: { controller: "you" }, effect: { damage: "eventCount", to: "opp" } },
+        { on: "cycled", self: true, zones: ["graveyard"], effect: { damage: 1, to: "opp" } }],
+      text: `Whenever you discard one or more cards, this creature deals that much damage to each opponent. ${cycleText("{1}{R}")} When you cycle this card, it deals 1 damage to each opponent.` },
+    "Marauding Mako": { type: "Creature — Shark Pirate", cost: "{R}", pt: "1/1", cycling: "{2}",
+      triggers: [{ on: "discard", filter: { controller: "you" }, effect: { counters: { "+1/+1": "eventCount" }, self: true } }],
+      text: `Whenever you discard one or more cards, put that many +1/+1 counters on this creature. ${cycleText("{2}")}` },
+    "Scrounging Skyray": { type: "Creature — Fish Pirate", cost: "{1}{U}", pt: "1/2", kw: ["flying"], cycling: "{2}",
+      triggers: [{ on: "discard", filter: { controller: "you" }, effect: { counters: { "+1/+1": "eventCount" }, self: true } }],
+      text: `Flying. Whenever you discard one or more cards, put that many +1/+1 counters on this creature. ${cycleText("{2}")}` },
+    "Clamorous Ironclad": { type: "Artifact — Vehicle", cost: "{3}{R}", pt: "6/3", kw: ["menace", "crew 3"], cycling: "{R}",
+      text: `Menace. ${crewText(3)} ${cycleText("{R}")}` },
+    "Skycrash": { type: "Instant", cost: "{1}{R}", targets: "artifact", effect: { destroy: true }, cycling: "{R}",
+      text: `Destroy target artifact. ${cycleText("{R}")}` },
+    "Lightshield Parry": { type: "Instant", cost: "{W}", targets: "creature", effect: { pump: [2, 2] }, cycling: "{2}",
+      text: `Target creature gets +2/+2 until end of turn. ${cycleText("{2}")}` },
+    "Fuel the Flames": { type: "Instant", cost: "{2}{R}", effect: { damageAll: { n: 2, creatures: "all" } }, cycling: "{2}",
+      text: `Fuel the Flames deals 2 damage to each creature. ${cycleText("{2}")}` },
+    "Howler's Heavy": { type: "Creature — Seal Pirate", cost: "{3}{U}", pt: "3/4", cycling: "{1}{U}",
+      triggers: [{ on: "cycled", self: true, zones: ["graveyard"], targets: "creature-or-vehicle", targetFilter: { controller: "opponent" }, effect: { pump: [-3, 0] } }],
+      text: `${cycleText("{1}{U}")} When you cycle this card, target creature or Vehicle an opponent controls gets -3/-0 until end of turn.` },
+    // Vehicles, Mounts and Pilots
+    "Pilot": { ...JSON.parse(JSON.stringify(Engine.PILOT)), token: true },
+    "Dynamite Diver": { type: "Creature — Goblin Pilot", cost: "{R}", pt: "1/1", crewBonus: 2,
+      onDeath: { effect: { damage: 1 }, targets: "any" },
+      text: "This creature saddles Mounts and crews Vehicles as though its power were 2 greater. When this creature dies, it deals 1 damage to any target." },
+    "Cloudspire Captain": { type: "Creature — Human Pilot", cost: "{2}{W}", pt: "2/3", crewBonus: 2,
+      static: { team: { pump: [1, 1] }, filter: { mountOrVehicle: true } },
+      text: "Mounts and Vehicles you control get +1/+1. This creature saddles Mounts and crews Vehicles as though its power were 2 greater." },
+    "Interface Ace": { type: "Artifact Creature — Robot Pilot", cost: "{1}{W}", pt: "0/4", crewByToughness: true,
+      triggers: [{ on: "becomesTapped", self: true, oncePerTurn: true, effect: { untap: true, self: true } }],
+      text: "This creature saddles Mounts and crews Vehicles using its toughness rather than its power. Whenever this creature becomes tapped during your turn, untap it. This ability triggers only once each turn." },
+    "Reckless Velocitaur": { type: "Creature — Minotaur Pilot", cost: "{3}{R}", pt: "3/3",
+      triggers: [{ on: "crews", self: true, mainPhase: true, effect: { pump: [2, 0], grant: ["trample"], to: "eventVehicle" } }],
+      text: "Whenever this creature saddles a Mount or crews a Vehicle during your main phase, that Mount or Vehicle gets +2/+0 and gains trample until end of turn." },
+    "Canyon Vaulter": { type: "Creature — Kor Pilot", cost: "{1}{W}", pt: "3/1",
+      triggers: [{ on: "crews", self: true, mainPhase: true, effect: { grant: ["flying"], to: "eventVehicle" } }],
+      text: "Whenever this creature saddles a Mount or crews a Vehicle during your main phase, that Mount or Vehicle gains flying until end of turn." },
+    "Marshals' Pathcruiser": { type: "Artifact — Vehicle", cost: "{3}", pt: "6/5", kw: ["crew 5"],
+      abilities: [{ cost: "{W}{U}{B}{R}{G}", exhaust: true, effect: { becomeCreature: true, counters: { "+1/+1": 2 }, self: true }, text: "Exhaust — {W}{U}{B}{R}{G}: becomes a creature, two +1/+1 counters" }],
+      text: `When this Vehicle enters, search your library for a basic land card, reveal it, put it into your hand, then shuffle. Exhaust — {W}{U}{B}{R}{G}: This Vehicle becomes an artifact creature. Put two +1/+1 counters on it. (Activate each exhaust ability only once.) ${crewText(5)}` },
+    "Burner Rocket": { type: "Artifact — Vehicle", cost: "{1}{R}", pt: "3/1", kw: ["flash", "crew 1"],
+      etb: { pump: [2, 0], grant: ["trample"] }, targets: "creature", targetFilter: { controller: "you" },
+      text: `Flash. When this Vehicle enters, target creature you control gets +2/+0 and gains trample until end of turn. ${crewText(1)}` },
+    "Apocalypse Runner": { type: "Artifact — Vehicle", cost: "{2}{B}{R}", pt: "6/5", kw: ["crew 3"],
+      abilities: [{ tap: true, targets: "creature", filter: { controller: "you", maxPower: 2 }, effect: { grant: ["lifelink", "unblockable"] }, text: "{T}: Power 2 or less: lifelink, can't be blocked" }],
+      text: `{T}: Target creature you control with power 2 or less gains lifelink until end of turn and can't be blocked this turn. ${crewText(3)}` },
+    "Air Response Unit": { type: "Artifact — Vehicle", cost: "{2}{W}", pt: "3/3", kw: ["flying", "vigilance", "crew 1"],
+      text: `Flying, vigilance. ${crewText(1)}` },
+    "Alacrian Jaguar": { type: "Creature — Cat Mount", cost: "{4}{G}", pt: "4/4", kw: ["vigilance", "saddle 1"],
+      triggers: [{ on: "attacks", self: true, if: { saddled: true }, effect: { pump: [2, 2], self: true } }],
+      text: `Vigilance. Whenever this creature attacks while saddled, it gets +2/+2 until end of turn. ${saddleText(1)}` },
+    "Venomsac Lagac": { type: "Creature — Lizard Mount", cost: "{1}{G}", pt: "2/1", kw: ["deathtouch", "saddle 2"],
+      triggers: [{ on: "attacks", self: true, if: { saddled: true }, effect: { pump: [0, 3], self: true } }],
+      text: `Deathtouch. Whenever this creature attacks while saddled, it gets +0/+3 until end of turn. ${saddleText(2)}` },
+    "Gilded Ghoda": { type: "Creature — Horse Mount", cost: "{1}{R}", pt: "2/2", kw: ["saddle 1"],
+      triggers: [{ on: "attacks", self: true, if: { saddled: true }, effect: { create: { name: "Treasure", type: "Token Artifact — Treasure", colors: [] } } }],
+      text: `Whenever this creature attacks while saddled, create a Treasure token. (It's an artifact with "{T}, Sacrifice this token: Add one mana of any color.") ${saddleText(1)}` },
+    "Brightfield Glider": { type: "Creature — Possum Mount", cost: "{W}", pt: "1/1", kw: ["vigilance", "saddle 3"],
+      triggers: [{ on: "attacks", self: true, if: { saddled: true }, effect: { pump: [1, 2], grant: ["flying"], self: true } }],
+      text: `Vigilance. Whenever this creature attacks while saddled, it gets +1/+2 and gains flying until end of turn. ${saddleText(3)}` },
+    "Dracosaur Auxiliary": { type: "Creature — Dinosaur Dragon Mount", cost: "{4}{R}{R}", pt: "4/4", kw: ["flying", "haste", "saddle 3"],
+      triggers: [{ on: "attacks", self: true, if: { saddled: true }, targets: "any", effect: { damage: 2 } }],
+      text: `Flying, haste. Whenever this creature attacks while saddled, it deals 2 damage to any target. ${saddleText(3)}` },
+    "Road Rage": { type: "Instant", cost: "{R}", targets: "creature-or-planeswalker", effect: { damage: { plus: 2, per: { mountOrVehicle: true } } },
+      text: "Road Rage deals X damage to target creature or planeswalker, where X is 2 plus the number of Mounts and Vehicles you control." },
+    "Pedal to the Metal": { type: "Instant", cost: "{X}{R}", targets: "creature", effect: { pump: ["X", 0], grant: ["first strike"] },
+      text: "Target creature gets +X/+0 and gains first strike until end of turn." },
+    "Bestow Greatness": { type: "Instant", cost: "{2}{G}", targets: "creature", effect: { pump: [4, 4], grant: ["trample"] },
+      text: "Target creature gets +4/+4 and gains trample until end of turn." },
+    "Fang Guardian": { type: "Creature — Ape Druid", cost: "{3}{G}", pt: "4/2", kw: ["flash"],
+      etb: { pump: [2, 2] }, targets: "creature-or-vehicle", targetFilter: { controller: "you", other: true },
+      text: "Flash. When this creature enters, another target creature or Vehicle you control gets +2/+2 until end of turn." },
+    // vanilla Tyrants and other bodies
+    "Caelorna, Coral Tyrant": { type: "Legendary Creature — Octopus", cost: "{1}{U}", pt: "0/8", text: "" },
+    "Tyrox, Saurid Tyrant": { type: "Legendary Creature — Dinosaur Warrior", cost: "{1}{R}", pt: "4/1", text: "" },
+    "Kalakscion, Hunger Tyrant": { type: "Legendary Creature — Crocodile", cost: "{1}{B}{B}", pt: "7/2", text: "" },
+    "Sundial, Dawn Tyrant": { type: "Legendary Artifact Creature — Construct", cost: "{1}{W}", pt: "3/3", text: "" },
+    "Jibbirik Omnivore": { type: "Creature — Beast", cost: "{1}{G}", pt: "3/2", text: "" }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -1840,6 +1999,144 @@ LETHAL: Ticket Booth ({2}{R}): manifest the Mountain; Grizzly Bears to the grave
   Violent Urge ({R}) on Hill Giant: 4/3, first strike, delirium: double strike. 8.
 RULES: Manifest dread (701.62a): you choose which card is manifested. The Room on the battlefield isn't in the graveyard.
 WRONG LINES: Manifesting the Bears: the Mountain adds no type (land is there): 4.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= AETHERDRIFT (set DFT) ======================= */
+  // Start your engines! / max speed, exhaust, cycling, Vehicles and Mounts, Pilots that crew as though bigger
+  window.PUZZLES.push(
+    puzzle({
+      id: "dft-01-engines-on", title: "Engines On", set: "dft", tier: "easy",
+      opp: { life: 3, battlefield: [c("Jibbirik Omnivore")] },
+      you: { speed: 3, hand: [c("Gastal Thrillseeker")], battlefield: [c("Walking Sarcophagus"), c("Swamp"), c("Mountain")] },
+      explanation: "Your speed is 3. Gastal Thrillseeker's enters ability makes the opponent lose life, so your speed goes up to 4: max speed. Now the Thrillseeker has haste (and deathtouch), and Walking Sarcophagus is 3/3. Attack with both; the Omnivore can block only one.",
+      notes: `
+LETHAL: Speed 3. Gastal Thrillseeker ({B}{R}): enters: 1 damage to the opponent (2). The speed trigger: speed 4. Max speed:
+  Thrillseeker has deathtouch and haste, Walking Sarcophagus is 3/3. Attack with both: the Omnivore blocks one, the other
+  deals 2 or 3.
+RULES: Speed (702.179d): once each turn, when an opponent loses life during your turn, your speed goes up by 1 (max 4).
+  Max speed abilities (702.178a) work only at speed 4.
+WRONG LINES: Attacking first (Sarcophagus 2/1 alone is blocked); casting the Thrillseeker after combat: 1 damage.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dft-02-pacesetter", title: "Pacesetter", set: "dft", tier: "easy",
+      opp: { life: 6 },
+      you: { hand: [c("Prowcatcher Specialist")], battlefield: [c("Pacesetter Paragon"), ...many(3, "Mountain")] },
+      explanation: "Pacesetter Paragon's exhaust ability: a +1/+1 counter and double strike. A 3/4 double striker deals 6.",
+      notes: `
+LETHAL: Exhaust Pacesetter Paragon ({2}{R}): +1/+1 counter (3/4) and double strike. Attack: 3 + 3 = 6.
+RULES: Exhaust (702.177a): the ability can be activated only once.
+WRONG LINES: Prowcatcher Specialist (haste) and attack with both: 2 + 2 = 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dft-03-artillery", title: "Artillery", set: "dft", tier: "easy",
+      opp: { life: 4, battlefield: [c("Caelorna, Coral Tyrant")] },
+      you: { hand: [c("Clamorous Ironclad"), c("Magmakin Artillerist"), c("Skycrash")], battlefield: [c("Magmakin Artillerist"), ...many(4, "Mountain")] },
+      explanation: "Cycling discards the card, and Magmakin Artillerist deals 1 damage whenever you discard. Cycle all three cards: 1 + 1 + 1, and the cycled Artillerist adds 1 more with its own \"when you cycle this card\" ability.",
+      notes: `
+LETHAL: Cycle Clamorous Ironclad ({R}): discard → Artillerist 1 (3). Cycle Skycrash ({R}): 1 (2). Cycle the second Magmakin
+  Artillerist ({1}{R}): the Artillerist on the battlefield deals 1 for the discard, and the cycled one deals 1 from the
+  graveyard ("when you cycle this card"). 0.
+RULES: Cycling (702.29a): pay the cost and discard it, then draw. "When you cycle this card" triggers from the zone it
+  went to (702.29c). The cycled Artillerist's discard ability works only on the battlefield (113.6).
+WRONG LINES: Casting the second Artillerist (3 mana): nothing. Attacking: Caelorna (0/8) blocks.
+UNIQUENESS: Solver-checked (exactly 4 mana for the three cycles).`
+    }),
+    puzzle({
+      id: "dft-04-dynamite-diver", title: "Dynamite Diver", set: "dft", tier: "easy",
+      opp: { life: 6, battlefield: [c("Jibbirik Omnivore")] },
+      you: { hand: [c("Dynamite Diver")], battlefield: [c("Clamorous Ironclad"), c("Mountain")] },
+      explanation: "Dynamite Diver crews as though its power were 3, and a creature can crew the turn it arrives. Crew 3 makes Clamorous Ironclad a 6/3 with menace: one blocker can't stop it.",
+      notes: `
+LETHAL: Cast Dynamite Diver ({R}). Crew Clamorous Ironclad (crew 3) with it: 1 power + 2. Attack with the Ironclad: 6/3
+  menace; the Omnivore alone can't block it. 6.
+RULES: Crew (702.122a): tapping for crew isn't a {T} cost, so a summoning-sick creature can crew (302.6). "As though its
+  power were 2 greater" counts for crewing.
+WRONG LINES: Attacking with the Diver (summoning sick).
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dft-05-pit-crew", title: "Pit Crew", set: "dft", tier: "medium",
+      opp: { life: 8, battlefield: [c("Grizzly Bears"), c("Grizzly Bears")] },
+      you: { battlefield: [c("Reckless Velocitaur"), c("Canyon Vaulter"), c("Marshals' Pathcruiser")] },
+      explanation: "Crew 5 takes both Pilots. Crewing in your main phase triggers both of them: Reckless Velocitaur gives the Pathcruiser +2/+0 and trample, Canyon Vaulter gives it flying. An 8/5 flier the Bears can't block.",
+      notes: `
+LETHAL: In main phase 1, crew Marshals' Pathcruiser (crew 5) with Reckless Velocitaur and Canyon Vaulter (3 + 3). Both
+  trigger: +2/+0 and trample, flying. Attack: 8/5 flying; the Bears have no reach. 8.
+RULES: A creature "crews a Vehicle" when it's tapped to pay a crew cost (702.122d). Their triggers need the main phase.
+WRONG LINES: Attacking with the two Pilots (two Bears block). Crewing at the beginning of combat: no triggers.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dft-06-interface-ace", title: "Interface Ace", set: "dft", tier: "medium",
+      opp: { life: 9, battlefield: [c("Grizzly Bears")] },
+      you: { battlefield: [c("Interface Ace"), c("Clamorous Ironclad"), c("Air Response Unit")] },
+      explanation: "Interface Ace crews with its toughness (4), and the first time it becomes tapped on your turn it untaps. Crew Clamorous Ironclad, then crew Air Response Unit with the same Ace. 6 menace + 3 flying: the Bears can't block either.",
+      notes: `
+LETHAL: Crew Clamorous Ironclad (crew 3) with Interface Ace (toughness 4). It becomes tapped: it untaps (once each turn).
+  Crew Air Response Unit (crew 1) with it again. Attack with both Vehicles: Ironclad 6 menace (one blocker can't block it)
+  + Air Response Unit 3 flying = 9.
+RULES: Crewing taps the creature (a cost); "whenever this creature becomes tapped" triggers then.
+WRONG LINES: Crewing only one Vehicle: 6 or 3.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dft-07-refuel", title: "Refuel", set: "dft", tier: "hard",
+      opp: { life: 8, battlefield: [c("Caelorna, Coral Tyrant")] },
+      you: { battlefield: [c("Pacesetter Paragon", { exhausted: [0], counters: { "+1/+1": 1 } }), c("Elvish Refueler"), c("Adrenaline Jockey"),
+        ...many(3, "Mountain"), c("Forest"), c("Forest")] },
+      explanation: "Pacesetter Paragon already used its exhaust ability, but Elvish Refueler lets you activate it again, only as long as you haven't activated an exhaust ability this turn. So the Paragon goes first, then the Refueler's own. Adrenaline Jockey grows twice. Caelorna blocks the Paragon: Jockey 5 + Refueler 3.",
+      notes: `
+LETHAL: First Pacesetter Paragon's exhaust again ({2}{R}): 4/5 double strike; Adrenaline Jockey +1 (4/4). Then Elvish
+  Refueler's exhaust ({1}{G}): 3/4; Jockey 5/5. Attack with all three: Caelorna blocks the Paragon: 5 + 3 = 8 (blocking
+  the others lets 8 double strike damage through).
+RULES: Exhaust (702.177a): once. 702.177b: "as long as you haven't activated an exhaust ability this turn" — once you've
+  begun to activate one, the Refueler's permission is gone.
+WRONG LINES: The Refueler's exhaust first: the Paragon's can't be activated again: at most 6.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dft-08-pride-of-the-road", title: "Pride of the Road", set: "dft", tier: "hard",
+      opp: { life: 8, battlefield: [c("Caelorna, Coral Tyrant")] },
+      you: { speed: 3, hand: [c("Streaking Oilgorger"), c("Shock")], battlefield: [c("Pride of the Road"), c("Mountain"), ...many(5, "Swamp")] },
+      explanation: "Pride of the Road's double strike only exists at max speed, and it triggers at the beginning of combat. So Shock the opponent before combat (speed 4) and cast Streaking Oilgorger. At the beginning of combat the Oilgorger gets double strike: 3 + 3 in the air.",
+      notes: `
+LETHAL: Shock the opponent (6): speed 4. Cast Streaking Oilgorger ({4}{B}, flying, haste). Beginning of combat: Pride of the
+  Road gives it double strike. Attack: 3 + 3 flying (Caelorna can't block fliers). 0.
+RULES: "Max speed — At the beginning of combat …" (702.178a): the ability exists only at speed 4 when combat begins.
+WRONG LINES: Shocking during or after combat: no double strike (2 + 3 = 5). Attacking with Pride: Caelorna blocks it.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dft-09-scrounging", title: "Scrounging", set: "dft", tier: "hard",
+      opp: { life: 7, battlefield: [c("Caelorna, Coral Tyrant")] },
+      you: { hand: [c("Clamorous Ironclad"), c("Skycrash"), c("Lightshield Parry")], battlefield: [c("Marauding Mako"), c("Scrounging Skyray"), ...many(6, "Mountain")],
+        library: [c("Lightning Strike")] },
+      explanation: "Every cycled card is a discard: Scrounging Skyray gets a +1/+1 counter each time. Cycle all three (the first draws Lightning Strike, on top of your library), Strike the opponent for 3, and attack with the 4/5 flying Skyray.",
+      notes: `
+LETHAL: Cycle Clamorous Ironclad ({R}): draw Lightning Strike. Cycle Skycrash ({R}) and Lightshield Parry ({2}). Each
+  discard: a +1/+1 counter on the Skyray and the Mako. Lightning Strike ({1}{R}) the opponent: 3 (4). Attack with
+  Scrounging Skyray, 4/5 flying: 0. (6 Mountains: 1 + 1 + 2 + 2.)
+RULES: Cycling (702.29a) is discarding: "whenever you discard one or more cards" triggers. The top card of your library
+  is known: Lightning Strike.
+WRONG LINES: Casting Lightshield Parry needs {W}. The Mako is blocked by Caelorna. Fewer cycles: the Skyray is too small.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "dft-10-pit-stop", title: "Pit Stop", set: "dft", tier: "hard",
+      opp: { life: 5, battlefield: [c("Caelorna, Coral Tyrant")] },
+      you: { speed: 3, hand: [c("Lightning Strike")], battlefield: [c("Leonin Surveyor"), c("Endrider Catalyzer"), c("Apocalypse Runner"), c("Mountain")] },
+      explanation: "Apocalypse Runner makes Leonin Surveyor unblockable. Attack with the Surveyor alone and keep Endrider Catalyzer home: once the Surveyor's damage puts you at max speed, the Catalyzer taps for {R}{R}, enough for Lightning Strike.",
+      notes: `
+LETHAL: Apocalypse Runner {T}: Leonin Surveyor (power 2) gains lifelink and can't be blocked. Attack with the Surveyor:
+  2 (3). Speed 4. Endrider Catalyzer (untapped): {T}: add {R}{R}. Lightning Strike the opponent: 3. 0.
+RULES: Speed rises when the opponent loses life (702.179d); "Max speed — {T}: Add {R}{R}" exists only at speed 4.
+  The Runner isn't a creature: its {T} ability works without crewing.
+WRONG LINES: Attacking with the Catalyzer too: Caelorna blocks it and it's tapped (2 total). Crewing the Runner with the
+  Catalyzer: Caelorna blocks the Runner.
 UNIQUENESS: Solver-checked.`
     })
   );
