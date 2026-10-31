@@ -440,7 +440,8 @@
     const hand = p.player.hand;
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
     const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted);
-    const flashbacks = p.player.graveyard.filter((c) => c.flashback);
+    // (and graveyard cards with harmonize, cast from there, or renew, an ability used from there)
+    const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew);
     fill($("hand"), [...hand, ...adventures, ...flashbacks]);
     const mark = (c, label) => {
       const el = document.querySelector(`#hand .card[data-id="${c.id}"]`);
@@ -448,9 +449,9 @@
     };
     adventures.forEach((c) => mark(c, c.plotted ? (c.plottedNow ? "Plotted (cast it free on a later turn)" : "Plotted: cast it free (main phase)")
       : c.playable ? "Exiled: you may play it this turn" : "On an adventure (exile)"));
-    flashbacks.forEach((c) => mark(c, `Flashback ${c.flashback.cost} (graveyard)`));
+    flashbacks.forEach((c) => mark(c, c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)` : `Renew ${c.renew.cost} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
-      (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} with flashback` : "");
+      (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} usable from the graveyard` : "");
     $("hand-wrap").classList.toggle("empty", !hand.length && !adventures.length && !flashbacks.length);
     showPhase(p.phase);
     $("pool").textContent = p.pool.length ? `${p.pool.length} mana floating` : "";
@@ -759,7 +760,8 @@
     const el = e.target.closest(".card");
     if (!el) return;
     if (casting && casting.pick) { if (el.classList.contains("targetable")) togglePick(el.dataset.id); return; }   // (behold: reveal it)
-    const from = E.castable(state, el.dataset.id);              // your hand, or an Adventure card waiting in exile
+    const from = E.castable(state, el.dataset.id) ||            // your hand, or an Adventure card waiting in exile
+      ((g) => (g && g.renew ? { card: g, zone: "graveyard", renew: true } : null))(state.player.graveyard.find((c) => c.id === el.dataset.id));
     if (!from) return;
     const card = from.card;
     if (casting && casting.card && casting.card.id === card.id) {
@@ -769,7 +771,8 @@
     if (casting && casting.trigger) return;                   // a trigger or scry is waiting for you
     cancelCast();
     clearAttackers();
-    casting = { card, face: from.zone === "exile" && card.onAdventure ? 0 : card.faces ? undefined : null, results: [], picks: [] };
+    casting = { card, face: from.zone === "exile" && card.onAdventure ? 0 : card.faces ? undefined : null, results: [], picks: [],
+      ...(from.renew ? { renew: true } : {}), ...(from.zone === "graveyard" && card.harmonize && !card.flashback ? { harmonize: true } : {}) };
     el.classList.add("selected", "casting");
     nextChoice();
   });
@@ -786,6 +789,14 @@
   // Abilities: X → targets. Waiting triggers: targets.
   function nextChoice() {
     if (casting.trigger) return targetPhase();
+    // renew: an ability of a card in your graveyard (it's exiled as you activate it); its target
+    if (casting.renew) {
+      const why = E.check(state, { type: "renew", id: casting.card.id });
+      if (why) { cancelCast(); return rulesNote(why); }
+      const r = casting.card.renew;
+      casting.phases = casting.phases || [{ kind: r.targets, filter: r.filter, count: ONE, src: casting.card, label: `${casting.card.name}'s renew` }];
+      return targetPhase();
+    }
     const { card } = casting;
     const again = (key) => (v) => { casting[key] = v; nextChoice(); };
     if (casting.index != null) {
@@ -861,6 +872,17 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
+    // harmonize (cast from the graveyard): you may tap one of your untapped creatures to reduce the cost by its power
+    if (casting.harmonize && casting.tapFor === undefined) {
+      const base0 = { type: "cast", id: card.id };
+      const ids = E.convokeHelpers(state).filter((id) => !E.check(state, { ...base0, tapFor: id }));
+      const plain = !E.check(state, base0);
+      if (!ids.length && !plain) { cancelCast(); return rulesNote(E.check(state, base0) || "Not enough mana."); }
+      if (!ids.length) casting.tapFor = null;
+      else return pickCards({ ids, confirm: "Tap it", alt: plain ? { label: "Don't tap a creature", value: null } : null,
+        prompt: `Harmonize ${card.harmonize}: you may tap a creature you control to reduce the cost by its power.`,
+        then: (picked) => again("tapFor")(Array.isArray(picked) ? picked[0] : picked) });
+    }
     const f = faceNow();
     // collect evidence (an optional additional cost): which cards from your graveyard to exile, or none
     if (f.evidence && casting.evidence === undefined) {
@@ -886,7 +908,7 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
-    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined });
+    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined });
     if (why) { cancelCast(); return rulesNote(why); }
     const n = f.chooseCount || 1;
     if (f.modes && casting.mode == null) {
@@ -943,11 +965,14 @@
     if (f.behold && casting.behold === undefined) {
       const ids = E.beholdOptions(state, f);
       const canPay = f.behold.orPay && !E.check(state, { ...base, behold: "pay" });
-      if (!ids.length && !canPay) { cancelCast(); return rulesNote(`Not enough mana for ${f.name}.`); }
-      if (!ids.length) casting.behold = "pay";                   // (nothing to behold: paying is the only way)
+      // ("you may behold a Dragon": not beholding is the other choice)
+      if (!ids.length && f.behold.optional) casting.behold = null;
+      else if (!ids.length && !canPay) { cancelCast(); return rulesNote(`Not enough mana for ${f.name}.`); }
+      else if (!ids.length) casting.behold = "pay";              // (nothing to behold: paying is the only way)
       else {
         const n = f.behold.count || 1;
-        return pickCards({ ids, min: n, max: n, confirm: "Behold", alt: canPay ? { label: `Pay ${f.behold.orPay} instead`, value: "pay" } : null,
+        const alt = canPay ? { label: `Pay ${f.behold.orPay} instead`, value: "pay" } : f.behold.optional ? { label: "Don't behold", value: null } : null;
+        return pickCards({ ids, min: n, max: n, confirm: "Behold", alt,
           prompt: `Behold ${n > 1 ? n + " " + f.behold.type + "s" : "a " + f.behold.type} for ${f.name}: choose on your battlefield or reveal from your hand.`,
           then: (picked) => again("behold")(Array.isArray(picked) ? (n > 1 ? picked : picked[0]) : picked) });
       }
@@ -1023,7 +1048,7 @@
 
   // Turn the chosen targets into the action's target (and ask how to divide damage, if needed)
   function assemble() {
-    if (casting.trigger || casting.index != null) return finishChoice(casting.results[0]);
+    if (casting.trigger || casting.index != null || casting.renew) return finishChoice(casting.results[0]);
     const f = faceNow();
     const phases = casting.phases;
     if (!phases.length || phases[0].optional) return finishChoice(casting.results[0]);
@@ -1046,11 +1071,13 @@
 
   // The action being built: casting a spell, activating ability `index` of a permanent, or a waiting trigger's target
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
+    : casting.renew ? { type: "renew", id: casting.card.id, target }
     : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
-      lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined };
+      lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
+      tapFor: casting.tapFor ?? undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);

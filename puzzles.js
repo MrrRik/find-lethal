@@ -884,6 +884,132 @@
     "Jibbirik Omnivore": { type: "Creature — Beast", cost: "{1}{G}", pt: "3/2", text: "" }
   });
 
+  // ---- Tarkir: Dragonstorm (TDM): mobilize, endure, flurry, harmonize, renew, Omens, behold a Dragon ----
+  // (mobilize: N; harmonize: its cost (cast from the graveyard); renew: { cost, targets, filter, effect } (from the
+  // graveyard); an Omen card: the creature, with the Omen spell as its second face — shuffled away after it resolves)
+  const omen = (front, back, text) => ({ ...front, layout: "omen", faces: [{ name: front.name, type: front.type, cost: front.cost, pt: front.pt }, { kw: [], ...back }], text });
+  const harmonizeText = (cost) => `Harmonize ${cost} (You may cast this card from your graveyard for its harmonize cost. You may tap a creature you control to reduce that cost by {X}, where X is its power. Then exile this spell.)`;
+  const mobilizeText = (n) => `Mobilize ${n} (Whenever this creature attacks, create ${n === 1 ? "a" : ["", "", "two", "three"][n]} tapped and attacking 1/1 red Warrior creature token${n > 1 ? "s" : ""}. Sacrifice ${n > 1 ? "them" : "it"} at the beginning of the next end step.)`;
+  const endureText = (n) => `(Put ${n === 1 ? "a +1/+1 counter" : `${["", "", "two", "three"][n]} +1/+1 counters`} on it or create a ${n}/${n} white Spirit creature token.)`;
+  const DRAGON_RETURN = { on: "enters", filter: { controller: "you", type: "Dragon" }, effect: { bounce: true, self: true } };
+  Object.assign(CARDS, {
+    // mobilize
+    "Dalkovan Packbeasts": { type: "Creature — Ox", cost: "{2}{W}", pt: "0/4", kw: ["vigilance"], mobilize: 3, text: `Vigilance. ${mobilizeText(3)}` },
+    "Dragonback Lancer": { type: "Creature — Human Soldier", cost: "{3}{W}", pt: "3/3", kw: ["flying"], mobilize: 1, text: `Flying. ${mobilizeText(1)}` },
+    "Shock Brigade": { type: "Creature — Goblin Soldier", cost: "{1}{R}", pt: "1/3", kw: ["menace"], mobilize: 1, text: `Menace. ${mobilizeText(1)}` },
+    "Marshal of the Lost": { type: "Creature — Orc Warrior", cost: "{2}{W}{B}", pt: "3/3", kw: ["deathtouch"],
+      triggers: [{ on: "youAttack", filter: { controller: "you" }, targets: "creature", effect: { pumpCount: { filter: { attacking: true }, per: [1, 1] } } }],
+      text: "Deathtouch. Whenever you attack, target creature gets +X/+X until end of turn, where X is the number of attacking creatures." },
+    "Shocking Sharpshooter": { type: "Creature — Human Archer", cost: "{1}{R}", pt: "1/3", kw: ["reach"],
+      triggers: [{ on: "enters", other: true, filter: { controller: "you", creature: true }, targets: "opponent", effect: { damage: 1 } }],
+      text: "Reach. Whenever another creature you control enters, this creature deals 1 damage to target opponent." },
+    // endure
+    "Inspirited Vanguard": { type: "Creature — Human Soldier", cost: "{4}{G}", pt: "3/2",
+      triggers: [{ on: "enters", self: true, effect: { endure: 2, self: true } }, { on: "attacks", self: true, effect: { endure: 2, self: true } }],
+      text: `Whenever this creature enters or attacks, it endures 2. ${endureText(2)}` },
+    "Fortress Kin-Guard": { type: "Creature — Dog Soldier", cost: "{1}{W}", pt: "1/2", etb: { endure: 1, self: true },
+      text: `When this creature enters, it endures 1. ${endureText(1)}` },
+    "Sandskitter Outrider": { type: "Creature — Goblin Soldier", cost: "{3}{B}", pt: "2/1", kw: ["menace"], etb: { endure: 2, self: true },
+      text: `Menace. When this creature enters, it endures 2. ${endureText(2)}` },
+    // flurry
+    "Devoted Duelist": { type: "Creature — Goblin Monk", cost: "{1}{R}", pt: "2/1", kw: ["haste"],
+      triggers: [{ on: "cast", filter: { controller: "you", spellNumber: 2 }, effect: { damage: 1, to: "opp" } }],
+      text: "Haste. Flurry — Whenever you cast your second spell each turn, this creature deals 1 damage to each opponent." },
+    "Cori Mountain Stalwart": { type: "Creature — Human Monk", cost: "{1}{R}{W}", pt: "3/3",
+      triggers: [{ on: "cast", filter: { controller: "you", spellNumber: 2 }, effect: { damage: 2, to: "opp", gainLife: 2 } }],
+      text: "Flurry — Whenever you cast your second spell each turn, this creature deals 2 damage to each opponent and you gain 2 life." },
+    "Equilibrium Adept": { type: "Creature — Dog Monk", cost: "{3}{R}", pt: "2/4", etb: { impulse: 1 },
+      triggers: [{ on: "cast", filter: { controller: "you", spellNumber: 2 }, effect: { grant: ["double strike"], self: true } }],
+      text: "When this creature enters, exile the top card of your library. Until the end of your next turn, you may play that card. Flurry — Whenever you cast your second spell each turn, this creature gains double strike until end of turn." },
+    "Wingblade Disciple": { type: "Creature — Human Monk", cost: "{2}{U}", pt: "2/2", kw: ["flying"],
+      triggers: [{ on: "cast", filter: { controller: "you", spellNumber: 2 }, effect: { create: { name: "Bird", type: "Token Creature — Bird", pt: "1/1", kw: ["flying"], colors: ["W"] } } }],
+      text: "Flying. Flurry — Whenever you cast your second spell each turn, create a 1/1 white Bird creature token with flying." },
+    "Rally the Monastery": { type: "Instant", cost: "{3}{W}", lessIfAnotherSpell: 2,
+      modes: [{ text: "Create two 1/1 white Monk creature tokens with prowess", effect: { create: { name: "Monk", type: "Token Creature — Monk", pt: "1/1", kw: ["prowess"], colors: ["W"], count: 2 } } },
+        { text: "Up to two target creatures you control each get +2/+2", targets: "creature", targetFilter: { controller: "you" }, targetCount: { min: 1, max: 2 }, effect: { pump: [2, 2] } },
+        { text: "Destroy target creature with power 4 or greater", targets: "creature", targetFilter: { minPower: 4 }, effect: { destroy: true } }],
+      text: "This spell costs {2} less to cast if you've cast another spell this turn. Choose one — • Create two 1/1 white Monk creature tokens with prowess. • Up to two target creatures you control each get +2/+2 until end of turn. • Destroy target creature with power 4 or greater." },
+    // harmonize
+    "Channeled Dragonfire": { type: "Sorcery", cost: "{R}", targets: "any", effect: { damage: 2 }, harmonize: "{5}{R}{R}",
+      text: `Channeled Dragonfire deals 2 damage to any target. ${harmonizeText("{5}{R}{R}")}` },
+    "Wild Ride": { type: "Sorcery", cost: "{R}", targets: "creature", effect: { pump: [3, 0], grant: ["haste"] }, harmonize: "{4}{R}",
+      text: `Target creature gets +3/+0 and gains haste until end of turn. ${harmonizeText("{4}{R}")}` },
+    "Ureni's Rebuff": { type: "Sorcery", cost: "{1}{U}", targets: "creature", effect: { bounce: true }, harmonize: "{5}{U}",
+      text: `Return target creature to its owner's hand. ${harmonizeText("{5}{U}")}` },
+    // renew and cards leaving the graveyard
+    "Champion of Dusan": { type: "Creature — Human Warrior", cost: "{2}{G}", pt: "4/2", kw: ["trample"],
+      renew: { cost: "{1}{G}", targets: "creature", effect: { counters: { "+1/+1": 1, trample: 1 } } },
+      text: "Trample. Renew — {1}{G}, Exile this card from your graveyard: Put a +1/+1 counter and a trample counter on target creature. Activate only as a sorcery." },
+    "Agent of Kotis": { type: "Creature — Human Rogue", cost: "{1}{U}", pt: "2/1",
+      renew: { cost: "{3}{U}", targets: "creature", effect: { counters: { "+1/+1": 2 } } },
+      text: "Renew — {3}{U}, Exile this card from your graveyard: Put two +1/+1 counters on target creature. Activate only as a sorcery." },
+    "Sage of the Fang": { type: "Creature — Human Druid", cost: "{2}{G}", pt: "2/2", etb: { counters: { "+1/+1": 1 } }, targets: "creature",
+      renew: { cost: "{3}{G}", targets: "creature", effect: { counters: { "+1/+1": 1 }, doubleCounters: "+1/+1" } },
+      text: "When this creature enters, put a +1/+1 counter on target creature. Renew — {3}{G}, Exile this card from your graveyard: Put a +1/+1 counter on target creature, then double the number of +1/+1 counters on that creature. Activate only as a sorcery." },
+    "Sagu Pummeler": { type: "Creature — Beast", cost: "{3}{G}", pt: "4/4", kw: ["reach"],
+      renew: { cost: "{4}{G}", targets: "creature", effect: { counters: { "+1/+1": 2, reach: 1 } } },
+      text: "Reach. Renew — {4}{G}, Exile this card from your graveyard: Put two +1/+1 counters and a reach counter on target creature. Activate only as a sorcery." },
+    "Attuned Hunter": { type: "Creature — Human Ranger", cost: "{2}{G}", pt: "3/3", kw: ["trample"],
+      triggers: [{ on: "leavesGraveyard", filter: { controller: "you" }, effect: { counters: { "+1/+1": 1 }, self: true } }],
+      text: "Trample. Whenever one or more cards leave your graveyard during your turn, put a +1/+1 counter on this creature." },
+    "Delta Bloodflies": { type: "Creature — Insect", cost: "{1}{B}", pt: "1/2", kw: ["flying"],
+      triggers: [{ on: "attacks", self: true, if: { controls: { filter: { creature: true, hasCounter: true } } }, effect: { lifeLoss: 1, to: "opp" } }],
+      text: "Flying. Whenever this creature attacks, if you control a creature with a counter on it, each opponent loses 1 life." },
+    // Omens and Dragons
+    "Twinmaw Stormbrood": omen({ name: "Twinmaw Stormbrood", type: "Creature — Dragon", cost: "{5}{W}", pt: "5/4", kw: ["flying"], etb: { gainLife: 5 } },
+      { name: "Charring Bite", type: "Sorcery — Omen", cost: "{1}{R}", targets: "creature", targetFilter: { noKw: "flying" }, effect: { damage: 5 },
+        text: "Charring Bite deals 5 damage to target creature without flying. (Then shuffle this card into its owner's library.)" },
+      "Flying. When this creature enters, you gain 5 life. // Charring Bite {1}{R} (Sorcery — Omen): Charring Bite deals 5 damage to target creature without flying. (Then shuffle this card into its owner's library.)"),
+    "Dirgur Island Dragon": omen({ name: "Dirgur Island Dragon", type: "Creature — Dragon", cost: "{5}{U}", pt: "4/4", kw: ["flying", "ward 2"] },
+      { name: "Skimming Strike", type: "Instant — Omen", cost: "{1}{U}", targets: "creature", targetCount: { min: 0, max: 1 }, effect: { tap: true, draw: 1 },
+        text: "Tap up to one target creature. Draw a card. (Then shuffle this card into its owner's library.)" },
+      "Flying. Ward {2} // Skimming Strike {1}{U} (Instant — Omen): Tap up to one target creature. Draw a card. (Then shuffle this card into its owner's library.)"),
+    "Disruptive Stormbrood": omen({ name: "Disruptive Stormbrood", type: "Creature — Dragon", cost: "{4}{G}", pt: "3/3", kw: ["flying"],
+        etb: { destroy: true }, targets: "permanent", targetFilter: { artifactOrEnchantment: true }, targetCount: { min: 0, max: 1 } },
+      { name: "Petty Revenge", type: "Sorcery — Omen", cost: "{1}{B}", targets: "creature", targetFilter: { maxPower: 3 }, effect: { destroy: true }, targetCount: { min: 1, max: 1 },
+        text: "Destroy target creature with power 3 or less. (Then shuffle this card into its owner's library.)" },
+      "Flying. When this creature enters, destroy up to one target artifact or enchantment. // Petty Revenge {1}{B} (Sorcery — Omen): Destroy target creature with power 3 or less. (Then shuffle this card into its owner's library.)"),
+    "Stormshriek Feral": omen({ name: "Stormshriek Feral", type: "Creature — Dragon", cost: "{4}{R}", pt: "3/3", kw: ["flying", "haste"],
+        abilities: [{ cost: "{1}{R}", effect: { pump: [1, 0], self: true }, text: "{1}{R}: +1/+0" }] },
+      { name: "Flush Out", type: "Sorcery — Omen", cost: "{1}{R}", effect: { discardThenDraw: 2 }, abilities: [],
+        text: "Discard a card. If you do, draw two cards. (Then shuffle this card into its owner's library.)" },
+      "Flying, haste. {1}{R}: This creature gets +1/+0 until end of turn. // Flush Out {1}{R} (Sorcery — Omen): Discard a card. If you do, draw two cards. (Then shuffle this card into its owner's library.)"),
+    "Boulderborn Dragon": { type: "Artifact Creature — Dragon", cost: "{5}", pt: "3/3", kw: ["flying", "vigilance"], onAttack: { effect: { surveil: 1 } },
+      text: "Flying, vigilance. Whenever this creature attacks, surveil 1. (Look at the top card of your library. You may put it into your graveyard.)" },
+    "Corroding Dragonstorm": { type: "Enchantment", cost: "{1}{B}", etb: { lifeLoss: 2, to: "opp", gainLife: 2, surveil: 2 }, triggers: [DRAGON_RETURN],
+      text: "When this enchantment enters, each opponent loses 2 life and you gain 2 life. Surveil 2. (Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.) When a Dragon you control enters, return this enchantment to its owner's hand." },
+    "Teeming Dragonstorm": { type: "Enchantment", cost: "{3}{W}", etb: { create: { name: "Soldier", type: "Token Creature — Soldier", pt: "2/2", colors: ["W"], count: 2 } }, triggers: [DRAGON_RETURN],
+      text: "When this enchantment enters, create two 2/2 white Soldier creature tokens. When a Dragon you control enters, return this enchantment to its owner's hand." },
+    // behold a Dragon
+    "Caustic Exhale": { type: "Instant", cost: "{B}", behold: { type: "Dragon", orPay: "{1}" }, targets: "creature", effect: { pump: [-3, -3] },
+      text: "As an additional cost to cast this spell, behold a Dragon or pay {1}. (To behold a Dragon, choose a Dragon you control or reveal a Dragon card from your hand.) Target creature gets -3/-3 until end of turn." },
+    "Molten Exhale": { type: "Sorcery", cost: "{1}{R}", behold: { type: "Dragon", optional: true, flash: true }, targets: "creature-or-planeswalker", effect: { damage: 4 },
+      text: "You may cast this spell as though it had flash if you behold a Dragon as an additional cost to cast it. (To behold a Dragon, choose a Dragon you control or reveal a Dragon card from your hand.) Molten Exhale deals 4 damage to target creature or planeswalker." },
+    "Piercing Exhale": { type: "Instant", cost: "{1}{G}", behold: { type: "Dragon", optional: true },
+      slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature-or-planeswalker" }], effect: { bite: true }, ifBeheld: { effect: { bite: true, surveil: 2 } },
+      text: "As an additional cost to cast this spell, you may behold a Dragon. (You may choose a Dragon you control or reveal a Dragon card from your hand.) Target creature you control deals damage equal to its power to target creature or planeswalker. If a Dragon was beheld, surveil 2." },
+    // other commons and uncommons
+    "Summit Intimidator": { type: "Creature — Yeti", cost: "{3}{R}", pt: "4/3", kw: ["reach"], etb: { grant: ["can't block"] }, targets: "creature",
+      text: "Reach. When this creature enters, target creature can't block this turn." },
+    "Underfoot Underdogs": { type: "Creature — Goblin Warrior", cost: "{2}{R}", pt: "1/2", etb: { create: { name: "Goblin", type: "Token Creature — Goblin", pt: "1/1", colors: ["R"] } },
+      abilities: [{ cost: "{1}", tap: true, targets: "creature", filter: { controller: "you", maxPower: 2 }, effect: { grant: ["unblockable"] }, text: "{1}, {T}: Power 2 or less can't be blocked" }],
+      text: "When this creature enters, create a 1/1 red Goblin creature token. {1}, {T}: Target creature you control with power 2 or less can't be blocked this turn." },
+    "Rebellious Strike": { type: "Instant", cost: "{1}{W}", targets: "creature", effect: { pump: [3, 0], draw: 1 }, text: "Target creature gets +3/+0 until end of turn. Draw a card." },
+    "Sarkhan's Resolve": { type: "Instant", cost: "{1}{G}",
+      modes: [{ text: "Target creature gets +3/+3", targets: "creature", effect: { pump: [3, 3] } }, { text: "Destroy target creature with flying", targets: "creature", targetFilter: { kw: "flying" }, effect: { destroy: true } }],
+      text: "Choose one — • Target creature gets +3/+3 until end of turn. • Destroy target creature with flying." },
+    "Frontline Rush": { type: "Instant", cost: "{R}{W}",
+      modes: [{ text: "Create two 1/1 red Goblin creature tokens", effect: { create: { name: "Goblin", type: "Token Creature — Goblin", pt: "1/1", colors: ["R"], count: 2 } } },
+        { text: "Target creature gets +X/+X (X = creatures you control)", targets: "creature", effect: { pumpCount: { filter: {}, per: [1, 1] } } }],
+      text: "Choose one — • Create two 1/1 red Goblin creature tokens. • Target creature gets +X/+X until end of turn, where X is the number of creatures you control." },
+    "Sunset Strikemaster": { type: "Creature — Human Monk", cost: "{1}{R}", pt: "3/1", produces: "R",
+      abilities: [{ cost: "{2}{R}", tap: true, sacSelf: true, targets: "creature", filter: { kw: "flying" }, effect: { damage: 6 }, text: "{2}{R}, {T}, Sacrifice: 6 damage to a flier" }],
+      text: "{T}: Add {R}. {2}{R}, {T}, Sacrifice this creature: It deals 6 damage to target creature with flying." },
+    "Krotiq Nestguard": { type: "Creature — Insect", cost: "{2}{G}", pt: "4/4", kw: ["defender"],
+      text: "Defender. {2}{G}: This creature can attack this turn as though it didn't have defender." },
+    "Dragon Sniper": { type: "Creature — Human Archer", cost: "{G}", pt: "1/1", kw: ["reach", "vigilance", "deathtouch"], text: "Reach, vigilance, deathtouch" }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -2137,6 +2263,140 @@ RULES: Speed rises when the opponent loses life (702.179d); "Max speed — {T}: 
   The Runner isn't a creature: its {T} ability works without crewing.
 WRONG LINES: Attacking with the Catalyzer too: Caelorna blocks it and it's tapped (2 total). Crewing the Runner with the
   Catalyzer: Caelorna blocks the Runner.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= TARKIR: DRAGONSTORM (set TDM) ======================= */
+  // Mobilize, endure, flurry, harmonize, renew, Omens, behold a Dragon, Dragonstorm enchantments
+  window.PUZZLES.push(
+    puzzle({
+      id: "tdm-01-call-to-arms", title: "Call to Arms", set: "tdm", tier: "easy",
+      opp: { life: 4, battlefield: [c("Krotiq Nestguard"), c("Grizzly Bears")] },
+      you: { battlefield: [c("Dalkovan Packbeasts"), c("Shocking Sharpshooter")] },
+      explanation: "Attack with Dalkovan Packbeasts: mobilize 3 makes three Warriors that enter tapped and attacking. Each one entering triggers Shocking Sharpshooter: 3 damage. The opponent can block only two Warriors; the third deals 1.",
+      notes: `
+LETHAL: Attack with Dalkovan Packbeasts: mobilize 3: three 1/1 Warriors enter tapped and attacking. Shocking Sharpshooter
+  triggers three times: 3 (1). The two blockers stop two Warriors; the third deals 1. 0.
+RULES: Mobilize (702.181a). Tokens that enter attacking were never declared as attackers, but they can be blocked
+  (blockers are declared after). "Whenever another creature you control enters" sees each token.
+WRONG LINES: Nothing else deals damage: the Packbeasts are 0/4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-02-kin-guard", title: "Kin-Guard", set: "tdm", tier: "easy",
+      opp: { life: 2, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Fortress Kin-Guard")], battlefield: [c("Shocking Sharpshooter"), c("Plains"), c("Plains")] },
+      explanation: "Fortress Kin-Guard entering triggers Shocking Sharpshooter (1). Then it endures 1: choose the 1/1 Spirit token instead of the counter. Another creature enters: 1 more.",
+      notes: `
+LETHAL: Cast Fortress Kin-Guard ({1}{W}): Sharpshooter 1 (1). Kin-Guard endures 1: create a 1/1 Spirit: Sharpshooter 1. 0.
+RULES: Endure N (701.63a): N +1/+1 counters on it, or an N/N white Spirit token — your choice.
+WRONG LINES: The +1/+1 counter: only 1 damage.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-03-flurry", title: "Flurry", set: "tdm", tier: "easy",
+      opp: { life: 7, battlefield: [c("Krotiq Nestguard"), c("Krotiq Nestguard")] },
+      you: { hand: [c("Shock"), c("Channeled Dragonfire")], battlefield: [c("Devoted Duelist"), c("Cori Mountain Stalwart"), c("Mountain"), c("Mountain")] },
+      explanation: "Flurry triggers on your second spell each turn. Shock the opponent (2), then Channeled Dragonfire the opponent (2): both flurry abilities trigger, 1 + 2 more.",
+      notes: `
+LETHAL: Shock the opponent: 2 (5). Channeled Dragonfire the opponent: 2 (3), and it's the second spell: Devoted Duelist 1,
+  Cori Mountain Stalwart 2. 0.
+RULES: Flurry: "whenever you cast your second spell each turn" (it triggers on casting, before the spell resolves).
+WRONG LINES: Attacking: the two 4/4 Nestguards block both. Burning a blocker: not enough.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-04-wild-ride", title: "Wild Ride", set: "tdm", tier: "easy",
+      opp: { life: 5 },
+      you: { battlefield: [c("Hill Giant", { sick: true }), c("Gray Ogre"), c("Mountain"), c("Mountain")], graveyard: [c("Wild Ride")] },
+      explanation: "Wild Ride is in your graveyard, but it has harmonize: cast it from there for {4}{R}, tapping a creature to reduce the cost by its power. Hill Giant can't attack this turn anyway: tap it, and Wild Ride costs {1}{R}. Gray Ogre becomes 5/2.",
+      notes: `
+LETHAL: Cast Wild Ride by harmonize ({4}{R}), tapping Hill Giant (power 3): {1}{R}. Gray Ogre +3/+0: attack for 5.
+RULES: Harmonize (702.180a-b): cast from the graveyard for the harmonize cost; tap up to one untapped creature you control
+  (summoning sick is fine: it isn't a {T} cost) to reduce it by that creature's power; then it's exiled.
+WRONG LINES: Harmonize without tapping: 5 mana, you have 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-05-charring-bite", title: "Charring Bite", set: "tdm", tier: "medium",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Twinmaw Stormbrood")], battlefield: [c("Hill Giant"), c("Gray Ogre"), c("Mountain"), c("Mountain")] },
+      explanation: "Twinmaw Stormbrood costs 6, but it's an Omen card: cast its other half, Charring Bite, for {1}{R}. 5 damage kills the Nestguard (it has no flying). Attack with both: 3 + 2.",
+      notes: `
+LETHAL: Cast Charring Bite ({1}{R}, the Omen half of Twinmaw Stormbrood): 5 damage to Krotiq Nestguard. Attack with Hill
+  Giant and Gray Ogre: 5.
+RULES: Omen cards (720.3): cast either half; an Omen is shuffled into its owner's library as it resolves (720.3d).
+WRONG LINES: Attacking into the 4/4: it blocks the Giant: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-06-caustic-exhale", title: "Caustic Exhale", set: "tdm", tier: "medium",
+      opp: { life: 7, battlefield: [c("Dragon Sniper")] },
+      you: { hand: [c("Caustic Exhale")], battlefield: [c("Stormshriek Feral"), c("Hill Giant"), c("Swamp"), c("Mountain"), c("Mountain")] },
+      explanation: "Caustic Exhale needs you to behold a Dragon or pay {1}. Behold Stormshriek Feral, your Dragon, so it costs only {B}: the Dragon Sniper dies. The two Mountains pump the Feral ({1}{R}: +1/+0). 4 flying + 3.",
+      notes: `
+LETHAL: Caustic Exhale ({B}, beholding Stormshriek Feral): Dragon Sniper -3/-3, dies. Feral {1}{R}: 4/3. Attack with the
+  Feral and Hill Giant: 4 + 3 = 7.
+RULES: Behold a Dragon (701.4a): choose a Dragon you control or reveal one from your hand — instead of paying {1} here.
+WRONG LINES: Paying {1}: no mana left to pump: 6. Leaving the Sniper (reach, deathtouch): it blocks one attacker.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-07-dragonstorm", title: "Dragonstorm", set: "tdm", tier: "hard",
+      opp: { life: 4, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Corroding Dragonstorm"), c("Boulderborn Dragon")], battlefield: many(9, "Swamp") },
+      explanation: "Corroding Dragonstorm drains 2. When a Dragon enters under your control, the Dragonstorm returns to your hand — so cast Boulderborn Dragon after it, and cast the Dragonstorm again for 2 more.",
+      notes: `
+LETHAL: Corroding Dragonstorm ({1}{B}): opponent loses 2 (2). Boulderborn Dragon ({5}): it enters, the Dragonstorm
+  returns to your hand. Cast it again ({1}{B}): 2 more. 0. (9 mana: 2 + 5 + 2.)
+RULES: "When a Dragon you control enters, return this enchantment to its owner's hand": a new object, its enters ability
+  works again.
+WRONG LINES: The Dragon first: the Dragonstorm isn't on the battlefield yet, nothing returns: 2. Attacking: summoning sick.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-08-marshal-of-the-lost", title: "Marshal of the Lost", set: "tdm", tier: "hard",
+      opp: { life: 13, battlefield: [c("Krotiq Nestguard"), c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Marshal of the Lost"), c("Dragonback Lancer"), c("Dalkovan Packbeasts")] },
+      explanation: "Attack with all three. Marshal of the Lost counts the attacking creatures when its trigger resolves, so let the mobilize triggers resolve first: put the Marshal's trigger on the stack first (it resolves last), targeting the flying Dragonback Lancer. Seven attackers: the Lancer is 10/10 in the air.",
+      notes: `
+LETHAL: Attack with Marshal of the Lost, Dragonback Lancer (mobilize 1) and Dalkovan Packbeasts (mobilize 3). Put the
+  Marshal's trigger on the stack first, targeting the Lancer; the mobilize triggers resolve first: 4 Warriors, 7 attacking
+  creatures. Lancer +7/+7: 10 flying. The Nestguards block two ground creatures (best: the Marshal and a Warrior): 3
+  Warriors. 13.
+RULES: X is counted as the ability resolves (608.2h). You choose the order of your triggers (603.3b).
+WRONG LINES: The Marshal's trigger resolving first: X = 3: Lancer 6 (+3 Warriors = 9 at most). Pumping a ground creature:
+  it gets blocked.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-09-renewal", title: "Renewal", set: "tdm", tier: "hard",
+      opp: { life: 7, battlefield: [c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Attuned Hunter"), ...many(6, "Forest")], graveyard: [c("Champion of Dusan"), c("Sage of the Fang")] },
+      explanation: "Renew both cards onto Attuned Hunter, which also grows each time a card leaves your graveyard. Champion of Dusan first (two counters), then Sage of the Fang: its +1/+1 counter and the Hunter's trigger come before the doubling. 11/11 trample: 7 gets past the Nestguard.",
+      notes: `
+LETHAL: Renew Champion of Dusan ({1}{G}) on Attuned Hunter: the Hunter's trigger +1, then +1 and a trample counter: 5/5.
+  Renew Sage of the Fang ({3}{G}): trigger +1, +1, then double: 8 counters: 11/11 trample. The Nestguard blocks: 7.
+RULES: Renew: an ability of the card in your graveyard; exiling it is the cost, so "whenever cards leave your graveyard"
+  triggers and resolves before the renew ability. Doubling counters (701.10e).
+WRONG LINES: Sage first: 4 counters, then Champion: 6: 9/9: 5 tramples over.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "tdm-10-underdogs", title: "Underdogs", set: "tdm", tier: "hard",
+      opp: { life: 13, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Shock")], battlefield: [c("Equilibrium Adept"), c("Devoted Duelist"), c("Hill Giant"), c("Underfoot Underdogs"), ...many(4, "Mountain")],
+        graveyard: [c("Wild Ride")] },
+      explanation: "Underfoot Underdogs makes a creature with power 2 or less unblockable: use it on Equilibrium Adept before it grows. Shock the opponent, then cast Wild Ride from the graveyard by harmonize, tapping Hill Giant. That's your second spell: the Adept gains double strike and Devoted Duelist deals 1. A 5/4 unblockable double striker.",
+      notes: `
+LETHAL: Underdogs ({1}, {T}): Equilibrium Adept (2 power) can't be blocked. Shock the opponent (11). Wild Ride by harmonize,
+  tapping Hill Giant ({4}{R} - 3 = {1}{R}) on the Adept: second spell: flurry: Adept double strike, Duelist 1 (10). Adept
+  5/4: 5 + 5. 0. (4 Mountains: 1 + 1 + 2.)
+RULES: "Power 2 or less" is checked when the ability targets and resolves; afterwards the Adept may grow. Harmonize
+  (702.180a). Flurry: the second spell each turn.
+WRONG LINES: Wild Ride before Underdogs' ability resolves: the Adept's power is 5. Attacking with the Giant: the Nestguard
+  blocks it, and harmonize is unaffordable without it.
 UNIQUENESS: Solver-checked.`
     })
   );
