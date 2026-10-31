@@ -563,7 +563,60 @@
     "Deduce": { type: "Instant", cost: "{1}{U}", effect: { draw: 1, investigate: 1 },
       text: "Draw a card. Investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")" },
     "Novice Inspector": { type: "Creature — Human Detective", cost: "{W}", pt: "1/2", etb: { investigate: 1 },
-      text: "When this creature enters, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")" }
+      text: "When this creature enters, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")" },
+
+    // ---- Outlaws of Thunder Junction (OTJ): spree, crimes, saddle, plot, "second spell", Deserts, Mercenaries ----
+    // (plot: the plot cost; a card in exile with plotted: true was plotted on an earlier turn)
+    "Mercenary": { ...JSON.parse(JSON.stringify(window.Engine.MERCENARY)), token: true },
+    "Jailbreak Scheme": { type: "Sorcery", cost: "{U}", spree: true,
+      modes: [{ plus: "{3}", text: "Put a +1/+1 counter on target creature. It can't be blocked this turn", targets: "creature", effect: { counters: { "+1/+1": 1 }, grant: ["unblockable"] } },
+        { plus: "{2}", text: "Target artifact or creature's owner puts it on the top or bottom of their library", targets: "permanent", targetFilter: { artifactOrCreature: true }, effect: { tuck: true } }],
+      text: "Spree (Choose one or more additional costs.) + {3} — Put a +1/+1 counter on target creature. It can't be blocked this turn. + {2} — Target artifact or creature's owner puts it on their choice of the top or bottom of their library." },
+    "Omenport Vigilante": { type: "Creature — Human Mercenary", cost: "{1}{W}", pt: "2/2", conditional: [{ if: { crime: true }, grant: ["double strike"] }],
+      text: "This creature has double strike as long as you've committed a crime this turn. (Targeting opponents, anything they control, and/or cards in their graveyards is a crime.)" },
+    "Quilled Charger": { type: "Creature — Porcupine Mount", cost: "{3}{R}", pt: "4/3", kw: ["saddle 2"],
+      triggers: [{ on: "attacks", self: true, if: { saddled: true }, effect: { pump: [1, 2], grant: ["menace"], self: true } }],
+      text: "Whenever this creature attacks while saddled, it gets +1/+2 and gains menace until end of turn. (It can't be blocked except by two or more creatures.) Saddle 2 (Tap any number of other creatures you control with total power 2 or more: This Mount becomes saddled until end of turn. Saddle only as a sorcery.)" },
+    "Drover Grizzly": { type: "Creature — Bear Mount", cost: "{2}{G}", pt: "4/2", kw: ["saddle 1"],
+      triggers: [{ on: "attacks", self: true, if: { saddled: true }, effect: { team: { grant: ["trample"] } } }],
+      text: "Whenever this creature attacks while saddled, creatures you control gain trample until end of turn. Saddle 1 (Tap any number of other creatures you control with total power 1 or more: This Mount becomes saddled until end of turn. Saddle only as a sorcery.)" },
+    "Longhorn Sharpshooter": { type: "Creature — Minotaur Rogue", cost: "{2}{R}", pt: "3/3", kw: ["reach"], plot: "{3}{R}",
+      triggers: [{ on: "becomesPlotted", self: true, zones: ["exile"], targets: "any", effect: { damage: 2 } }],
+      text: "Reach. When this card becomes plotted, it deals 2 damage to any target. Plot {3}{R} (You may pay {3}{R} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)" },
+    "Aloe Alchemist": { type: "Creature — Plant Warlock", cost: "{1}{G}", pt: "3/2", kw: ["trample"], plot: "{1}{G}",
+      triggers: [{ on: "becomesPlotted", self: true, zones: ["exile"], targets: "creature", effect: { pump: [3, 2], grant: ["trample"] } }],
+      text: "Trample. When this card becomes plotted, target creature gets +3/+2 and gains trample until end of turn. Plot {1}{G} (You may pay {1}{G} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)" },
+    "Cunning Coyote": { type: "Creature — Coyote", cost: "{1}{R}", pt: "2/2", kw: ["haste"], plot: "{1}{R}",
+      etb: { pump: [1, 1], grant: ["haste"] }, targets: "creature", targetFilter: { controller: "you", other: true },
+      text: "Haste. When this creature enters, another target creature you control gets +1/+1 and gains haste until end of turn. Plot {1}{R} (You may pay {1}{R} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)" },
+    "Iron-Fist Pulverizer": { type: "Creature — Giant Warrior", cost: "{4}{R}", pt: "4/5", kw: ["reach"],
+      triggers: [{ on: "cast", filter: { controller: "you", spellNumber: 2 }, targets: "opponent", effect: { damage: 2, scry: 1 } }],
+      text: "Reach. Whenever you cast your second spell each turn, this creature deals 2 damage to target opponent. Scry 1." },
+    "Thunder Salvo": { type: "Instant", cost: "{1}{R}", targets: "creature", effect: { damage: { plusOtherSpells: 2 } },
+      text: "Thunder Salvo deals X damage to target creature, where X is 2 plus the number of other spells you've cast this turn." },
+    "Nimble Brigand": { type: "Creature — Human Rogue", cost: "{2}{U}", pt: "1/3", conditional: [{ if: { crime: true }, grant: ["unblockable"] }],
+      triggers: [{ on: "combatDamage", self: true, effect: { draw: 1 } }],
+      text: "This creature can't be blocked if you've committed a crime this turn. Whenever this creature deals combat damage to a player, draw a card." },
+    "Slickshot Vault-Buster": { type: "Creature — Human Rogue", cost: "{2}{U}", pt: "1/4", kw: ["vigilance"], conditional: [{ if: { crime: true }, pump: [2, 0] }],
+      text: "Vigilance. This creature gets +2/+0 as long as you've committed a crime this turn." },
+    "Rustler Rampage": { type: "Instant", cost: "{W}", spree: true,
+      modes: [{ plus: "{1}", text: "Untap all creatures target player controls", targets: "player", effect: { untapAllOf: true } },
+        { plus: "{1}", text: "Target creature gains double strike until end of turn", targets: "creature", effect: { grant: ["double strike"] } }],
+      text: "Spree (Choose one or more additional costs.) + {1} — Untap all creatures target player controls. + {1} — Target creature gains double strike until end of turn." },
+    "Raven of Fell Omens": { type: "Creature — Bird", cost: "{1}{B}", pt: "1/2", kw: ["flying"],
+      triggers: [{ on: "crime", filter: { controller: "you" }, oncePerTurn: true, effect: { lifeLoss: 1, to: "opp", gainLife: 1 } }],
+      text: "Flying. Whenever you commit a crime, each opponent loses 1 life and you gain 1 life. This ability triggers only once each turn." },
+    "Hardbristle Bandit": { type: "Creature — Plant Rogue", cost: "{1}{G}", pt: "1/1", produces: "WUBRG",
+      triggers: [{ on: "crime", filter: { controller: "you" }, oncePerTurn: true, effect: { untap: true, self: true } }],
+      text: "{T}: Add one mana of any color. Whenever you commit a crime, untap this creature. This ability triggers only once each turn." },
+    "Deadeye Duelist": { type: "Creature — Human Assassin", cost: "{1}{R}", pt: "1/3", kw: ["reach"],
+      abilities: [{ cost: "{1}", tap: true, targets: "opponent", effect: { damage: 1 }, text: "{1}, {T}: 1 damage to target opponent" }],
+      text: "Reach. {1}, {T}: This creature deals 1 damage to target opponent." },
+    "Abraded Bluffs": { type: "Land — Desert", produces: "RW", entersTapped: true, etb: { damage: 1 }, targets: "opponent",
+      text: "This land enters tapped. When this land enters, it deals 1 damage to target opponent. {T}: Add {R} or {W}." },
+    "Razzle-Dazzler": { type: "Creature — Human Wizard", cost: "{1}{U}", pt: "1/2",
+      triggers: [{ on: "cast", filter: { controller: "you", spellNumber: 2 }, effect: { counters: { "+1/+1": 1 }, grant: ["unblockable"], self: true } }],
+      text: "Whenever you cast your second spell each turn, put a +1/+1 counter on this creature. It can't be blocked this turn." }
   };
 
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
@@ -1282,6 +1335,138 @@ RULES: Investigate (701.16a). Crime Novelist's trigger isn't a mana ability (a s
   it resolves and adds {R}. Poison: 10 loses (704.5c).
 WRONG LINES: Without using the Novelist's mana: 9 needed. Deduce first: it draws the Inspector, the same plan.
 UNIQUENESS: Solver-checked (the order of the steps is free).`
+    })
+  );
+
+  /* ======================= OUTLAWS OF THUNDER JUNCTION (set OTJ) ======================= */
+  // Spree, crimes, saddle, plot, "your second spell each turn", Deserts and Mercenaries
+  window.PUZZLES.push(
+    puzzle({
+      id: "otj-01-jailbreak", title: "Jailbreak", set: "otj", tier: "easy",
+      opp: { life: 4, battlefield: [c("Wall of Wood"), c("Grizzly Bears")] },
+      you: { hand: [c("Jailbreak Scheme")], battlefield: [c("Hill Giant"), ...many(4, "Island")] },
+      explanation: "Spree: pick the modes you pay for. The first mode ({U} + {3}) puts a +1/+1 counter on Hill Giant and makes it unblockable: 4 damage. Removing one blocker wouldn't help, there are two.",
+      notes: `
+LETHAL: Jailbreak Scheme ({U} + {3}): +1/+1 counter on Hill Giant, it can't be blocked: 4/4. Attack: 4.
+RULES: Spree (702.172a): choose one or more modes and pay each mode's additional cost.
+WRONG LINES: The {2} mode on one blocker: the other blocks. Both modes cost {6}: only 4 lands.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-02-vigilante-justice", title: "Vigilante Justice", set: "otj", tier: "easy",
+      opp: { life: 4, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Shock")], battlefield: [c("Omenport Vigilante"), c("Mountain")] },
+      explanation: "Targeting the opponent or anything they control is a crime. Shock their Grizzly Bears: the blocker is gone, and Omenport Vigilante has double strike now. 2 + 2.",
+      notes: `
+LETHAL: Shock Grizzly Bears (a crime: it targets a creature the opponent controls): it dies. Omenport Vigilante has double
+  strike: 4.
+RULES: Crime (700.13). The Vigilante's double strike is a static ability that checks "this turn".
+WRONG LINES: Shock to the face: also a crime, but the Bears block: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-03-saddle-up", title: "Saddle Up", set: "otj", tier: "easy",
+      opp: { life: 5, battlefield: [c("Grizzly Bears")] },
+      you: { battlefield: [c("Quilled Charger"), c("Gray Ogre")] },
+      explanation: "Saddle Quilled Charger by tapping Gray Ogre. Attacking saddled, it gets +1/+2 and menace: a 5/5 that Grizzly Bears can't block alone.",
+      notes: `
+LETHAL: Saddle 2 (tap Gray Ogre, power 2). Attack with Quilled Charger: saddled trigger: +1/+2, menace: 5/5. One blocker
+  can't block a menace creature: 5.
+RULES: Saddle (702.171a): sorcery speed; the saddler is tapped (it can't attack). "Attacks while saddled".
+WRONG LINES: Attacking with both unsaddled: the Bears block the Charger, 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-04-sharpshooter", title: "Sharpshooter", set: "otj", tier: "easy",
+      opp: { life: 3, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Longhorn Sharpshooter")], battlefield: [c("Hill Giant"), ...many(4, "Mountain")] },
+      explanation: "Don't cast Longhorn Sharpshooter: plot it. When it becomes plotted it deals 2 damage: Grizzly Bears dies and Hill Giant gets through.",
+      notes: `
+LETHAL: Plot Longhorn Sharpshooter ({3}{R}): "When this card becomes plotted": 2 damage to Grizzly Bears (dies).
+  Hill Giant: 3.
+RULES: Plot (702.170a, 116.2k): a special action in your main phase with an empty stack. The trigger works from exile.
+WRONG LINES: Casting it ({2}{R}): a summoning-sick 3/3. The 2 damage to the face: the Bears block the Giant.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-05-second-shot", title: "Second Shot", set: "otj", tier: "medium",
+      opp: { life: 8, battlefield: [c("Siege Mastodon")] },
+      you: { hand: [c("Shock"), c("Thunder Salvo")], battlefield: [c("Hill Giant"), c("Iron-Fist Pulverizer"), ...many(3, "Mountain")] },
+      explanation: "Shock Siege Mastodon first. Thunder Salvo is your second spell: it deals 2 plus one for the Shock, finishing the Mastodon, and Iron-Fist Pulverizer deals 2 to the opponent. Then 3 + 4 in combat.",
+      notes: `
+LETHAL: Shock Siege Mastodon (2 damage). Thunder Salvo on it: 2 + 1 other spell = 3 more: 5, dies. Second spell:
+  Iron-Fist Pulverizer deals 2 to the opponent (6). Attack with Hill Giant and the Pulverizer: 7.
+RULES: "Your second spell each turn" triggers on casting the second one. Salvo counts other spells cast this turn.
+WRONG LINES: Salvo first (2 damage) then Shock: 4, the Mastodon lives. Shock to the face: 2 + 2 + 3 (one is blocked) = 7.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-06-hired-guns", title: "Hired Guns", set: "otj", tier: "medium",
+      opp: { life: 5, battlefield: [c("Wall of Wood")] },
+      you: { hand: [c("Shock")], battlefield: [c("Nimble Brigand"), c("Mercenary"), c("Mercenary"), c("Mountain")] },
+      explanation: "Shock the opponent: that's a crime, so Nimble Brigand can't be blocked. Both Mercenaries tap to give it +1/+0 each: 3 unblockable damage plus the Shock's 2.",
+      notes: `
+LETHAL: Shock the opponent (2, a crime: 3 left). Nimble Brigand can't be blocked. Each Mercenary ({T}, sorcery speed):
+  +1/+0 on the Brigand: 3/3. Attack: 3.
+RULES: Crime (700.13). The Mercenaries have been here since last turn, so they can use {T} abilities.
+WRONG LINES: Shocking the Wall (0/3 survives). Attacking with the Mercenaries: the Wall blocks one, 1 + 1 + 2 = 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-07-rustlers", title: "Rustlers", set: "otj", tier: "hard",
+      opp: { life: 8, battlefield: [c("Wall of Wood")] },
+      you: { hand: [c("Rustler Rampage")], battlefield: [c("Drover Grizzly"), c("Hill Giant"), ...many(3, "Plains")] },
+      explanation: "Saddle Drover Grizzly with Hill Giant, then Rustler Rampage with both modes: untap your creatures (the Giant can attack again) and give the Grizzly double strike. Attacking saddled, everything gets trample.",
+      notes: `
+LETHAL: Saddle 1 with Hill Giant (tapped). Rustler Rampage ({W} + {1} + {1}): untap all creatures you control; Drover
+  Grizzly gains double strike. Attack with both: saddled trigger: your creatures gain trample. Wall of Wood blocks the
+  Grizzly: first strike 4 (3 to the Wall, 1 over), then 4 more over (the Wall is dead) = 5, + Giant 3 = 8. Blocks the
+  Giant: 3 to the Wall, 0 over; Grizzly 8 = 8.
+RULES: Saddle (702.171a) taps the saddler; untapping it after doesn't unsaddle (702.171b). Trample over a dead blocker.
+WRONG LINES: Double strike on the Giant: 7. No untap: the Grizzly alone is blocked, 5. No saddle: no trample.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-08-plotted-ambush", title: "Plotted Ambush", set: "otj", tier: "hard",
+      opp: { life: 6, battlefield: [c("Siege Mastodon")] },
+      you: { hand: [c("Shock"), c("Thunder Salvo")], battlefield: [c("Hill Giant"), ...many(3, "Mountain")],
+        exile: [c("Cunning Coyote", { plotted: true })] },
+      explanation: "You plotted Cunning Coyote last turn: cast it for free, giving Hill Giant +1/+1. Shock Siege Mastodon, then Thunder Salvo as your third spell: 2 + 2 = 4 more damage kills it. Giant 4 + Coyote 2.",
+      notes: `
+LETHAL: Cast Cunning Coyote from exile for free (haste): Hill Giant +1/+1 (4/4). Shock Siege Mastodon (2). Thunder Salvo
+  on it: 2 + 2 other spells = 4: 6 damage, dies. Attack with the Giant and the Coyote: 6.
+RULES: A plotted card is cast without paying its mana cost on a later turn, as a sorcery (702.170d). It's a spell cast.
+WRONG LINES: Salvo before the other spells: too little damage. Without the Coyote the Giant deals 3.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-09-razzle-dazzle", title: "Razzle-Dazzle", set: "otj", tier: "hard",
+      opp: { life: 5, battlefield: [c("Wall of Wood"), c("Grizzly Bears")] },
+      you: { hand: [c("Shock")], battlefield: [c("Razzle-Dazzler"), c("Mountain")], exile: [c("Cunning Coyote", { plotted: true })] },
+      explanation: "Two spells: the plotted Cunning Coyote (free) and Shock. The second one makes Razzle-Dazzler unblockable with a +1/+1 counter, and the Coyote gives it +1/+1 more: 3 unblockable. Shock goes to the face.",
+      notes: `
+LETHAL: Cast Cunning Coyote from exile (free): Razzle-Dazzler +1/+1, haste. Shock the opponent (2): second spell:
+  Razzle-Dazzler gets a +1/+1 counter and can't be blocked: 3/4. Attack: 3.
+RULES: "Your second spell each turn": the plotted Coyote counts as a spell cast.
+WRONG LINES: Shocking Grizzly Bears: the Wall still blocks the Coyote: 3. Only one spell: no counter.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "otj-10-crime-spree", title: "Crime Spree", set: "otj", tier: "hard",
+      opp: { life: 7, battlefield: [c("Giant Spider"), c("Grizzly Bears")] },
+      you: { hand: [c("Abraded Bluffs"), c("Shock")],
+        battlefield: [c("Raven of Fell Omens"), c("Hardbristle Bandit"), c("Omenport Vigilante"), c("Slickshot Vault-Buster")] },
+      explanation: "Play Abraded Bluffs at the opponent: a crime. Hardbristle Bandit untaps once a turn on a crime, so with its untap trigger still on the stack, tap it for Shock on Grizzly Bears. It untaps and attacks too. Raven drains 1, Vigilante has double strike, Vault-Buster +2/+0.",
+      notes: `
+LETHAL: Play Abraded Bluffs: 1 damage to the opponent (a crime: Raven drains 1, the Bandit's untap trigger; 5 left).
+  In response, tap Hardbristle Bandit for {R}: Shock Grizzly Bears (dies). The untap resolves. Attack with Omenport
+  Vigilante (double strike 4), Slickshot Vault-Buster (3), Raven (1 flying) and the Bandit (1): Giant Spider blocks
+  the Vigilante: 5.
+RULES: Crime (700.13) by a triggered ability's target. "Triggers only once each turn": the Shock's crime doesn't untap
+  the Bandit again. Abraded Bluffs enters tapped.
+WRONG LINES: Shocking the face: the Bears block one attacker. Tapping the Bandit after its trigger resolved: it can't
+  attack. (Shock first, tapping the Bandit, then the land, is the same plan in another order.)
+UNIQUENESS: Solver-checked.`
     })
   );
 

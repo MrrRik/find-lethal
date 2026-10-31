@@ -256,6 +256,10 @@
     // (including keywords from Auras, Equipment and anthems)
     const gainedKw = ((c.st && c.st.kw) || []).filter((k) => !(c.kw || []).includes(k));
     if (c.st && c.st.lost) gainedKw.unshift("no abilities");
+    // designations: suspected, saddled, a solved Case
+    if (c.suspected) gainedKw.unshift("suspected");
+    if (c.saddled) gainedKw.unshift("saddled");
+    if (c.solved) gainedKw.unshift("solved");
     if (gainedKw.length) {
       const k = document.createElement("div");
       k.className = "kwchips";
@@ -425,14 +429,15 @@
     // your hand, plus Adventure cards waiting in exile (their creature can still be cast)
     const hand = p.player.hand;
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
-    const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable);
+    const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted);
     const flashbacks = p.player.graveyard.filter((c) => c.flashback);
     fill($("hand"), [...hand, ...adventures, ...flashbacks]);
     const mark = (c, label) => {
       const el = document.querySelector(`#hand .card[data-id="${c.id}"]`);
       if (el) { el.classList.add("adventure"); el.append(Object.assign(document.createElement("div"), { className: "attachchip", textContent: label })); }
     };
-    adventures.forEach((c) => mark(c, c.playable ? "Exiled: you may play it this turn" : "On an adventure (exile)"));
+    adventures.forEach((c) => mark(c, c.plotted ? (c.plottedNow ? "Plotted (cast it free on a later turn)" : "Plotted: cast it free (main phase)")
+      : c.playable ? "Exiled: you may play it this turn" : "On an adventure (exile)"));
     flashbacks.forEach((c) => mark(c, `Flashback ${c.flashback.cost} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
       (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} with flashback` : "");
@@ -782,8 +787,9 @@
         const ids = crewIds(card);
         const pw = (l) => l.reduce((t, id) => t + Math.max(E.power(state.player.battlefield.find((c) => c.id === id)), 0), 0);
         return pickCards({ ids, min: 1, max: ids.length,
-          prompt: `Crew ${ab.crew}: tap your creatures with ${ab.crew} or more total power to make ${card.name} a creature.`,
-          confirm: (l) => `Crew (${pw(l)} power)`, complete: (l) => pw(l) >= ab.crew,
+          prompt: ab.saddle ? `Saddle ${ab.crew}: tap your other creatures with ${ab.crew} or more total power to saddle ${card.name}.`
+            : `Crew ${ab.crew}: tap your creatures with ${ab.crew} or more total power to make ${card.name} a creature.`,
+          confirm: (l) => `${ab.saddle ? "Saddle" : "Crew"} (${pw(l)} power)`, complete: (l) => pw(l) >= ab.crew,
           then: (l) => again("crew")(l) });
       }
       // craft: which permanent or graveyard card to exile with it
@@ -816,6 +822,19 @@
       else casting.faceDown = false;
     }
     if (casting.faceDown) return finishChoice(undefined);
+    // plot (a card in your hand): cast it now, or plot it (exile it for its plot cost; cast it free on a later turn)
+    if (card.plot && casting.plot === undefined && state.player.hand.includes(card)) {
+      const canPlot = !E.check(state, { type: "plot", id: card.id });
+      const canCast = !E.check(state, { type: "cast", id: card.id });
+      if (canPlot && canCast) return askChoice(`${card.name}: cast or plot?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Plot it for ${card.plot}`]], again("plot"));
+      casting.plot = canPlot && !canCast;
+    }
+    if (casting.plot) {
+      const a = { type: "plot", id: card.id };
+      const why = E.check(state, a);
+      cancelCast();
+      return why ? rulesNote(why) : perform(a);
+    }
     const f = faceNow();
     // collect evidence (an optional additional cost): which cards from your graveyard to exile, or none
     if (f.evidence && casting.evidence === undefined) {
@@ -845,9 +864,15 @@
     if (why) { cancelCast(); return rulesNote(why); }
     const n = f.chooseCount || 1;
     if (f.modes && casting.mode == null) {
-      const opts = n > 1 ? combos(f.modes.map((_, i) => i), n).map((c) => [c, c.map((i) => f.modes[i].text).join(" + ")])
+      // spree: one or more modes, each adding its cost (only the combinations you can pay for and target are offered)
+      const ids = f.modes.map((_, i) => i);
+      const opts = f.spree
+        ? E.subsets(ids).filter((l) => l.length && !E.check(state, { type: "cast", id: card.id, mode: l }))
+          .map((l) => [l, l.map((i) => `${f.modes[i].plus} ${f.modes[i].text}`).join(" + ")])
+        : n > 1 ? combos(ids, n).map((c) => [c, c.map((i) => f.modes[i].text).join(" + ")])
         : f.modes.map((m, i) => [i, m.text || `Mode ${i + 1}`]);
-      return askChoice(`${f.name}: choose ${n === 1 ? "one" : n}`, opts, again("mode"));
+      if (!opts.length) { cancelCast(); return rulesNote(`Not enough mana for any mode of ${f.name}.`); }
+      return askChoice(`${f.name}: ${f.spree ? "choose one or more (spree)" : `choose ${n === 1 ? "one" : n}`}`, opts, again("mode"));
     }
     if (f.chooseColor && casting.color == null) {
       return askChoice(`${f.name}: choose a color`, [..."WUBRG"].map((col) => [col, E.WORD_OF[col]]), again("color"));
@@ -970,7 +995,7 @@
       const mine = phases.map((ph, i) => (ph.part === part ? casting.results[i] : undefined)).filter((_, i) => phases[i].part === part);
       return p.slots ? mine : mine[0];
     });
-    const target = (f.chooseCount || 1) > 1 ? perPart : perPart[0];
+    const target = E.manyModes(f) ? perPart : perPart[0];
     const p0 = parts[0];
     if (p0 && p0.effect && p0.effect.divided && target != null) {
       const ts = [].concat(target);

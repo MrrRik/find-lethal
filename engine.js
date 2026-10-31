@@ -120,6 +120,9 @@
     // CR 702.122a: "Crew N" — tap any number of other untapped creatures you control with total power N or more:
     // this Vehicle becomes an artifact creature until end of turn (the crew is chosen as a.crew)
     keywords(c).forEach((k) => { const m = /^crew (\d+)$/.exec(k); if (m) list.push({ crew: Number(m[1]), effect: { becomeCreature: true, self: true }, text: `Crew ${m[1]}` }); });
+    // CR 702.171a: "Saddle N" — tap other untapped creatures you control with total power N or more: this becomes saddled
+    // until end of turn; only as a sorcery. (Paid like crew: the creatures are chosen as a.crew.)
+    keywords(c).forEach((k) => { const m = /^saddle (\d+)$/.exec(k); if (m) list.push({ crew: Number(m[1]), saddle: true, sorcery: true, effect: { saddled: true, self: true }, text: `Saddle ${m[1]}` }); });
     // CR 702.167a: craft: { cost, filter, text } — "[Cost], Exile this, Exile [a material] from among permanents you
     // control and/or cards in your graveyard: Return this card transformed. Activate only as a sorcery." (a.craft: the material)
     if (c.craft && !c.transformed) list.push({ cost: c.craft.cost, sorcery: true, craft: c.craft, effect: { craftReturn: true }, text: c.craft.text || `Craft ${c.craft.cost}` });
@@ -152,6 +155,9 @@
   // chosen mode ("Choose two —": a.mode and a.target are lists, one per mode); fight/bite cards one part with
   // two target slots (a.target = [yours, theirs]); divided damage one part with a.split amounts per target.
   const ONE = { min: 1, max: 1 };
+  // CR 702.172a: spree — "choose one or more modes; as an additional cost, pay the costs of those modes" (each mode's
+  // plus cost). Spree and "Choose two —" spells take a list of modes (a.mode) and one target per mode.
+  const manyModes = (f) => !!f.spree || (f.chooseCount || 1) > 1;
   // a.blight: the creature you control that gets the -1/-1 counters (undefined: not blighted; "pay": paid instead)
   const blighted = (a) => a.blight != null && a.blight !== "pay";
   // the damage to divide: a number, or X (twice X once X is big enough: Shatterskull Smashing)
@@ -168,7 +174,7 @@
     if (f.ifEvidence && a.evidence != null) f = { ...f, ...f.ifEvidence };
     if (f.aura) return [{ effect: { attach: true }, targets: f.aura.targets || "creature", filter: f.aura.filter, count: ONE, target: a.target }];
     if (f.modes) {
-      const many = (f.chooseCount || 1) > 1;
+      const many = manyModes(f);
       const picks = many ? [].concat(a.mode == null ? [] : a.mode) : [a.mode];
       return picks.map((mi, k) => {
         const m = f.modes[mi] || {};
@@ -207,6 +213,7 @@
   // What casting a spell this way costs: X filled in, plus "costs {1} more for each target beyond the first" (Fireball)
   // and the alternative to an additional cost: "behold a Goblin or pay {2}", "blight 2 or pay {1}" (a.behold / a.blight "pay")
   const costOf = (f, a = {}) => withX(f.cost, a.x) +
+    (f.spree && a.mode != null ? [].concat(a.mode).map((m) => (f.modes[m] && f.modes[m].plus) || "").join("") : "") +
     (f.extraCostPerTarget && Array.isArray(a.target) && a.target.length > 1 ? `{${f.extraCostPerTarget * (a.target.length - 1)}}` : "") +
     (f.behold && f.behold.orPay && a.behold === "pay" ? f.behold.orPay : "") +
     (f.blight && f.blight.orPay && a.blight === "pay" ? f.blight.orPay : "");
@@ -408,7 +415,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -595,7 +602,7 @@
   // (statics that read counters or poison — perCounter, conditional — can change without a board change: then also
   // when the poison counters or the counters on permanents differ from the last rebuild)
   const LAST = new WeakMap();
-  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.celebration || 0}|${s.player.graveyard.length}|` +
+  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
     [...s.player.battlefield, ...s.opponent.battlefield].map((c) => (c.counters ? c.id + JSON.stringify(c.counters) : "")).join();
   const refresh = (s) => { if (CHANGED.has(s) || (s.dynamicStatics && LAST.get(s) !== dynamicKey(s))) recomputeStatics(s); };
   function recomputeStatics(s) {
@@ -1024,6 +1031,7 @@
     if (f.instantOrSorcery && !typeHas(e.obj, /instant|sorcery/i)) return false;
     if (f.singleTarget && e.targetCount !== 1) return false;     // "a spell with a single target"
     if (f.maxPower != null && power(e.obj) > f.maxPower) return false;   // "another creature … with power 2 or less enters"
+    if (f.spellNumber && e.spellNumber !== f.spellNumber) return false;  // "whenever you cast your second spell each turn"
     return true;
   }
   // An intervening "if" (CR 603.4): { controls: { filter, min } } — "if you control N or more …"
@@ -1043,6 +1051,9 @@
     if (cond.damageSources != null && !((side === "player" ? (s.dmgSources || []).length : 0) >= cond.damageSources)) return false;
     // "if evidence was collected" (CR 701.59c), on a permanent spell that resolved
     if (cond.evidenced && !(self && self.evidenced)) return false;
+    // "as long as you've committed a crime this turn" (CR 700.13); "while saddled" (CR 702.171b)
+    if (cond.crime && !(side === "player" && s.crimes > 0)) return false;
+    if (cond.saddled && !(self && self.saddled)) return false;
     // "if it was bargained" (CR 702.166c)
     if (cond.bargained && !(self && self.bargained)) return false;
     // Celebration (WOE): "two or more nonland permanents entered the battlefield under your control this turn"
@@ -1076,12 +1087,29 @@
       for (const t of triggersOf(card)) {
         if (!eventMatches(t, card, side, e)) continue;
         if (t.if && !conditionHolds(s, t.if, side, card)) continue;        // CR 603.4: checked as it triggers
+        // "This ability triggers only once each turn"
+        if (t.oncePerTurn) { const k = `${card.id}#${defId(t)}`; if ((s.once || []).includes(k)) continue; s.once = [...(s.once || []), k]; }
         // a source that already left (a look-back trigger, like a dying Blood Artist's): keep its last known information
         if ((zone || "battlefield") === "battlefield" && !find(s, card.id)) (s.lki = s.lki || {})[card.id] = lastKnown(card);
         s.triggered.push({ side, name: card.name, srcId: card.id, td: defId(t), ...(zone && zone !== "battlefield" ? { zone } : {}),
           event: { id: e.obj && e.obj.id, side: e.side, controller: e.controller } });
       }
     }
+  }
+
+  // The spells you've cast this turn ("your second spell each turn"; "other spells you've cast this turn"): returns
+  // the number of the spell just cast
+  const countSpell = (s, side) => (side === "player" ? (s.spellsCast = (s.spellsCast || 0) + 1) : 0);
+  // CR 700.13: you commit a crime as you cast a spell, activate an ability, or put a triggered ability on the stack that
+  // targets an opponent, something an opponent controls, or a card in an opponent's graveyard
+  function commitCrime(s, target, side, ev) {
+    if (side !== "player" || target == null) return;
+    const ids = [target].flat(3).filter((x) => x != null);
+    const theirs = (id) => id === "opp" || s.opponent.battlefield.some((c) => c.id === id) || s.opponent.graveyard.some((c) => c.id === id);
+    if (!ids.some(theirs)) return;
+    s.crimes = (s.crimes || 0) + 1;
+    ev.push({ type: "crime" });
+    emit(s, { type: "crime", side: "player" }, ev);
   }
 
   /* ---------- targets ---------- */
@@ -1111,6 +1139,7 @@
     if (f.toxic && !toxicOf(c)) return false;                            // "creature you control with toxic"
     if (f.noncreature && isCreature(c)) return false;                     // "target noncreature artifact"
     if (f.artifactOrEnchantment && !isArtifact(c) && !typeHas(c, /enchantment/i)) return false;   // "target artifact or enchantment"
+    if (f.artifactOrCreature && !isArtifact(c) && !isCreature(c)) return false;                     // "target artifact or creature"
     return true;
   }
 
@@ -1300,7 +1329,10 @@
     // damage "equal to the sacrificed creature's power", or "equal to its power": the source as it is now, or as it
     // last existed if it has left (CR 608.2h)
     const srcPower = () => { const now = ctx.selfId && find(s, ctx.selfId); return Math.max(now ? power(now) : ctx.src.lastPower ?? power(ctx.src), 0); };
-    if (eff.damage != null) dealDamage(s, ctx.src, ctx.side, to, eff.damage === "sacrificed" ? ctx.sacPower : eff.damage === "power" ? srcPower() : eff.damage, ev);
+    // ("X damage, where X is 2 plus the number of other spells you've cast this turn": { plusOtherSpells: 2 })
+    const amount = (d) => (d === "sacrificed" ? ctx.sacPower : d === "power" ? srcPower()
+      : typeof d === "object" ? d.plusOtherSpells + Math.max((ctx.side === "player" ? s.spellsCast || 0 : 0) - 1, 0) : d);
+    if (eff.damage != null) dealDamage(s, ctx.src, ctx.side, to, amount(eff.damage), ev);
     if (eff.lifeLoss && isPlayer) changeLife(s, to, -eff.lifeLoss, ev);
     // "each opponent gets a poison counter" (CR 122.1f)
     if (eff.poison && isPlayer) {
@@ -1350,6 +1382,12 @@
     if (eff.loseAll && tgt) addEffect(s, tgt, { loseAll: true });
     if (eff.setBase && tgt) addEffect(s, tgt, { setBase: eff.setBase });
     if (eff.becomeCreature && tgt) addEffect(s, tgt, { becomeCreature: true });   // until end of turn (crew)
+    if (eff.saddled && tgt) { tgt.saddled = true; ev.push({ type: "saddled", id: tgt.id }); }   // CR 702.171b (until end of turn)
+    // "Untap all creatures target player controls"
+    if (eff.untapAllOf && isPlayer) s[to === "opp" ? "opponent" : "player"].battlefield.filter(isCreature).forEach((c) => untap(s, c, ev));
+    // "Target artifact or creature's owner puts it on the top or bottom of their library" (either way it's gone from the
+    // puzzle: the library below the known cards is unknown)
+    if (eff.tuck && tgt) leave(s, tgt, "library", ev);
     if (eff.grant && tgt) grant(tgt, eff.grant, s);
     if (eff.tap && tgt) tap(s, tgt, ev);
     if (eff.transform && tgt) transform(s, tgt, ev);            // "transform this creature" (CR 701.27)
@@ -1404,7 +1442,7 @@
           const f = faceOf(card, a);
           s.stack.unshift({ kind: "spell", name: f.name, id: card.id, a, card });
           ev.push({ type: "cast", id: card.id });
-          emit(s, { type: "cast", obj: f, side: ctx.side, targetCount: 0 }, ev);
+          emit(s, { type: "cast", obj: f, side: ctx.side, targetCount: 0, spellNumber: countSpell(s, ctx.side) }, ev);
         }
       }
     }
@@ -1578,7 +1616,8 @@
       const a = { type: "cast", id: found.id, target: casts[pick].target };
       s.stack.unshift({ kind: "spell", name: f.name, id: found.id, a, card: found });
       ev.push({ type: "cast", id: found.id, target: a.target });
-      emit(s, { type: "cast", obj: f, side, targetCount: a.target != null ? 1 : 0 }, ev);
+      emit(s, { type: "cast", obj: f, side, targetCount: a.target != null ? 1 : 0, spellNumber: countSpell(s, side) }, ev);
+      commitCrime(s, a.target, side, ev);
     } else z.hand.push(found);
     emit(s, { type: "discovers", obj: { id: found.id }, side }, ev);
   }
@@ -1636,6 +1675,10 @@
   const CLUE = { name: "Clue", type: "Token Artifact — Clue", colors: [],
     abilities: [{ cost: "{2}", sacSelf: true, effect: { draw: 1 }, text: "{2}, Sacrifice: Draw a card" }],
     text: "{2}, Sacrifice this token: Draw a card." };
+  // OTJ's Mercenary token: a 1/1 red Mercenary with "{T}: Target creature you control gets +1/+0. Activate only as a sorcery."
+  const MERCENARY = { name: "Mercenary", type: "Token Creature — Mercenary", pt: "1/1", colors: ["R"],
+    abilities: [{ tap: true, sorcery: true, targets: "creature", filter: { controller: "you" }, effect: { pump: [1, 0] }, text: "{T}: Target creature you control gets +1/+0" }],
+    text: "{T}: Target creature you control gets +1/+0 until end of turn. Activate only as a sorcery." };
   // CR 111.10s: a Map token
   const MAP = { name: "Map", type: "Token Artifact — Map", colors: [],
     abilities: [{ cost: "{1}", tap: true, sacSelf: true, sorcery: true, targets: "creature", filter: { controller: "you" }, effect: { explore: 1 },
@@ -1984,7 +2027,7 @@
     if (rc && ((card.counters || {})[rc.kind] || 0) < (rc.n || 1)) return `${card.name} doesn't have ${rc.n || 1} ${rc.kind} counter${(rc.n || 1) > 1 ? "s" : ""}.`;
     if (ab.craft && !craftOptions(s, card, ab.craft).length) return `${card.name} has nothing to craft with.`;
     // (tapping creatures to crew isn't a {T} cost: summoning-sick creatures can crew, CR 302.6 only covers {T}/{Q})
-    if (ab.crew && crewHelpers(s, card).reduce((t, id) => t + Math.max(power(find(s, id)), 0), 0) < ab.crew) return `Your untapped creatures don't have ${ab.crew} total power to crew it.`;
+    if (ab.crew && crewHelpers(s, card).reduce((t, id) => t + Math.max(power(find(s, id)), 0), 0) < ab.crew) return `Your untapped creatures don't have ${ab.crew} total power to ${ab.saddle ? "saddle" : "crew"} it.`;
     if (ab.sorcery && !sorceryTime(s)) return `You can only ${ab.text || "do that"} during your main phase, with nothing on the stack.`;
     if (ab.cost && !bestPayment(s, withX(ab.cost, x), { exclude: ab.tap ? [card.id] : [] })) return "Not enough mana.";
     if (ab.targets && !targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)).length) return "There's no legal target.";
@@ -2007,8 +2050,8 @@
   function castable(s, id) {
     const h = s.player.hand.find((c) => c.id === id);
     if (h) return { card: h, zone: "hand" };
-    // (or a card exiled with "you may play that card this turn")
-    const e = s.player.exile.find((c) => c.id === id && (c.onAdventure || c.playable));
+    // (or a card exiled with "you may play that card this turn", or a card plotted on an earlier turn, CR 702.170d)
+    const e = s.player.exile.find((c) => c.id === id && (c.onAdventure || c.playable || (c.plotted && !c.plottedNow)));
     if (e) return { card: e, zone: "exile" };
     const g = s.player.graveyard.find((c) => c.id === id && c.flashback);
     return g ? { card: g, zone: "graveyard" } : null;
@@ -2019,6 +2062,8 @@
   function castFace(from, a) {
     if (a.faceDown) return { ...FACE_DOWN, kw: [...FACE_DOWN.kw], id: from.card.id, owner: from.card.owner, cost: "{3}" };
     const f = faceOf(from.card, a);
+    // CR 702.170d: a plotted card is cast without paying its mana cost (an alternative cost: nothing to pay)
+    if (from.zone === "exile" && from.card.plotted) return { ...f, cost: "", plottedCast: true };
     if (from.zone !== "graveyard") return f;
     const { cost, behold } = from.card.flashback;
     return { ...f, cost, ...(behold ? { behold } : {}) };
@@ -2076,6 +2121,14 @@
       if (n && a.payLife && !canPayLife(s, n)) return `You don't have ${n} life to pay.`;
       return null;
     }
+    // CR 702.170a / 116.2k: plot — exile it from your hand and pay its plot cost, during your main phase with an empty stack
+    if (a.type === "plot") {
+      const card = s.player.hand.find((c) => c.id === a.id);
+      if (!card || !card.plot) return "Only a card with plot in your hand can be plotted.";
+      if (!sorceryTime(s)) return "You can only plot during your main phase, with nothing on the stack.";
+      if (!bestPayment(s, card.plot, { except: card.id })) return `Not enough mana to plot ${card.name}.`;
+      return null;
+    }
     if (a.type === "cast") {
       const from = castable(s, a.id);
       if (!from || from.card.unknown) return "You can't cast that.";
@@ -2087,10 +2140,12 @@
       if (isLand(f)) return "Play it as a land instead.";
       if (f.cost == null) return "You can't cast that.";
       if (!isInstant(f) && !has(f, "flash") && !sorceryTime(s)) return `You can only cast ${f.name} during your main phase, with nothing on the stack.`;
+      if (f.plottedCast && !sorceryTime(s)) return `A plotted card can only be cast during your main phase, with nothing on the stack.`;
       const n = f.chooseCount || 1;
       if (f.modes && a.mode != null) {
-        const picks = n > 1 ? [].concat(a.mode) : [a.mode];
-        if (picks.length !== n || new Set(picks).size !== n || picks.some((m) => !f.modes[m])) return n === 1 ? "Choose a mode." : `Choose ${n} different modes.`;
+        const picks = manyModes(f) ? [].concat(a.mode) : [a.mode];
+        if (f.spree) { if (!picks.length || new Set(picks).size !== picks.length || picks.some((m) => !f.modes[m])) return "Choose one or more modes."; }
+        else if (picks.length !== n || new Set(picks).size !== n || picks.some((m) => !f.modes[m])) return n === 1 ? "Choose a mode." : `Choose ${n} different modes.`;
       }
       if (f.chooseColor && a.color != null && !"WUBRG".includes(a.color)) return "Choose a color.";
       if (parseCost(f.cost).x && a.x != null && !(a.x >= 0)) return "Choose X.";
@@ -2145,8 +2200,8 @@
       if (ab.craft && !craftOptions(s, card, ab.craft).includes(a.craft)) return "Choose something to craft with.";
       if (ab.crew) {
         const crew = a.crew || [];
-        if (new Set(crew).size !== crew.length || !crew.every((id) => crewHelpers(s, card).includes(id))) return "Only your other untapped creatures can crew it.";
-        if (crew.reduce((t, id) => t + Math.max(power(find(s, id)), 0), 0) < ab.crew) return `Choose creatures with ${ab.crew} or more total power to crew it.`;
+        if (new Set(crew).size !== crew.length || !crew.every((id) => crewHelpers(s, card).includes(id))) return `Only your other untapped creatures can ${ab.saddle ? "saddle" : "crew"} it.`;
+        if (crew.reduce((t, id) => t + Math.max(power(find(s, id)), 0), 0) < ab.crew) return `Choose creatures with ${ab.crew} or more total power to ${ab.saddle ? "saddle" : "crew"} it.`;
       }
       if (a.target != null) return validTargets(a.target, targetsFor(s, card, ab.targets, ab.filter), ab.targetCount);
       return null;
@@ -2288,6 +2343,7 @@
     if (a.type === "trigger") {                               // CR 603.3d: you chose its target; it goes on the stack
       const p = s.pending.shift();
       s.stack.unshift({ ...p, kind: "trigger", target: a.target });
+      commitCrime(s, a.target, "player", ev);
     }
 
     if (a.type === "scry") {
@@ -2311,6 +2367,16 @@
       enter(s, asFace(card, a.face), { payLife: a.payLife }, ev);
     }
 
+    if (a.type === "plot") {                                 // a special action: no stack (CR 702.170b)
+      const card = s.player.hand.find((c) => c.id === a.id);
+      spend(s, bestPayment(s, card.plot, { except: card.id }), ev);
+      s.player.hand = s.player.hand.filter((c) => c !== card);
+      Object.assign(card, { plotted: true, plottedNow: true });   // (it can be cast on a later turn, not this one)
+      s.player.exile.push(card);
+      ev.push({ type: "plotted", id: card.id });
+      emit(s, { type: "becomesPlotted", obj: card, side: "player" }, ev);   // "When this card becomes plotted"
+    }
+
     if (a.type === "mana") {
       // {T}, sacrifice: add one mana of any color. A mana ability: no stack, usable whenever you have priority.
       const t = find(s, a.id);
@@ -2326,7 +2392,7 @@
       // A sacrificed creature's power is what it was at that moment (triggers from casting resolve later).
       const pay = castPayment(s, f, a, card.id);
       s.player[zone] = s.player[zone].filter((c) => c !== card);
-      delete card.playable;
+      ["playable", "plotted", "plottedNow"].forEach((k) => delete card[k]);
       // collect evidence: the chosen cards go from your graveyard to exile (CR 701.59a); a permanent spell remembers it
       if (a.evidence != null) {
         const ids = [].concat(a.evidence);
@@ -2355,7 +2421,8 @@
       ev.push({ type: "cast", id: card.id, target: a.target, sac: a.sac });
       // CR 601.2i: once cast, "whenever you cast" abilities trigger (prowess), and targeted permanents "become the
       // target of a spell" (Bonecrusher Giant); these go on the stack above the spell and resolve first
-      emit(s, { type: "cast", obj: f, side: "player", targetCount: new Set([a.target].flat(2).filter((x) => x != null)).size }, ev);
+      emit(s, { type: "cast", obj: f, side: "player", targetCount: new Set([a.target].flat(2).filter((x) => x != null)).size, spellNumber: countSpell(s, "player") }, ev);
+      commitCrime(s, a.target, "player", ev);
       if (!isPermanent(f) || f.aura) {
         [...new Set([a.target].flat(2))].map((id) => id && find(s, id)).filter(Boolean)
           .forEach((c) => emit(s, { type: "becomesTarget", obj: c, side: sideOf(s, c), by: "spell", controller: "you" }, ev));
@@ -2399,6 +2466,7 @@
         .forEach((c) => emit(s, { type: "becomesTarget", obj: c, side: sideOf(s, c), by: "ability", controller: "you" }, ev));
       // CR 602.2a: the ability is on the stack (triggers from paying its costs go on top of it)
       s.stack.unshift({ kind: "ability", name: `${card.name}'s ability`, id: card.id, a, ab, ctx });
+      commitCrime(s, a.target, "player", ev);
     }
 
     if (a.type === "attack") {
@@ -2471,7 +2539,7 @@
     const parts = plan(f, a);
     let combos = [[]];
     parts.forEach((p) => { const opts = partOptions(s, f, p, sac); combos = combos.flatMap((acc) => opts.map((o) => [...acc, o])); });
-    const many = (f.chooseCount || 1) > 1;
+    const many = manyModes(f);
     return combos.map((list) => (many ? { target: list.map((o) => o.target) } : { ...list[0] }));
   }
   function partOptions(s, f, p, sac) {
@@ -2504,10 +2572,11 @@
     if (s.stack.length) out.push({ type: "pass" });           // let the top of the stack resolve (CR 117.4)
     const range = (n) => Array.from({ length: Math.max(n, 0) }, (_, i) => i + 1);
     const sources = [...s.player.hand.map((card) => ({ card, zone: "hand" })),
-      ...s.player.exile.filter((c) => c.onAdventure || c.playable).map((card) => ({ card, zone: "exile" })),
+      ...s.player.exile.filter((c) => castable(s, c.id)).map((card) => ({ card, zone: "exile" })),
       ...s.player.graveyard.filter((c) => c.flashback).map((card) => ({ card, zone: "graveyard" }))];
     for (const { card, zone } of sources) {
       if (card.unknown) continue;
+      if (zone === "hand" && card.plot && !check(s, { type: "plot", id: card.id })) out.push({ type: "plot", id: card.id });
       // disguise: cast it face down for {3}
       if (card.disguise && !check(s, { type: "cast", id: card.id, faceDown: true })) out.push({ type: "cast", id: card.id, faceDown: true });
       const faces = card.faces ? (zone === "exile" || card.layout === "transform" ? [0] : card.faces.map((_, i) => i)) : [undefined];
@@ -2526,7 +2595,8 @@
           ...(f.bargainLess ? bargainOptions(s).map((bargain) => ({ bargain })) : [])];
         if (check(s, { type: "cast", id: card.id, face }) && !reducible.some((r) => !check(s, { type: "cast", id: card.id, face, ...r }))) continue;
         const n = f.chooseCount || 1;
-        const modes = f.modes ? (n > 1 ? combinations(f.modes.map((_, i) => i), n) : f.modes.map((_, i) => i)) : [undefined];
+        const modes = f.modes ? (f.spree ? subsets(f.modes.map((_, i) => i)).filter((l) => l.length)
+          : n > 1 ? combinations(f.modes.map((_, i) => i), n) : f.modes.map((_, i) => i)) : [undefined];
         const colors = f.chooseColor ? [..."WUBRG"] : [undefined];
         const xs = parseCost(f.cost).x ? range(manaAvailable(s) - manaValue(f.cost)) : [undefined];
         const sacs = f.sacrifice ? sacrificeOptions(s, f) : [undefined];
@@ -2564,7 +2634,7 @@
         xs.forEach((x) => {
           if (abilityProblem(s, card, ab, x)) return;
           // crewing a Vehicle that's already a creature does nothing more (solver: only crews that matter)
-          if (ab.crew) { if (!isCreature(card)) crewChoices(s, card, ab.crew).forEach((crew) => out.push({ type: "activate", id: card.id, index, crew })); return; }
+          if (ab.crew) { if (ab.saddle ? !card.saddled : !isCreature(card)) crewChoices(s, card, ab.crew).forEach((crew) => out.push({ type: "activate", id: card.id, index, crew })); return; }
           if (ab.craft) { craftOptions(s, card, ab.craft).forEach((m) => out.push({ type: "activate", id: card.id, index, craft: m })); return; }
           const list = ab.targets ? targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)) : null;
           (list ? targetChoices(list, ab.targetCount) : [undefined]).forEach((target) => out.push({ type: "activate", id: card.id, index, target, x }));
@@ -2700,6 +2770,7 @@
     }
     if (a.type === "scry") return `scry: keep ${a.top.map((id) => nameOf(s, id)).join(", ") || "nothing"} on top` + (a.away.length ? `, away ${a.away.map((id) => nameOf(s, id)).join(", ")}` : "");
     if (a.type === "mana") return `sacrifice ${nameOf(s, a.id)} for mana`;
+    if (a.type === "plot") return `plot ${nameOf(s, a.id)}`;
     if (a.type === "pass") return `resolve: ${s.stack[0] ? s.stack[0].name : "the stack"}`;
     if (a.type === "choice") return `${s.pending[0].name.replace(/:.*/, "")}: ${s.pending[0].labels[a.pick]}`;
     if (a.type === "order") return `put ${s.pending[a.pick] ? s.pending[a.pick].name : "a"}'s trigger on the stack first`;
@@ -2709,7 +2780,7 @@
     if (a.type === "activate") {
       const card = find(s, a.id);
       const ab = card && abilitiesOf(card)[a.index];
-      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (crewed by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
+      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
     }
     const from = castable(s, a.id);
     const f = from ? castFace(from, a) : null;
@@ -2803,7 +2874,7 @@
   }
 
   root.Engine = {
-    STEPS, at, init, check, apply, won, lost, canPayLife, turnOver, blightOptions, beholdOptions, convokeHelpers, castPayment, CLUE, evidenceOptions,
+    STEPS, at, init, check, apply, won, lost, canPayLife, turnOver, blightOptions, beholdOptions, convokeHelpers, castPayment, CLUE, evidenceOptions, manyModes, MERCENARY,
     hasType, vividCount, colorsOf, subsets, textOf, pendingTrigger, currentPT, isPlaneswalker, loyaltyOf, isBattle, defenseOf, INCUBATOR, FOOD, ROLES, MAP, bargainOptions, legalActions, nextStep, solve, describe, opponentBlocks, blockOptions, nextStop,
     targetsFor, targetChoices, spellSpec, plan, faceOf, compositions, scryChoices, castable, abilitiesOf, sacrificeOptions, canAttackNow, inMain, parseCost, manaValue, manaAvailable,
     abilityProblem, isCreature, isLand, isInstant, isTreasure, has, power, toughness, slug, makeSearch, WORD_OF
