@@ -1091,6 +1091,67 @@
       text: "When this Equipment enters, it deals 2 damage to any target. Equipped creature gets +2/+1. Equip {2}" }
   });
 
+  // ---- Edge of Eternities (EOE): station / Spacecraft, warp, void, Lander tokens ----
+  // (station: { at, kw } — a Spacecraft is an artifact creature with those keywords at that many charge counters;
+  // warp: its warp cost; void conditions use if: { void: true })
+  const stationText = (n) => `Station (Tap another creature you control: Put charge counters equal to its power on this Spacecraft. Station only as a sorcery. It's an artifact creature at ${n}+.)`;
+  const warpText = (cost, what = "creature") => `Warp ${cost} (You may cast this card from your hand for its warp cost. Exile this ${what} at the beginning of the next end step, then you may cast it from exile on a later turn.)`;
+  const VOID_TEXT = "if a nonland permanent left the battlefield this turn or a spell was warped this turn";
+  const LANDER = { name: "Lander", type: "Token Artifact — Lander", colors: [],
+    abilities: [{ cost: "{2}", tap: true, sacSelf: true, sorcery: false, effect: {}, text: "{2}, {T}, Sacrifice: search for a basic land" }],
+    text: "{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle." };
+  Object.assign(CARDS, {
+    "Lander": { ...LANDER, token: true },
+    // Spacecraft
+    "Galvanizing Sawship": { type: "Artifact — Spacecraft", cost: "{5}{R}", pt: "6/5", station: { at: 3, kw: ["flying", "haste"] },
+      text: `${stationText(3)} 3+ | Flying, haste` },
+    "Wurmwall Sweeper": { type: "Artifact — Spacecraft", cost: "{2}", pt: "2/2", etb: { surveil: 2 }, station: { at: 4, kw: ["flying"] },
+      text: `When this Spacecraft enters, surveil 2. ${stationText(4)} 4+ | Flying` },
+    "Debris Field Crusher": { type: "Artifact — Spacecraft", cost: "{4}{R}", pt: "1/5", etb: { damage: 3 }, targets: "any", station: { at: 8, kw: ["flying"] },
+      abilities: [{ cost: "{1}{R}", ifStationed: true, effect: { pump: [2, 0], self: true }, text: "{1}{R}: +2/+0 (8+)" }],
+      text: `When this Spacecraft enters, it deals 3 damage to any target. ${stationText(8)} 8+ | Flying. {1}{R}: This Spacecraft gets +2/+0 until end of turn.` },
+    "Wedgelight Rammer": { type: "Artifact — Spacecraft", cost: "{3}{W}", pt: "3/4", etb: { create: { name: "Robot", type: "Token Artifact Creature — Robot", pt: "2/2", colors: [] } },
+      station: { at: 9, kw: ["flying", "first strike"] },
+      text: `When this Spacecraft enters, create a 2/2 colorless Robot artifact creature token. ${stationText(9)} 9+ | Flying, first strike` },
+    "Drill Too Deep": { type: "Instant", cost: "{1}{R}",
+      modes: [{ text: "Put five charge counters on target Spacecraft or Planet you control", targets: "permanent", targetFilter: { controller: "you", spacecraftOrPlanet: true }, effect: { counters: { charge: 5 } } },
+        { text: "Destroy target artifact", targets: "artifact", effect: { destroy: true } }],
+      text: "Choose one — • Put five charge counters on target Spacecraft or Planet you control. • Destroy target artifact." },
+    "Systems Override": { type: "Sorcery", cost: "{2}{R}", targets: "permanent", targetFilter: { artifactOrCreature: true }, effect: { steal: true, chargeIfSpacecraft: 10 },
+      text: "Gain control of target artifact or creature until end of turn. Untap that permanent. It gains haste until end of turn. If it's a Spacecraft, put ten charge counters on it. If you do, remove ten charge counters from it at the beginning of the next end step." },
+    "Invasive Maneuvers": { type: "Instant", cost: "{1}{R}", targets: "creature", effect: { damage: 3, insteadIf: { if: { controlsType: "Spacecraft" }, effect: { damage: 5 } } },
+      text: "Invasive Maneuvers deals 3 damage to target creature. It deals 5 damage instead if you control a Spacecraft." },
+    // warp
+    "Red Tiger Mechan": { type: "Artifact Creature — Robot Cat", cost: "{3}{R}", pt: "3/3", kw: ["haste"], warp: "{1}{R}", text: `Haste. ${warpText("{1}{R}")}` },
+    "Memorial Team Leader": { type: "Creature — Kavu Soldier", cost: "{3}{R}", pt: "4/3", warp: "{1}{R}", static: { team: { pump: [1, 0] }, other: true },
+      text: `During your turn, other creatures you control get +1/+0. ${warpText("{1}{R}")}` },
+    "Weftstalker Ardent": { type: "Creature — Drix Artificer", cost: "{2}{R}", pt: "2/3", warp: "{R}",
+      triggers: [{ on: "enters", other: true, filter: { controller: "you", artifactOrCreature: true }, effect: { damage: 1, to: "opp" } }],
+      text: `Whenever another creature or artifact you control enters, this creature deals 1 damage to each opponent. ${warpText("{R}")}` },
+    "Knight Luminary": { type: "Creature — Human Knight", cost: "{3}{W}", pt: "3/2", warp: "{1}{W}", etb: { create: { name: "Human Soldier", type: "Token Creature — Human Soldier", pt: "1/1", colors: ["W"] } },
+      text: `When this creature enters, create a 1/1 white Human Soldier creature token. ${warpText("{1}{W}")}` },
+    "Full Bore": { type: "Instant", cost: "{R}", targets: "creature", targetFilter: { controller: "you" }, effect: { pump: [3, 2], ifWarped: ["trample", "haste"] },
+      text: "Target creature you control gets +3/+2 until end of turn. If that creature was cast for its warp cost, it also gains trample and haste until end of turn." },
+    // void
+    "Plasma Bolt": { type: "Sorcery", cost: "{R}", targets: "any", effect: { damage: 2, insteadIf: { if: { void: true }, effect: { damage: 3 } } },
+      text: `Plasma Bolt deals 2 damage to any target. Void — Plasma Bolt deals 3 damage instead ${VOID_TEXT}.` },
+    "Tragic Trajectory": { type: "Sorcery", cost: "{B}", targets: "creature", effect: { pump: [-2, -2], insteadIf: { if: { void: true }, effect: { pump: [-10, -10] } } },
+      text: `Target creature gets -2/-2 until end of turn. Void — That creature gets -10/-10 until end of turn instead ${VOID_TEXT}.` },
+    "Decode Transmissions": { type: "Sorcery", cost: "{2}{B}", effect: { draw: 2, insteadIf: { if: { void: true }, effect: { draw: 2, lifeLoss: 2, to: "opp" } } },
+      text: `You draw two cards and lose 2 life. Void — ${VOID_TEXT.replace(/^if/, "If")}, instead you draw two cards and each opponent loses 2 life.` },
+    // others
+    "Hemosymbic Mite": { type: "Creature — Mite", cost: "{G}", pt: "1/1",
+      triggers: [{ on: "becomesTapped", self: true, targets: "creature", targetFilter: { controller: "you", other: true }, effect: { pumpBySourcePower: true } }],
+      text: "Whenever this creature becomes tapped, another target creature you control gets +X/+X until end of turn, where X is this creature's power." },
+    "Kavaron Turbodrone": { type: "Artifact Creature — Robot Scout", cost: "{2}{R}", pt: "2/3",
+      abilities: [{ tap: true, sorcery: true, targets: "creature", filter: { controller: "you" }, effect: { pump: [1, 1], grant: ["haste"] }, text: "{T}: +1/+1 and haste" }],
+      text: "{T}: Target creature you control gets +1/+1 and gains haste until end of turn. Activate only as a sorcery." },
+    "Galactic Wayfarer": { type: "Creature — Human Scout", cost: "{2}{G}", pt: "3/3", etb: { create: LANDER },
+      text: "When this creature enters, create a Lander token. (It's an artifact with \"{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\")" },
+    "Bombard": { type: "Instant", cost: "{2}{R}", targets: "creature", effect: { damage: 4 }, text: "Bombard deals 4 damage to target creature." },
+    "Rig for War": { type: "Instant", cost: "{1}{R}", targets: "creature", effect: { pump: [3, 0], grant: ["reach", "first strike"] }, text: "Target creature gets +3/+0 and gains reach and first strike until end of turn." }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -2605,6 +2666,130 @@ LETHAL: Coral Sword ({R}): attached to Gray Ogre, 3/2. Attack with both; the Bea
   Meteor Strikes ({G} + {2}): double the Ogre: 6.
 RULES: Doubling power gives +X/+0 where X is its power at that moment, so bonuses must come first.
 WRONG LINES: Doubling before the Sword: 5. Pumping the Giant: the Bears block it.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= EDGE OF ETERNITIES (set EOE) ======================= */
+  // Station (Spacecraft), warp, void, Lander tokens
+  window.PUZZLES.push(
+    puzzle({
+      id: "eoe-01-sawship", title: "Sawship", set: "eoe", tier: "easy",
+      opp: { life: 6, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Galvanizing Sawship")], battlefield: [c("Hill Giant"), ...many(6, "Mountain")] },
+      explanation: "Cast Galvanizing Sawship and station it with Hill Giant: 3 charge counters. At 3+ it's an artifact creature with flying and haste, so it attacks right away for 6.",
+      notes: `
+LETHAL: Galvanizing Sawship ({5}{R}). Station: tap Hill Giant: 3 charge counters: a 6/5 artifact creature with flying and
+  haste. Attack: 6 (the Bears can't block fliers).
+RULES: Station (702.184a, 721): sorcery speed; tap another creature, charge counters equal to its power.
+WRONG LINES: Attacking with the Giant: the Bears block.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-02-warp-speed", title: "Warp Speed", set: "eoe", tier: "easy",
+      opp: { life: 6 },
+      you: { hand: [c("Red Tiger Mechan"), c("Plasma Bolt")], battlefield: many(3, "Mountain") },
+      explanation: "Warp Red Tiger Mechan for {1}{R} (it has haste). A spell was warped this turn, so Plasma Bolt's void deals 3 instead of 2. 3 + 3.",
+      notes: `
+LETHAL: Red Tiger Mechan for its warp cost {1}{R} (haste). Plasma Bolt the opponent: void: 3. Attack with the Mechan: 3.
+RULES: Warp (702.185a): an alternative cost from your hand; "a spell was warped this turn" (702.185c) turns void on.
+WRONG LINES: Plasma Bolt first: 2. Casting the Mechan normally: {3}{R}, you have 3 lands.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-03-tragic-trajectory", title: "Tragic Trajectory", set: "eoe", tier: "easy",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Tragic Trajectory")], battlefield: [c("Hill Giant"), c("Lander"), ...many(3, "Swamp")] },
+      explanation: "Sacrifice the Lander first: a nonland permanent left the battlefield, so void is on and Tragic Trajectory gives -10/-10. The Nestguard dies; Hill Giant attacks for 3.",
+      notes: `
+LETHAL: Lander ({2}, {T}, sacrifice): it leaves the battlefield (the search finds nothing that matters). Tragic Trajectory
+  ({B}): void: Krotiq Nestguard -10/-10. Hill Giant attacks: 3.
+RULES: Void: "if a nonland permanent left the battlefield this turn or a spell was warped this turn".
+WRONG LINES: Trajectory first: -2/-2, the 4/4 survives and blocks.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-04-weftstalker", title: "Weftstalker", set: "eoe", tier: "easy",
+      opp: { life: 2, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Weftstalker Ardent"), c("Knight Luminary")], battlefield: [c("Mountain"), c("Plains"), c("Plains")] },
+      explanation: "Warp both: Weftstalker Ardent for {R}, then Knight Luminary for {1}{W}. The Knight and its Soldier token both enter: Weftstalker deals 1 for each.",
+      notes: `
+LETHAL: Weftstalker Ardent (warp {R}). Knight Luminary (warp {1}{W}): it enters (1), and its Soldier token enters (1). 0.
+RULES: Warp (702.185a). "Whenever another creature or artifact you control enters."
+WRONG LINES: The Knight first: Weftstalker isn't there yet.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-05-mite", title: "Hemosymbic Mite", set: "eoe", tier: "medium",
+      opp: { life: 2, battlefield: [c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Wurmwall Sweeper"), c("Hemosymbic Mite"), c("Gray Ogre")] },
+      explanation: "Wurmwall Sweeper needs 4 charge counters to fly. Station it with Hemosymbic Mite first: 1 counter, and the Mite becoming tapped gives Gray Ogre +1/+1. Then station with the 3-power Ogre: 4 counters. The Sweeper flies over for 2.",
+      notes: `
+LETHAL: Station Wurmwall Sweeper with Hemosymbic Mite: 1 charge; the Mite became tapped: Gray Ogre +1/+1 (3/3). Station
+  with the Ogre: 3 more: 4: a 2/2 flier. Attack: 2.
+RULES: Station taps the creature (702.184a): "whenever this creature becomes tapped" triggers.
+WRONG LINES: The Ogre first: 2 + 1 = 3 counters. Attacking: the Nestguard blocks.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-06-systems-override", title: "Systems Override", set: "eoe", tier: "medium",
+      opp: { life: 6, battlefield: [c("Grizzly Bears"), c("Galvanizing Sawship")] },
+      you: { hand: [c("Systems Override")], battlefield: [c("Hill Giant"), ...many(3, "Mountain")] },
+      explanation: "The opponent's Galvanizing Sawship isn't stationed. Systems Override takes it, untaps it, gives it haste, and puts ten charge counters on it: a 6/5 flier with haste. Attack with it.",
+      notes: `
+LETHAL: Systems Override ({2}{R}) on the opponent's Galvanizing Sawship: yours, haste, 10 charge counters: a 6/5 artifact
+  creature with flying. Attack: 6.
+RULES: Station thresholds (721): at 3+ it's a creature with flying and haste.
+WRONG LINES: Stealing the Bears: 2 + 3, the Sawship can't block anyway (not a creature) — 5.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-07-drill-too-deep", title: "Drill Too Deep", set: "eoe", tier: "hard",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Drill Too Deep")], battlefield: [c("Debris Field Crusher", { counters: { charge: 3 } }), c("Hill Giant"), ...many(6, "Mountain")] },
+      explanation: "Debris Field Crusher has 3 charge counters; at 8 it's a flying creature and its {1}{R} pump works. Drill Too Deep adds five: 8. Then pump twice: 5/5 in the air.",
+      notes: `
+LETHAL: Drill Too Deep ({1}{R}): five charge counters on Debris Field Crusher: 8: a 1/5 flier with "{1}{R}: +2/+0". Pump
+  twice ({1}{R}{1}{R}): 5/5. Attack: 5. (6 Mountains: 2 + 2 + 2.)
+RULES: A station symbol's abilities exist only at its threshold (721.2).
+WRONG LINES: Stationing with the Giant: 6, not 8 (and the Drill still needed). Attacking with the Giant: blocked.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-08-full-bore", title: "Full Bore", set: "eoe", tier: "hard",
+      opp: { life: 11, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Red Tiger Mechan"), c("Full Bore"), c("Memorial Team Leader")], battlefield: [c("Hill Giant"), ...many(5, "Mountain")] },
+      explanation: "Warp both creatures ({1}{R} each). Memorial Team Leader can't attack yet, but Full Bore on a warped creature also gives trample and haste: the Leader becomes 7/5. It gives the others +1/+0. 7 + 4 + 4, and the Nestguard stops only one.",
+      notes: `
+LETHAL: Red Tiger Mechan (warp {1}{R}, haste) and Memorial Team Leader (warp {1}{R}). Full Bore ({R}) on the Leader: 7/5,
+  and it was warped: trample and haste. Others +1/+0: Mechan 4/3, Hill Giant 4/3. Attack with all: the Nestguard blocks
+  the Giant: 7 + 4 = 11 (blocking the Leader: 3 trample + 8).
+RULES: Warp (702.185a); "if that creature was cast for its warp cost".
+WRONG LINES: Full Bore on the Mechan: the Leader can't attack. Casting the Leader normally: no mana left.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-09-void", title: "Void", set: "eoe", tier: "hard",
+      opp: { life: 6, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Plasma Bolt"), c("Tragic Trajectory"), c("Weftstalker Ardent")], battlefield: [c("Hill Giant"), c("Swamp"), c("Swamp"), c("Mountain"), c("Mountain")] },
+      explanation: "Turn void on first: warp Weftstalker Ardent for {R}. Then Plasma Bolt deals 3 and Tragic Trajectory gives -10/-10 to the Nestguard. Hill Giant attacks for 3.",
+      notes: `
+LETHAL: Weftstalker Ardent (warp {R}): a spell was warped. Plasma Bolt the opponent: 3 (3). Tragic Trajectory: Krotiq
+  Nestguard -10/-10. Hill Giant attacks: 3. 0.
+RULES: Void checks as the spell resolves.
+WRONG LINES: Either spell before the warp: 2 damage, or -2/-2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "eoe-10-wayfarer", title: "Wayfarer", set: "eoe", tier: "hard",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Weftstalker Ardent"), c("Galactic Wayfarer"), c("Plasma Bolt")], battlefield: [c("Hill Giant"), c("Forest"), c("Forest"), ...many(3, "Mountain")] },
+      explanation: "Warp Weftstalker Ardent ({R}). Galactic Wayfarer enters (1) and makes a Lander, an artifact (1). The warp turned void on: Plasma Bolt deals 3.",
+      notes: `
+LETHAL: Weftstalker Ardent (warp {R}). Galactic Wayfarer ({2}{G}): it enters: 1; its Lander token enters: 1 (3). Plasma
+  Bolt: void: 3. 0. (5 lands: 1 + 3 + 1.)
+RULES: Weftstalker sees creatures and artifacts entering; a token is both.
+WRONG LINES: Casting Weftstalker for {2}{R}: no mana for the rest.
 UNIQUENESS: Solver-checked.`
     })
   );

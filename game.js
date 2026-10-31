@@ -806,6 +806,12 @@
         if (max < 1) { cancelCast(); return rulesNote("Not enough mana."); }
         return askChoice(`${card.name}: choose X`, Array.from({ length: max }, (_, i) => [i + 1, String(i + 1)]), again("x"));
       }
+      // station: tap one other untapped creature; it puts charge counters equal to its power on this permanent
+      if (ab.stationAb && casting.crew === undefined) {
+        return pickCards({ ids: crewIds(card), min: 1, max: 1, confirm: "Station",
+          prompt: `Station: tap another untapped creature you control. ${card.name} gets charge counters equal to its power (a creature at ${card.station.at}+).`,
+          then: (l) => again("crew")(l) });
+      }
       // crew: tap your other untapped creatures with enough total power (summoning-sick ones too)
       if (ab.crew && casting.crew === undefined) {
         const ids = crewIds(card);
@@ -866,6 +872,13 @@
       if (canCycle && canCast) return askChoice(`${card.name}: cast or cycle?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Cycle it for ${card.cycling} (discard it, draw a card)`]], again("cycle"));
       casting.cycle = canCycle && !canCast;
     }
+    // warp (a card in your hand): cast it normally, or for its warp cost
+    if (card.warp && casting.warp === undefined && state.player.hand.includes(card)) {
+      const canWarp = !E.check(state, { type: "cast", id: card.id, warp: true });
+      const canCast = !E.check(state, { type: "cast", id: card.id });
+      if (canWarp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Warp it for ${card.warp} (exiled at the next end step)`]], again("warp"));
+      casting.warp = canWarp && !canCast;
+    }
     if (casting.cycle) {
       const a = { type: "cycle", id: card.id };
       const why = E.check(state, a);
@@ -908,7 +921,7 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
-    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined });
+    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined });
     if (why) { cancelCast(); return rulesNote(why); }
     const n = f.chooseCount || 1;
     if (f.modes && casting.mode == null) {
@@ -1080,7 +1093,7 @@
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);
@@ -1232,7 +1245,7 @@
     clearAttackers();
     const ab = E.abilitiesOf(card)[index];
     const why = E.check(state, { type: "activate", id: card.id, index, target: firstTarget(card, index), x: E.parseCost(ab.cost).x ? 1 : undefined,
-      crew: ab.crew ? crewIds(card) : undefined,
+      crew: ab.crew ? crewIds(card) : ab.stationAb ? crewIds(card).slice(0, 1) : undefined,
       craft: ab.craft ? (E.legalActions(state).find((a) => a.type === "activate" && a.id === card.id && a.index === index && a.craft) || {}).craft : undefined });
     if (why) return rulesNote(why, btn.closest(".card"));
     casting = { card, index, results: [], picks: [] };

@@ -113,8 +113,11 @@
   // CR 122.1b: keyword counters (a trample counter: "this has trample")
   const KW_COUNTERS = ["flying", "first strike", "double strike", "deathtouch", "decayed", "exalted", "haste", "hexproof", "indestructible", "lifelink", "menace", "reach", "shadow", "trample", "vigilance"];
   const counterKw = (c) => (c.counters ? KW_COUNTERS.filter((k) => c.counters[k] > 0) : []);
+  // CR 721.2: a station card (Spacecraft) with enough charge counters is an artifact creature with the abilities of its
+  // station symbol (c.station: { at, kw })
+  const stationed = (c) => !!(c.station && ((c.counters && c.counters.charge) || 0) >= c.station.at);
   const ownKw = (c) => {
-    const kws = counterKw(c);
+    const kws = [...counterKw(c), ...(stationed(c) ? c.station.kw || [] : [])];
     const base = c.suspected ? [...(c.kw || []), "menace", "can't block"] : c.kw || [];
     return kws.length ? [...base, ...kws.filter((k) => !base.includes(k))] : base;
   };
@@ -156,13 +159,17 @@
     // CR 702.171a: "Saddle N" — tap other untapped creatures you control with total power N or more: this becomes saddled
     // until end of turn; only as a sorcery. (Paid like crew: the creatures are chosen as a.crew.)
     keywords(c).forEach((k) => { const m = /^saddle (\d+)$/.exec(k); if (m) list.push({ crew: Number(m[1]), saddle: true, sorcery: true, effect: { saddled: true, self: true }, text: `Saddle ${m[1]}` }); });
+    // CR 702.184a: station — "Tap another untapped creature you control: Put a number of charge counters on this permanent
+    // equal to the tapped creature's power. Activate only as a sorcery." (the creature: a.crew, one of them)
+    if (c.station) list.push({ stationAb: true, sorcery: true, effect: { charge: "tapped", self: true }, text: `Station (${c.station.at}+)` });
     // CR 702.167a: craft: { cost, filter, text } — "[Cost], Exile this, Exile [a material] from among permanents you
     // control and/or cards in your graveyard: Return this card transformed. Activate only as a sorcery." (a.craft: the material)
     if (c.craft && !c.transformed) list.push({ cost: c.craft.cost, sorcery: true, craft: c.craft, effect: { craftReturn: true }, text: c.craft.text || `Craft ${c.craft.cost}` });
     // CR 716.2a: a Class's "[Cost]: Level N" — its level becomes N; only if it's level N-1, and only as a sorcery
     (c.levels || []).forEach((lv) => { if (lv.level === levelOf(c) + 1) list.push({ cost: lv.cost, sorcery: true, effect: { levelUp: lv.level, self: true }, text: `Level ${lv.level} (${lv.cost})` }); });
-    // CR 719.3c: a Case's "Solved — [ability]" can only be activated once it's solved
-    return list.filter((ab) => !ab.ifSolved || c.solved);
+    // CR 719.3c: a Case's "Solved — [ability]" can only be activated once it's solved; a station symbol's ability only at
+    // its threshold (CR 721.2)
+    return list.filter((ab) => (!ab.ifSolved || c.solved) && (!ab.ifStationed || stationed(c)));
   }
 
   // A card with several faces (modal double-faced, split, Adventure, transforming) used as one of them:
@@ -452,6 +459,7 @@
     const last = heard ? lastKnown(card) : { id: card.id, type: card.type };
     if (referenced(s, card.id)) (s.lki = s.lki || {})[card.id] = lastKnown(card);   // its triggers still need it (CR 113.7a)
     s[side].battlefield = s[side].battlefield.filter((c) => c !== card);
+    if (!isLand(card)) s.permLeft = true;                        // (void: a nonland permanent left the battlefield this turn)
     changed(s);
     // CR 400.7: effects on it end with it; if the card comes back, it's a new object they don't apply to — and spells
     // and abilities that targeted it now target nothing there (CR 608.2b: no longer in the zone it was in)
@@ -466,7 +474,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -475,7 +483,7 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted",
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped",
     "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
@@ -732,7 +740,7 @@
     // adds the creature type (so an anthem for creatures applies to a crewed Vehicle)
     const typeOf = new Map();
     for (const { card: c } of all) {
-      if (!effectsOn(c).some((e) => e.becomeCreature) || /creature/i.test(c.type)) continue;
+      if (!(effectsOn(c).some((e) => e.becomeCreature) || stationed(c)) || /creature/i.test(c.type)) continue;
       typeOf.set(c, c.type.replace(/^([^—]*?)\s*(—|$)/, (m, t, dash) => `${t} Creature${dash ? " —" : ""}`));
       setSt(c, { kw: ownKw(c), base: basePT(c), mod: [0, 0], lost: false, type: typeOf.get(c) });
     }
@@ -771,7 +779,7 @@
       const colors = colorOf.has(c) ? { colors: colorOf.get(c) } : {};
       if (!effects.length) {                                     // (nothing applies to it: as printed)
         const base = basePT(c);
-        setSt(c, { kw: ownKw(c), base: c.vividPower ? [vividCount(s, sideOf(s, c)), base[1]] : base, mod: [0, 0], lost: false, ...colors });
+        setSt(c, { kw: ownKw(c), base: c.vividPower ? [vividCount(s, sideOf(s, c)), base[1]] : base, mod: [0, 0], lost: false, ...colors, ...typed(c) });
         continue;
       }
       const { kw, lost } = layer6(c, effects);
@@ -1152,6 +1160,7 @@
     if (f.spellNumber && e.spellNumber !== f.spellNumber) return false;  // "whenever you cast your second spell each turn"
     if (f.expend && e.n !== f.expend) return false;                       // "whenever you expend 4"
     if (f.enchantment && !typeHas(e.obj, /enchantment/i)) return false;  // "whenever an enchantment you control enters"
+    if (f.artifactOrCreature && !isArtifact(e.obj) && !isCreature(e.obj)) return false;   // "another creature or artifact"
     if (t.on === "unlock" && t.door != null && e.door !== t.door) return false;   // "when you unlock this door"
     if (f.level && e.level !== f.level) return false;                     // "when this Class becomes level 3"
     if (t.byYou && e.controller !== "you") return false;                  // valiant: "a spell or ability you control"
@@ -1187,6 +1196,9 @@
     if (cond.selfTapped && !(self && self.tapped)) return false;
     if (cond.door != null && !(self && self.unlocked && self.unlocked[cond.door])) return false;   // a Room door's ability
     if (cond.saddled && !(self && self.saddled)) return false;
+    // Void (EOE): "if a nonland permanent left the battlefield this turn or a spell was warped this turn"
+    if (cond.void && !(side === "player" && (s.permLeft || s.warped))) return false;
+    if (cond.controlsType && !s[side].battlefield.some((c) => subtypes(c).includes(cond.controlsType))) return false;   // "if you control a Spacecraft"
     // speed (CR 702.179): "Max speed — …" abilities (702.178a); the speed trigger's "if your speed is less than 4"
     if (cond.maxSpeed && !maxSpeed(s, side)) return false;
     if (cond.speedBelow4 && !(speedOf(s, side) < 4)) return false;
@@ -1288,6 +1300,7 @@
     if (f.artifactOrCreature && !isArtifact(c) && !isCreature(c)) return false;                     // "target artifact or creature"
     if (f.equipped && ![...s.player.battlefield, ...s.opponent.battlefield].some((e) => e.equip && e.attachedTo === c.id)) return false;   // "equipped creatures"
     if (f.mountOrVehicle && !isMount(c) && !isVehicle(c)) return false;   // "Mounts and Vehicles you control"
+    if (f.spacecraftOrPlanet && !subtypes(c).some((t) => t === "Spacecraft" || t === "Planet")) return false;
     return true;
   }
 
@@ -1413,6 +1426,11 @@
   const GLOBAL = ["damageAll", "destroyAll", "untapAll", "proliferate", "scry", "surveil"];
   function applyEffect(s, eff, target, ctx, ev) {
     if (!eff) return;
+    // "… instead if [condition]" (Void — Plasma Bolt deals 3 damage instead): the other effect when it holds as it resolves
+    if (eff.insteadIf) {
+      const { insteadIf, ...normal } = eff;
+      return applyEffect(s, conditionHolds(s, insteadIf.if, ctx.side, ctx.src) ? insteadIf.effect : normal, target, ctx, ev);
+    }
     // "damage can't be prevented this turn" (Stomp; Banefire with X of 5 or more)
     if (eff.noPrevention || (eff.noPreventionIfX && (ctx.x || 0) >= eff.noPreventionIfX)) s.noPrevention = true;
     if (eff.preventCombatDamage) s.preventCombat = true;      // until end of turn (a puzzle is one turn)
@@ -1540,7 +1558,8 @@
       Object.entries(eff.counters).forEach(([type, n]) => { tgt.counters[type] = Math.max(0, (tgt.counters[type] || 0) + amount(n)); });
       // CR 714.2b: lore counters put on a Saga trigger the chapter abilities they reach
       if (tgt.chapters && (tgt.counters.lore || 0) > lore0) emit(s, { type: "lore", obj: tgt, side: sideOf(s, tgt), before: lore0, after: tgt.counters.lore }, ev);
-      if (Object.keys(eff.counters).some((k) => KW_COUNTERS.includes(k))) changed(s);   // (a keyword counter changes its abilities)
+      // (a keyword counter changes its abilities; charge counters can make a Spacecraft a creature)
+      if (Object.keys(eff.counters).some((k) => KW_COUNTERS.includes(k) || k === "charge")) changed(s);
       ev.push({ type: "counters", id: tgt.id, counters: eff.counters });
     }
     // "-5/-5 … Descend 4 — -10/-10 instead if there are four or more permanent cards in your graveyard"
@@ -1663,6 +1682,18 @@
       applyEffect(s, more, tgt.id, ctx, ev);
     }
     if (eff.manifestDread) manifestDread(s, ctx.side, ev);
+    // station (CR 702.184a): charge counters equal to the tapped creature's power; "If it's a Spacecraft, put ten charge
+    // counters on it" (chargeIfSpacecraft)
+    const charge = eff.charge === "tapped" ? ctx.tappedPower || 0 : eff.chargeIfSpacecraft && tgt && subtypes(tgt).includes("Spacecraft") ? eff.chargeIfSpacecraft : 0;
+    if (charge && tgt) {
+      tgt.counters = { ...(tgt.counters || {}), charge: ((tgt.counters || {}).charge || 0) + charge };
+      changed(s);
+      ev.push({ type: "counters", id: tgt.id, counters: { charge } });
+    }
+    // "If that creature was cast for its warp cost, it also gains …"
+    if (eff.ifWarped && tgt && tgt.warped) grant(tgt, eff.ifWarped, s);
+    // "another target creature you control gets +X/+X, where X is this creature's power"
+    if (eff.pumpBySourcePower && tgt) { const n = srcPower(); addMod(s, tgt, [n, n]); }
     // CR 701.63a: endure N — N +1/+1 counters on it, or an N/N white Spirit creature token instead (its controller chooses)
     if (eff.endure && tgt) {
       const n = amount(eff.endure);
@@ -2311,6 +2342,7 @@
     // (tapping creatures to crew isn't a {T} cost: summoning-sick creatures can crew, CR 302.6 only covers {T}/{Q})
     if (ab.crew && crewHelpers(s, card).reduce((t, id) => t + crewPower(find(s, id)), 0) < ab.crew) return `Your untapped creatures don't have ${ab.crew} total power to ${ab.saddle ? "saddle" : "crew"} it.`;
     if (ab.sorcery && !sorceryTime(s)) return `You can only ${ab.text || "do that"} during your main phase, with nothing on the stack.`;
+    if (ab.stationAb && !crewHelpers(s, card).length) return `You have no other untapped creature to station ${card.name} with.`;
     // CR 702.178a: "Max speed — [ability]": it has the ability only while your speed is 4
     if (ab.maxSpeed && !maxSpeed(s, "player")) return `${card.name} has that ability only at max speed (your speed is ${speedOf(s, "player")}).`;
     if (ab.exhaust && !exhaustReady(s, card, ab)) return `${card.name}'s exhaust ability has already been activated.`;
@@ -2350,6 +2382,8 @@
     const f = faceOf(from.card, a);
     // CR 702.170d: a plotted card is cast without paying its mana cost (an alternative cost: nothing to pay)
     if (from.zone === "exile" && from.card.plotted) return { ...f, cost: "", plottedCast: true };
+    // CR 702.185a: warp — cast it from your hand for its warp cost instead (a.warp)
+    if (a.warp && from.zone === "hand" && from.card.warp) return { ...f, cost: from.card.warp, warpCast: true };
     if (from.zone !== "graveyard") return f;
     // harmonize (CR 702.180a): its harmonize cost instead of its mana cost; a creature may be tapped to reduce it (a.tapFor)
     if (!from.card.flashback) return { ...f, cost: from.card.harmonize, harmonizing: true };
@@ -2440,6 +2474,7 @@
       if (from.zone === "exile" && from.card.onAdventure && (a.face || 0) !== 0) return "From exile you can only cast its creature.";
       if (a.faceDown && !from.card.disguise) return "Only a card with disguise can be cast face down.";
       if (a.faceDown && from.zone === "graveyard") return "You can't cast it face down from there.";
+      if (a.warp && !(from.card.warp && from.zone === "hand")) return "Only a card with warp in your hand can be cast for its warp cost.";
       if (from.card.layout === "transform" && (a.face || 0) !== 0) return "A transforming card is cast with its front face up (CR 712.11).";
       const f = castFace(from, a);
       if (isLand(f)) return "Play it as a land instead.";
@@ -2509,6 +2544,7 @@
       const why = abilityProblem(s, card, ab, a.x);
       if (why) return why;
       if (ab.craft && !craftOptions(s, card, ab.craft).includes(a.craft)) return "Choose something to craft with.";
+      if (ab.stationAb && !(a.crew && a.crew.length === 1 && crewHelpers(s, card).includes(a.crew[0]))) return "Station: tap one other untapped creature you control.";
       if (ab.crew) {
         const crew = a.crew || [];
         if (new Set(crew).size !== crew.length || !crew.every((id) => crewHelpers(s, card).includes(id))) return `Only your other untapped creatures can ${ab.saddle ? "saddle" : "crew"} it.`;
@@ -2773,6 +2809,8 @@
       spend(s, pay, ev);
       // harmonize: the chosen creature is tapped as the total cost is paid (CR 702.180b)
       if (a.tapFor != null) tap(s, find(s, a.tapFor), ev);
+      // warp (CR 702.185c): "a spell was warped this turn"; the permanent remembers it was cast for its warp cost
+      if (f.warpCast) { s.warped = true; card.warped = true; }
       // "whenever one or more cards leave your graveyard": cast from there (flashback, harmonize)
       if (zone === "graveyard") emit(s, { type: "leavesGraveyard", side: "player", obj: card }, ev);
       [4, 8].forEach((n) => { if (spentBefore < n && s.manaSpent >= n) emit(s, { type: "expend", n, side: "player" }, ev); });
@@ -2820,6 +2858,8 @@
       if (ab.special === "unlock") { unlockDoor(s, card, ab.door, ev); sba(s, ev); settle(s, ev); return { state: s, events: ev }; }
       if (ab.tap) tap(s, card, ev);
       // the crew / saddle cost; CR 702.122d, 702.171c: each creature tapped for it "crews the Vehicle" / "saddles the Mount"
+      // station: the tapped creature's power (as it's tapped) is how many charge counters
+      if (ab.stationAb) { const m = find(s, a.crew[0]); ctx.tappedPower = Math.max(power(m), 0); tap(s, m, ev); }
       (ab.crew ? a.crew : []).forEach((id) => {
         const m = find(s, id);
         tap(s, m, ev);
@@ -2983,6 +3023,7 @@
         const reducible = [...(f.evidenceLess ? evidenceOptions(s, f.evidence).map((evidence) => ({ evidence })) : []),
           ...(f.bargainLess ? bargainOptions(s).map((bargain) => ({ bargain })) : []),
           ...(f.harmonizing ? convokeHelpers(s).map((tapFor) => ({ tapFor })) : []),               // (harmonize: a tapped creature)
+          ...(zone === "hand" && card.warp ? [{ warp: true }] : []),                                // (its warp cost)
           ...(f.behold && f.behold.flash ? beholdOptions(s, f).slice(0, 1).map((behold) => ({ behold })) : [])];   // (flash by beholding)
         if (check(s, { type: "cast", id: card.id, face }) && !reducible.some((r) => !check(s, { type: "cast", id: card.id, face, ...r }))) continue;
         const n = f.chooseCount || 1;
@@ -3002,6 +3043,8 @@
         const beholds = f.behold ? [...(bopts.length >= bn ? [bn > 1 ? bopts.slice(0, bn) : bopts[0]] : []), ...(f.behold.orPay ? ["pay"] : []), ...(f.behold.optional ? [undefined] : [])] : [undefined];
         // harmonize: tap no creature, or one of your untapped creatures
         const tapFors = f.harmonizing ? [undefined, ...convokeHelpers(s)] : [undefined];
+        // warp: cast it normally, or for its warp cost
+        const warps = zone === "hand" && card.warp ? [undefined, true] : [undefined];
         const convokes = has(f, "convoke") ? subsets(convokeHelpers(s)).filter((l) => l.length <= manaValue(f.cost) + (f.behold && f.behold.orPay ? manaValue(f.behold.orPay) : 0)) : [undefined];
         // compleated: how many Phyrexian pips are paid with life (each costs the walker two loyalty)
         const lifePipsList = has(f, "compleated") ? [0, ...range(parseCost(f.cost).pips.filter((p) => /\/P$/.test(p)).length)] : [undefined];
@@ -3010,10 +3053,11 @@
         // collect evidence (optional): not, or each set of graveyard cards that's just enough
         const evidences = f.evidence ? [undefined, ...evidenceOptions(s, f.evidence)] : [undefined];
         for (const mode of modes) for (const color of colors) for (const x of xs) for (const sac of sacs) for (const bargain of bargains) for (const evidence of evidences)
-          for (const blight of blights) for (const behold of beholds) for (const convoke of convokes) for (const lifePips of lifePipsList) for (const offspring of offsprings) for (const gift of gifts) for (const tapFor of tapFors) {
+          for (const blight of blights) for (const behold of beholds) for (const convoke of convokes) for (const lifePips of lifePipsList) for (const offspring of offsprings) for (const gift of gifts) for (const tapFor of tapFors) for (const warp of warps) {
             for (const pick of castTargets(s, f, { mode, x, blight, bargain, evidence, gift, behold }, sac)) {
               const a = { type: "cast", id: card.id, face, mode, color, x, sac, ...pick };
               if (tapFor !== undefined) a.tapFor = tapFor;
+              if (warp) a.warp = true;
               if (evidence !== undefined) a.evidence = evidence;
               if (offspring) a.offspring = true;
               if (gift) a.gift = true;
@@ -3036,6 +3080,7 @@
           // something triggers on crewing
           if (ab.crew) { if ((ab.saddle ? !card.saddled : !isCreature(card)) || s.listens.includes("crews")) crewChoices(s, card, ab.crew).forEach((crew) => out.push({ type: "activate", id: card.id, index, crew })); return; }
           if (ab.craft) { craftOptions(s, card, ab.craft).forEach((m) => out.push({ type: "activate", id: card.id, index, craft: m })); return; }
+          if (ab.stationAb) { crewHelpers(s, card).forEach((id) => out.push({ type: "activate", id: card.id, index, crew: [id] })); return; }
           const list = ab.targets ? targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)) : null;
           (list ? targetChoices(list, ab.targetCount) : [undefined]).forEach((target) => out.push({ type: "activate", id: card.id, index, target, x }));
         });
@@ -3183,13 +3228,14 @@
     if (a.type === "activate") {
       const card = find(s, a.id);
       const ab = card && abilitiesOf(card)[a.index];
-      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
+      return `activate ${nameOf(s, a.id)}${ab && ab.text ? ` (${ab.text})` : ""}${a.crew ? ` (${ab && ab.saddle ? "saddled" : ab && ab.stationAb ? "stationed" : "crewed"} by ${a.crew.map((id) => nameOf(s, id)).join(" + ")})` : ""}${a.craft ? ` (with ${nameOf(s, a.craft)})` : ""}${a.target ? ` → ${nameOf(s, a.target)}` : ""}`;
     }
     const from = castable(s, a.id);
     const f = from ? castFace(from, a) : null;
     if (a.faceDown) return `cast ${from ? from.card.name : nameOf(s, a.id)} face down`;
     let d = `cast ${f ? f.name : nameOf(s, a.id)}${from && from.zone === "exile" ? " (from exile)" : from && from.zone === "graveyard" ? (from.card.flashback ? " (flashback)" : " (harmonize)") : ""}`;
     if (a.tapFor != null) d += ` (tapping ${nameOf(s, a.tapFor)})`;
+    if (a.warp) d += " (warp)";
     if (a.evidence != null) d += ` (collecting evidence: ${[].concat(a.evidence).map((id) => nameOf(s, id)).join(" + ")})`;
     if (f && f.modes && a.mode != null) d += ` (${[].concat(a.mode).map((m) => f.modes[m].text || "mode " + (m + 1)).join(" + ")})`;
     if (a.color) d += ` (${WORD_OF[a.color]})`;
