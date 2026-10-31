@@ -786,7 +786,12 @@
 
   const ONE = { min: 1, max: 1 };
   const combos = (list, k) => (k === 0 ? [[]] : list.flatMap((x, i) => combos(list.slice(i + 1), k - 1).map((c) => [x, ...c])));
-  const faceNow = () => E.faceOf(casting.card, { face: casting.face ?? undefined });
+  // (cast using teamwork: its teamwork version — "choose both instead", or the stronger effect)
+  const faceNow = () => {
+    const f = E.faceOf(casting.card, { face: casting.face ?? undefined });
+    if (!(f.teamwork && casting.teamwork)) return f;
+    return { ...f, ...(f.ifTeamwork || {}), ...(f.teamworkBoth && f.modes ? { chooseCount: f.modes.length } : {}) };
+  };
   const faceOk = (card, face) => {
     const f = E.faceOf(card, { face });
     return !E.check(state, E.isLand(f) ? { type: "play", id: card.id, face } : { type: "cast", id: card.id, face });
@@ -982,7 +987,18 @@
     }
     const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined });
     if (why) { cancelCast(); return rulesNote(why); }
-    const n = f.chooseCount || 1;
+    // teamwork N (optional): tap your untapped creatures with total power N or more
+    if (f.teamwork && casting.teamwork === undefined) {
+      const ids = E.convokeHelpers(state);
+      const pw = (l) => l.reduce((t, id) => t + Math.max(E.power(state.player.battlefield.find((c) => c.id === id)), 0), 0);
+      if (pw(ids) < f.teamwork) casting.teamwork = null;
+      else return pickCards({ ids, min: 1, max: ids.length, alt: { label: "Cast without teamwork", value: null },
+        prompt: `Teamwork ${f.teamwork}: tap your creatures with ${f.teamwork} or more total power, or cast it without teamwork.`,
+        confirm: (l) => `Teamwork (${pw(l)} power)`, complete: (l) => pw(l) >= f.teamwork,
+        then: (picked) => { casting.teamwork = Array.isArray(picked) && picked.length ? picked : null; nextChoice(); } });
+    }
+    const fT = faceNow();
+    const n = fT.chooseCount || 1;
     if (f.modes && casting.mode == null) {
       // spree: one or more modes, each adding its cost (only the combinations you can pay for and target are offered)
       const ids = f.modes.map((_, i) => i);
@@ -1163,7 +1179,7 @@
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);

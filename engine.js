@@ -483,7 +483,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared", "enteredThisTurn", "poweredUp"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -492,7 +492,7 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn", "sneaked", "prepared",
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn", "sneaked", "prepared", "enteredThisTurn", "poweredUp",
     "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
@@ -1431,7 +1431,7 @@
     return (keep.length && castPaymentWith(s, f, a, except, keep)) || castPaymentWith(s, f, a, except, []);
   };
   const castPaymentWith = (s, f, a, except, keep) =>
-    bestPayment(s, reducedCost(s, f, costOf(f, a), a), { except, exclude: [...(a.bargain != null ? [a.bargain] : []), ...(a.tapFor != null ? [a.tapFor] : []), ...keep], lifePips: has(f, "compleated") ? a.lifePips || 0 : undefined, convoke: has(f, "convoke") ? (a.convoke == null ? "any" : a.convoke) : undefined });
+    bestPayment(s, reducedCost(s, f, costOf(f, a), a), { except, exclude: [...(a.bargain != null ? [a.bargain] : []), ...(a.tapFor != null ? [a.tapFor] : []), ...(a.teamwork != null ? [].concat(a.teamwork) : []), ...keep], lifePips: has(f, "compleated") ? a.lifePips || 0 : undefined, convoke: has(f, "convoke") ? (a.convoke == null ? "any" : a.convoke) : undefined });
 
   // Every choice of targets for a spec: one target, or "up to two" (any distinct combination)
   function targetChoices(list, count) {
@@ -2133,6 +2133,7 @@
       const kinds = typeof w === "object" ? w : { "+1/+1": w === "X" ? x || 0 : w };
       Object.entries(kinds).forEach(([k, n]) => { if (n) perm.counters = { ...(perm.counters || {}), [k]: ((perm.counters || {})[k] || 0) + n }; });
     }
+    perm.enteredThisTurn = true;                               // (power-up: "if this permanent entered this turn")
     // CR 722.3a: "This creature enters prepared."
     if (perm.entersPrepared && perm.prepare) perm.prepared = true;
     // CR 714.3a: a Saga enters with a lore counter (its chapter I ability triggers, 714.2b)
@@ -2426,6 +2427,21 @@
   const waterHelpers = (s, card, ab) => s.player.battlefield.filter((c) => (isCreature(c) || isArtifact(c)) && !c.tapped && !(ab.tap && c.id === card.id)).map((c) => c.id);
   function abilityCost(s, card, ab, x, waterTap) {
     let cost = withX(ab.cost, x);
+    // CR 702.193a-b: power-up — reduced by the permanent's mana cost if it entered this turn (a colored pip reduces the same
+    // pip, the rest reduces generic mana); "Power-up abilities of other creatures you control cost {3} less" (powerUpLess)
+    if (ab.powerUp) {
+      const p = parseCost(cost);
+      let generic = p.generic;
+      const pips = [...p.pips];
+      if (card.enteredThisTurn && card.cost) {
+        const m = parseCost(card.cost);
+        generic -= m.generic;
+        m.pips.forEach((pip) => { const i = pips.indexOf(pip); if (i >= 0) pips.splice(i, 1); else generic -= 1; });
+      }
+      generic -= s.player.battlefield.filter((c) => c !== card && c.powerUpLess && !(c.st && c.st.lost)).reduce((t, c) => t + c.powerUpLess, 0);
+      generic = Math.max(0, generic);
+      cost = (generic ? `{${generic}}` : "") + pips.map((y) => `{${y}}`).join("");
+    }
     if (ab.waterbend) {
       const p = parseCost(cost), n = Math.min(p.generic, waterTap ? waterTap.length : waterHelpers(s, card, ab).length);
       cost = (p.generic - n ? `{${p.generic - n}}` : "") + p.pips.map((y) => `{${y}}`).join("");
@@ -2460,6 +2476,7 @@
     // CR 702.178a: "Max speed — [ability]": it has the ability only while your speed is 4
     if (ab.maxSpeed && !maxSpeed(s, "player")) return `${card.name} has that ability only at max speed (your speed is ${speedOf(s, "player")}).`;
     if (ab.exhaust && !exhaustReady(s, card, ab)) return `${card.name}'s exhaust ability has already been activated.`;
+    if (ab.powerUp && card.poweredUp) return `${card.name}'s power-up ability has already been activated.`;   // CR 702.193a: only once
     if (ab.cost && !bestPayment(s, abilityCost(s, card, ab, x), { exclude: ab.tap ? [card.id] : [] })) return "Not enough mana.";
     if (ab.targets && !targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)).length) return "There's no legal target.";
     return null;
@@ -2500,7 +2517,22 @@
   // The spell as it's cast from where it is: from the graveyard by flashback, its flashback cost is paid rather than
   // its mana cost (an alternative cost, CR 118.9; plus any other part of the flashback cost, like beholding)
   // Cast face down with disguise (a.faceDown): a 2/2 face-down creature spell with ward {2} that costs {3} (CR 702.168b, 708.4)
-  function castFace(from, a) {
+  // CR 702.194a-b: teamwork — "if this spell was cast using teamwork" (a.teamwork: the creatures tapped): its teamwork
+  // version (ifTeamwork), or "choose both instead" (teamworkBoth)
+  const castFace = (from, a) => withTeamwork(castFaceBase(from, a), a);
+  function withTeamwork(f, a) {
+    if (!(f.teamwork && a.teamwork != null)) return f;
+    const g = { ...f, ...(f.ifTeamwork || {}) };
+    if (f.teamworkBoth && f.modes) g.chooseCount = f.modes.length;
+    return g;
+  }
+  // the creatures that could pay a teamwork cost (your untapped creatures); sets with enough power where none could be
+  // left out (more only matters if something cares about creatures becoming tapped)
+  function teamworkChoices(s, n) {
+    const ids = convokeHelpers(s), pw = (id) => Math.max(power(find(s, id)), 0);
+    return subsets(ids).filter((l) => l.reduce((t, id) => t + pw(id), 0) >= n && (s.listens.includes("becomesTapped") || l.every((id) => l.reduce((t, x) => t + pw(x), 0) - pw(id) < n)));
+  }
+  function castFaceBase(from, a) {
     if (a.faceDown) return { ...FACE_DOWN, kw: [...FACE_DOWN.kw], id: from.card.id, owner: from.card.owner, cost: "{3}" };
     const f = faceOf(from.card, a);
     // CR 702.170d: a plotted card is cast without paying its mana cost (an alternative cost: nothing to pay)
@@ -2657,6 +2689,12 @@
         if (blighted(a) && !blightOptions(s).includes(a.blight)) return "You can only blight a creature you control.";
       } else if (a.blight != null) return `${f.name} has no blight cost.`;
       if (a.offspring && !f.offspring) return `${f.name} has no offspring.`;
+      // teamwork N: tap untapped creatures you control with total power N or more
+      if (a.teamwork != null) {
+        const l = [].concat(a.teamwork), helpers = convokeHelpers(s);
+        if (!f.teamwork || new Set(l).size !== l.length || !l.every((id) => helpers.includes(id)) ||
+          l.reduce((t, id) => t + Math.max(power(find(s, id)), 0), 0) < f.teamwork) return `Teamwork ${f.teamwork || ""}: tap your untapped creatures with total power ${f.teamwork || "N"} or more.`;
+      }
       // "discard a card or pay {2}": a card from your hand (not this one), or pay
       if (f.discardCost) {
         if (a.discard === "pay" && !f.discardCost.orPay) return "That cost can't be paid with mana.";
@@ -2785,7 +2823,7 @@
       sba(s, ev);
       return;
     }
-    const f = faceOf(card, a);
+    const f = withTeamwork(faceOf(card, a), a);
     // (a spell that gained keywords on the stack — "those spells gain wither" — has them as it resolves)
     const ctx = { src: { ...f, kw: [...(f.kw || []), ...(w.gain || [])] }, side: "player", sacPower, x: a.x };
     const parts = plan(f, a);
@@ -2993,6 +3031,8 @@
       spend(s, pay, ev);
       // harmonize: the chosen creature is tapped as the total cost is paid (CR 702.180b)
       if (a.tapFor != null) tap(s, find(s, a.tapFor), ev);
+      // teamwork: the chosen creatures are tapped as the total cost is paid (CR 702.194a)
+      if (a.teamwork != null) [].concat(a.teamwork).forEach((id) => tap(s, find(s, id), ev));
       // warp (CR 702.185c): "a spell was warped this turn"; the permanent remembers it was cast for its warp cost
       if (f.warpCast) { s.warped = true; card.warped = true; }
       // web-slinging: returning the tapped creature is part of the cost; the permanent remembers it ("if they were cast
@@ -3061,6 +3101,7 @@
         tap(s, m, ev);
         emit(s, { type: "crews", obj: m, side: "player", vehicle: card.id, main: inMain(s) }, ev);
       });
+      if (ab.powerUp) card.poweredUp = true;                       // (power-up: only once, CR 702.193a)
       // an exhaust ability is used up (CR 702.177a); "whenever you activate an exhaust ability" triggers (CR 602.2)
       if (ab.exhaust) {
         card.exhausted = [...new Set([...(card.exhausted || []), exhaustSlot(card, ab)])].sort();
@@ -3298,6 +3339,19 @@
               if (!check(s, a)) out.push(a);
             }
           }
+        // teamwork: cast it using teamwork, tapping each set of creatures with enough power (its teamwork version:
+        // both modes, or the stronger effect)
+        if (f.teamwork) {
+          for (const teamwork of teamworkChoices(s, f.teamwork)) {
+            const ft = castFace({ card, zone }, { face, teamwork });
+            const tmodes = ft.modes ? (manyModes(ft) ? combinations(ft.modes.map((_, i) => i), ft.chooseCount || 1) : ft.modes.map((_, i) => i)) : [undefined];
+            const txs = parseCost(ft.cost).x ? range(manaAvailable(s) - manaValue(ft.cost)) : [undefined];
+            for (const mode of tmodes) for (const x of txs) for (const pick of castTargets(s, ft, { mode, x, teamwork })) {
+              const a = { type: "cast", id: card.id, face, mode, x, ...pick, teamwork };
+              if (!check(s, a)) out.push(a);
+            }
+          }
+        }
       }
     }
     for (const card of s.player.battlefield) {
@@ -3472,6 +3526,7 @@
     if (a.warp) d += " (warp)";
     if (a.webSling != null) d += ` (web-slinging, returning ${nameOf(s, a.webSling)})`;
     if (a.sneak != null) d += ` (sneak, returning ${nameOf(s, a.sneak)})`;
+    if (a.teamwork != null) d += ` (teamwork: tapping ${[].concat(a.teamwork).map((id) => nameOf(s, id)).join(" + ")})`;
     if (from && from.zone === "graveyard" && f && f.mayhemCast) d = d.replace(" (harmonize)", " (mayhem)");
     if (a.discard === "pay") d += " (paying instead of discarding)";
     else if (a.discard != null) d += ` (discarding ${nameOf(s, a.discard)})`;

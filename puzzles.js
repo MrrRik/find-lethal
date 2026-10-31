@@ -1432,6 +1432,53 @@
     "Hungry Graffalon": { type: "Creature — Giraffe", cost: "{3}{G}", pt: "3/4", kw: ["reach", "increment"], text: `Reach. ${INCREMENT}` }
   });
 
+  // ---- Marvel Super Heroes (MSH): teamwork, power-up ----
+  // (teamwork: N; ifTeamwork: the version cast using teamwork; teamworkBoth: "choose both instead"; power-up abilities
+  // powerUp: true — once, cheaper the turn the permanent entered)
+  const teamText = (n) => `Teamwork ${n} (As an additional cost to cast this spell, you may tap any number of creatures you control with total power ${n} or more.)`;
+  const POWER = "(Activate each power-up ability only once. Reduce the cost by its mana cost if it entered this turn.)";
+  Object.assign(CARDS, {
+    "Team Tactics": { type: "Instant", cost: "{1}{R}", teamwork: 1, targets: "creature", effect: { grant: ["double strike"] }, ifTeamwork: { effect: { grant: ["double strike", "trample"] } },
+      text: `${teamText(1)} Target creature gains double strike until end of turn. If this spell was cast using teamwork, that creature also gains trample until end of turn.` },
+    "Repulsor Blast": { type: "Sorcery", cost: "{3}{R}", teamwork: 2, targets: "creature", effect: { damage: 5 }, ifTeamwork: { effect: { damage: 5, damageController: 2 } },
+      text: `${teamText(2)} Repulsor Blast deals 5 damage to target creature. If this spell was cast using teamwork, it also deals 2 damage to that creature's controller.` },
+    "Helicarrier Strike": { type: "Instant", cost: "{W}", teamwork: 2, targets: "creature", targetFilter: { attackingOrBlocking: true }, effect: { damage: 2 }, ifTeamwork: { effect: { damage: 4 } },
+      text: `${teamText(2)} Helicarrier Strike deals 2 damage to target attacking or blocking creature. If this spell was cast using teamwork, it deals 4 damage to that creature instead.` },
+    "HULK SMASH!": { type: "Instant", cost: "{1}{R}", teamwork: 4, teamworkBoth: true,
+      modes: [{ text: "Destroy target noncreature artifact", targets: "artifact", targetFilter: { noncreature: true }, effect: { destroy: true } },
+        { text: "Your creature deals damage equal to its power to a creature an opponent controls", slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature", filter: { controller: "opponent" } }], effect: { bite: true } }],
+      text: `${teamText(4)} Choose one. If this spell was cast using teamwork, choose both instead. • Destroy target noncreature artifact. • Target creature you control deals damage equal to its power to target creature an opponent controls.` },
+    "Go Nuts!": { type: "Sorcery", cost: "{G}", teamwork: 3, teamworkBoth: true,
+      modes: [{ text: "Put a +1/+1 counter on target creature", targets: "creature", effect: { counters: { "+1/+1": 1 } } },
+        { text: "Your creature fights a creature an opponent controls", slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature", filter: { controller: "opponent" } }], effect: { fight: true } }],
+      text: `${teamText(3)} Choose one. If this spell was cast using teamwork, choose both instead. • Put a +1/+1 counter on target creature. • Target creature you control fights target creature an opponent controls.` },
+    "Widow's Bite": { type: "Instant", cost: "{1}{B}", teamwork: 3, teamworkBoth: true,
+      modes: [{ text: "Target creature gains deathtouch", targets: "creature", effect: { grant: ["deathtouch"] } }, { text: "Target creature gets -2/-2", targets: "creature", effect: { pump: [-2, -2] } }],
+      text: `${teamText(3)} Choose one. If this spell was cast using teamwork, choose both instead. • Target creature gains deathtouch until end of turn. • Target creature gets -2/-2 until end of turn.` },
+    // power-up
+    "Volcanic Villain": { type: "Creature — Elemental Villain", cost: "{2}{R}", pt: "3/2", kw: ["haste"],
+      abilities: [{ cost: "{5}{R}", powerUp: true, effect: { counters: { "+1/+1": 2 }, self: true }, text: "Power-up — {5}{R}: two +1/+1 counters" }],
+      text: `Haste. Power-up — {5}{R}: Put two +1/+1 counters on this creature. ${POWER}` },
+    "Hercules, Prince of Power": { type: "Legendary Creature — Demigod Warrior Hero", cost: "{2}{G}", pt: "3/3",
+      abilities: [{ cost: "{4}{G}", powerUp: true, effect: { counters: { "+1/+1": 1 }, grant: ["vigilance", "indestructible", "haste"], self: true }, text: "Power-up — {4}{G}: +1/+1 counter, vigilance, indestructible, haste" }],
+      text: `Power-up — {4}{G}: Put a +1/+1 counter on Hercules. He gains vigilance, indestructible, and haste until end of turn. ${POWER}` },
+    "Serpent Specialist": { type: "Creature — Human Snake Villain", cost: "{G}", pt: "1/1", kw: ["deathtouch"],
+      abilities: [{ cost: "{3}{G}", powerUp: true, effect: { counters: { "+1/+1": 2 }, self: true }, text: "Power-up — {3}{G}: two +1/+1 counters" }],
+      text: `Deathtouch. Power-up — {3}{G}: Put two +1/+1 counters on this creature. ${POWER}` },
+    "Brave Brawler": { type: "Creature — Human Warrior Hero", cost: "{1}{W}", pt: "2/1", kw: ["lifelink"],
+      abilities: [{ cost: "{4}{W}", powerUp: true, effect: { counters: { "+1/+1": 2 }, self: true }, text: "Power-up — {4}{W}: two +1/+1 counters" }],
+      text: `Lifelink. Power-up — {4}{W}: Put two +1/+1 counters on this creature. ${POWER}` },
+    "Hulk, Gamma Goliath": { type: "Legendary Creature — Gamma Berserker Hero", cost: "{3}{R}{G}", pt: "6/5", kw: ["reach", "trample"], powerUpLess: 3,
+      abilities: [{ cost: "{6}{R}{G}", powerUp: true, effect: { counters: { "+1/+1": 5 }, self: true }, text: "Power-up — {6}{R}{G}: five +1/+1 counters" }],
+      text: `Reach, trample. Power-up abilities of other creatures you control cost {3} less to activate. Power-up — {6}{R}{G}: Put five +1/+1 counters on Hulk. ${POWER}` },
+    "Agents of S.H.I.E.L.D.": { type: "Creature — Human Spy Hero", cost: "{2}{W}", pt: "2/4",
+      triggers: [{ on: "attacksAlone", filter: { controller: "you" }, effect: { pump: [1, 1], to: "eventObject" } }],
+      text: "Whenever a creature you control attacks alone, that creature gets +1/+1 until end of turn." },
+    "Luke Cage, Power Man": { type: "Legendary Creature — Human Hero", cost: "{3}{W}", pt: "2/5",
+      triggers: [{ on: "attacksAlone", self: true, effect: { pump: [2, 0], grant: ["indestructible"], self: true } }],
+      text: "Unbreakable Skin — Whenever Luke Cage attacks alone, he gets +2/+0 and gains indestructible until end of turn." }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -3689,6 +3736,130 @@ LETHAL: Twofold Intent (the Laureate's prepare spell) on Snooping Page: 3/3 doub
   Scornmage 2/2. Attack with the Page, the Poet and the Scornmage: the Nestguard blocks one: 6 + 2 = 8. 0.
 RULES: Repartee: "an instant or sorcery spell that targets a creature".
 WRONG LINES: Twofold Intent on another creature: the Page can still be unblockable, but has no double strike: 7.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= MARVEL SUPER HEROES (set MSH) ======================= */
+  // Teamwork, power-up
+  window.PUZZLES.push(
+    puzzle({
+      id: "msh-01-volcanic-villain", title: "Power-Up", set: "msh", tier: "easy",
+      opp: { life: 5 },
+      you: { hand: [c("Volcanic Villain")], battlefield: many(6, "Mountain") },
+      explanation: "Power-up costs less the turn the creature enters: {5}{R} minus Volcanic Villain's own cost {2}{R} is {3}. Cast it (haste) and power up: 5/4.",
+      notes: `
+LETHAL: Volcanic Villain ({2}{R}, haste). Power-up ({5}{R} reduced by {2}{R}: {3}): two +1/+1 counters: 5/4. Attack: 5.
+RULES: Power-up (702.193a-b): only once; reduced by the permanent's mana cost if it entered this turn.
+WRONG LINES: None — 6 lands is exactly 3 + 3.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-02-hercules", title: "Prince of Power", set: "msh", tier: "easy",
+      opp: { life: 4 },
+      you: { hand: [c("Hercules, Prince of Power")], battlefield: many(5, "Forest") },
+      explanation: "Hercules has no haste — but his power-up gives it, and costs only {2} the turn he enters ({4}{G} minus {2}{G}). A 4/4 with haste.",
+      notes: `
+LETHAL: Hercules ({2}{G}). Power-up ({4}{G} - {2}{G} = {2}): +1/+1 counter, vigilance, indestructible, haste. Attack: 4.
+RULES: Power-up (702.193a-b).
+WRONG LINES: None.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-03-team-tactics", title: "Team Tactics", set: "msh", tier: "easy",
+      opp: { life: 3, battlefield: [c("Wall of Wood")] },
+      you: { hand: [c("Team Tactics")], battlefield: [c("Hill Giant"), c("Grizzly Bears", { sick: true }), c("Mountain"), c("Mountain")] },
+      explanation: "Use teamwork: tap the summoning-sick Bears (power 2 ≥ 1). Team Tactics then gives Hill Giant double strike and trample. The first strike kills the Wall of Wood; the second hit tramples over for 3.",
+      notes: `
+LETHAL: Team Tactics ({1}{R}, teamwork: tap Grizzly Bears): Hill Giant double strike and trample. The Wall blocks: first
+  strike 3 kills it; regular damage: 3 to the opponent (the blocker is gone, all of it tramples over).
+RULES: Teamwork (702.194a): tap creatures with total power N as an additional cost.
+WRONG LINES: Without teamwork: double strike, no trample: blocked.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-04-repulsor-blast", title: "Repulsor Blast", set: "msh", tier: "easy",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Repulsor Blast")], battlefield: [c("Hill Giant"), c("Gray Ogre", { sick: true }), ...many(4, "Mountain")] },
+      explanation: "Tap the summoning-sick Gray Ogre for teamwork: Repulsor Blast kills the Nestguard and also deals 2 to the opponent. Hill Giant attacks for 3.",
+      notes: `
+LETHAL: Repulsor Blast ({3}{R}, teamwork: tap Gray Ogre): 5 to Krotiq Nestguard, 2 to the opponent (3). Hill Giant: 3.
+RULES: Teamwork (702.194a-b).
+WRONG LINES: Tapping the Giant for teamwork: it can't attack.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-05-widows-bite", title: "Widow's Bite", set: "msh", tier: "medium",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Team Tactics"), c("Widow's Bite")], battlefield: [c("Hill Giant"), c("Grizzly Bears", { sick: true }), c("Mountain"), c("Mountain"), c("Swamp"), c("Swamp")] },
+      explanation: "Team Tactics with teamwork (tap the Bears): double strike and trample. Widow's Bite: deathtouch. With deathtouch, 1 damage is lethal to the blocker: first strike 1 to the Nestguard and 2 over, then 3 more. 5.",
+      notes: `
+LETHAL: Team Tactics (teamwork, tap Grizzly Bears) on Hill Giant: double strike, trample. Widow's Bite (one mode, no
+  teamwork): deathtouch on the Giant. Blocked by the Nestguard: first strike: 1 lethal + 2 over; regular: 3 over. 5.
+RULES: Deathtouch + trample (702.19c): 1 damage is lethal for assignment.
+WRONG LINES: Without deathtouch: first strike 3 doesn't kill the 4/4: only 2 over in the second hit.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-06-go-nuts", title: "Go Nuts!", set: "msh", tier: "medium",
+      opp: { life: 4, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Go Nuts!")], battlefield: [c("Serpent Specialist"), c("Hill Giant"), c("Gray Ogre", { sick: true }), c("Forest")] },
+      explanation: "Cast Go Nuts! with teamwork 3 — tap Serpent Specialist and Gray Ogre (1 + 2), not the Giant — to get both modes: a +1/+1 counter on Hill Giant, and the deathtouch Serpent fights the Nestguard. Giant attacks for 4.",
+      notes: `
+LETHAL: Go Nuts! ({G}, teamwork: tap Serpent Specialist + Gray Ogre): both modes: +1/+1 counter on Hill Giant (4/4);
+  Serpent Specialist fights Krotiq Nestguard (deathtouch: it dies). Hill Giant: 4.
+RULES: "Choose both instead" if teamwork was used; a tapped creature can still fight.
+WRONG LINES: Without teamwork: one mode: 3 or blocked.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-07-gamma-goliath", title: "Gamma Goliath", set: "msh", tier: "hard",
+      opp: { life: 10, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Hercules, Prince of Power"), c("Volcanic Villain")], battlefield: [c("Hulk, Gamma Goliath"), ...many(3, "Forest"), ...many(3, "Mountain")] },
+      explanation: "Hulk makes other creatures' power-ups cost {3} less, on top of the discount for entering this turn: both power-ups are free. Cast Hercules and Volcanic Villain, power both up, and attack with all three.",
+      notes: `
+LETHAL: Hercules ({2}{G}) and Volcanic Villain ({2}{R}). Power-ups: Hercules {4}{G} - {2}{G} - {3} = free: 4/4 haste;
+  Volcanic {5}{R} - {2}{R} - {3} = free: 5/4 haste. Attack with Hulk (6 trample), Hercules, Volcanic: the Nestguard blocks
+  Volcanic: 6 + 4 = 10.
+RULES: Power-up (702.193a-b) plus a cost reduction from another permanent.
+WRONG LINES: Skipping the Villain's power-up: the Nestguard blocks Hulk: 2 trample + 4 + 3 = 9.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-08-repulsor-hulk", title: "Assemble", set: "msh", tier: "hard",
+      opp: { life: 12, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Hercules, Prince of Power"), c("Repulsor Blast")], battlefield: [c("Hulk, Gamma Goliath"), c("Gray Ogre", { sick: true }), ...many(3, "Forest"), ...many(4, "Mountain")] },
+      explanation: "Hercules's power-up is free with Hulk out (he entered this turn). Repulsor Blast with teamwork (tap the summoning-sick Ogre) kills the Nestguard and deals 2. Hulk 6 + Hercules 4 + 2.",
+      notes: `
+LETHAL: Hercules ({2}{G}); power-up free: 4/4 haste. Repulsor Blast ({3}{R}, teamwork: Gray Ogre): Nestguard dies, 2 to
+  the opponent. Attack with Hulk and Hercules: 6 + 4. 12.
+RULES: Teamwork; power-up reductions.
+WRONG LINES: Repulsor Blast without teamwork: 10.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-09-luke-cage", title: "Power Man", set: "msh", tier: "hard",
+      opp: { life: 6, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Team Tactics")], battlefield: [c("Luke Cage, Power Man"), c("Agents of S.H.I.E.L.D."), c("Mountain"), c("Mountain")] },
+      explanation: "Tap Agents of S.H.I.E.L.D. for teamwork: Team Tactics gives Luke Cage double strike and trample. He attacks alone: +2/+0 and indestructible, and the Agents give +1/+1. A 5/6 double-striking trampler: 1 over, then 5.",
+      notes: `
+LETHAL: Team Tactics (teamwork: tap Agents of S.H.I.E.L.D.) on Luke Cage: double strike, trample. Luke attacks alone: +2/+0,
+  indestructible; Agents (still on the battlefield, tapped): +1/+1: 5/6. The Nestguard blocks: first strike 4 lethal + 1
+  over; regular: 5 over. 6.
+RULES: "Attacks alone" triggers; tapped creatures' triggered abilities still work.
+WRONG LINES: Attacking with both: no "alone" bonuses.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "msh-10-serpent", title: "Serpent Specialist", set: "msh", tier: "hard",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Team Tactics")], battlefield: [c("Serpent Specialist"), c("Grizzly Bears", { sick: true }), ...many(4, "Forest"), c("Mountain"), c("Mountain")] },
+      explanation: "Power up Serpent Specialist (3/3 deathtouch). Team Tactics with teamwork (tap the Bears): double strike and trample. Deathtouch makes 1 damage lethal: first strike 1 to the Nestguard and 2 over, then 3.",
+      notes: `
+LETHAL: Serpent Specialist power-up ({3}{G}, it didn't enter this turn): 3/3 deathtouch. Team Tactics (teamwork: Grizzly
+  Bears): double strike, trample. Blocked: first strike 1 + 2 over; regular 3 over. 5.
+RULES: Deathtouch + trample.
+WRONG LINES: Team Tactics without teamwork: no trample: 0.
 UNIQUENESS: Solver-checked.`
     })
   );
