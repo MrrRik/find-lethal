@@ -260,6 +260,7 @@
     if (c.suspected) gainedKw.unshift("suspected");
     if (c.saddled) gainedKw.unshift("saddled");
     if (c.solved) gainedKw.unshift("solved");
+    if (c.levels) gainedKw.unshift(`level ${c.level || 1}`);       // a Class's level
     if (gainedKw.length) {
       const k = document.createElement("div");
       k.className = "kwchips";
@@ -942,6 +943,17 @@
           then: (l) => again("convoke")(l) });
       }
     }
+    // offspring (an optional additional cost) and gift (an optional promise): ask when both ways are possible
+    const extras = { ...base, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined, bargain: casting.bargain ?? undefined };
+    if (f.offspring && casting.offspring === undefined) {
+      const can = !E.check(state, { ...extras, offspring: true });
+      if (!can) casting.offspring = false;
+      else return askChoice(`${f.name}: pay offspring ${f.offspring}?`, [[true, `Pay offspring ${f.offspring} (a 1/1 token copy)`], [false, "No offspring"]], again("offspring"));
+    }
+    if (f.gift && casting.gift === undefined) {
+      const what = { Fish: "a tapped 1/1 Fish", Food: "a Food token", Treasure: "a Treasure token", card: "a card" }[f.gift] || f.gift;
+      return askChoice(`${f.name}: promise a gift?`, [[true, `Promise the gift (the opponent gets ${what})`], [false, "No gift"]], again("gift"));
+    }
     casting.phases = casting.phases || spellPhases(f);
     targetPhase();
   }
@@ -951,7 +963,7 @@
     // a permanent spell has no targets; its enters trigger asks for one after it resolves (CR 603.3d)
     if (!f.aura && /creature|artifact|enchantment|planeswalker|battle/i.test(f.type || "")) return [];
     const out = [];
-    E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined }).forEach((p, part) => {
+    E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, gift: casting.gift || undefined }).forEach((p, part) => {
       if (p.slots) p.slots.forEach((sl, slot) => out.push({ kind: sl.targets, filter: sl.filter, count: ONE, src: f, part, slot,
         label: f.name, which: sl.filter && sl.filter.controller === "you" ? "your creature" : sl.filter && sl.filter.controller === "opponent" ? "a creature you don't control" : null }));
       else if (p.targets) out.push({ kind: p.targets, filter: p.filter, count: p.count || ONE, src: f, part, label: f.name });
@@ -990,7 +1002,7 @@
     const f = faceNow();
     const phases = casting.phases;
     if (!phases.length || phases[0].optional) return finishChoice(casting.results[0]);
-    const parts = E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined });
+    const parts = E.plan(f, { mode: casting.mode, x: casting.x, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, gift: casting.gift || undefined });
     const perPart = parts.map((p, part) => {
       const mine = phases.map((ph, i) => (ph.part === part ? casting.results[i] : undefined)).filter((_, i) => phases[i].part === part);
       return p.slots ? mine : mine[0];
@@ -1013,7 +1025,7 @@
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
-      lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined };
+      lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);

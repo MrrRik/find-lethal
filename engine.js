@@ -105,6 +105,8 @@
     FACE_DOWN_KEEP.forEach((k) => { if (k in card && k !== "faceDown") out[k] = card[k]; });
     return out;
   }
+  // CR 716.2d: a permanent without a level is treated as level 1 (a Class starts there)
+  const levelOf = (c) => c.level || 1;
   // CR 701.60: a suspected creature has menace and "This creature can't block" for as long as it's suspected
   const ownKw = (c) => (c.suspected ? [...(c.kw || []), "menace", "can't block"] : c.kw || []);
 
@@ -126,6 +128,8 @@
     // CR 702.167a: craft: { cost, filter, text } — "[Cost], Exile this, Exile [a material] from among permanents you
     // control and/or cards in your graveyard: Return this card transformed. Activate only as a sorcery." (a.craft: the material)
     if (c.craft && !c.transformed) list.push({ cost: c.craft.cost, sorcery: true, craft: c.craft, effect: { craftReturn: true }, text: c.craft.text || `Craft ${c.craft.cost}` });
+    // CR 716.2a: a Class's "[Cost]: Level N" — its level becomes N; only if it's level N-1, and only as a sorcery
+    (c.levels || []).forEach((lv) => { if (lv.level === levelOf(c) + 1) list.push({ cost: lv.cost, sorcery: true, effect: { levelUp: lv.level, self: true }, text: `Level ${lv.level} (${lv.cost})` }); });
     // CR 719.3c: a Case's "Solved — [ability]" can only be activated once it's solved
     return list.filter((ab) => !ab.ifSolved || c.solved);
   }
@@ -172,6 +176,8 @@
     if (f.ifBargained && a.bargain != null) f = { ...f, ...f.ifBargained };
     // "If evidence was collected, …" (CR 701.59c): the spell's version with the evidence collected
     if (f.ifEvidence && a.evidence != null) f = { ...f, ...f.ifEvidence };
+    // "If the gift was promised, …" (CR 702.174b, m): the spell's version with the gift promised
+    if (f.ifGift && a.gift) f = { ...f, ...f.ifGift };
     if (f.aura) return [{ effect: { attach: true }, targets: f.aura.targets || "creature", filter: f.aura.filter, count: ONE, target: a.target }];
     if (f.modes) {
       const many = manyModes(f);
@@ -213,6 +219,7 @@
   // What casting a spell this way costs: X filled in, plus "costs {1} more for each target beyond the first" (Fireball)
   // and the alternative to an additional cost: "behold a Goblin or pay {2}", "blight 2 or pay {1}" (a.behold / a.blight "pay")
   const costOf = (f, a = {}) => withX(f.cost, a.x) +
+    (f.offspring && a.offspring ? f.offspring : "") +                     // offspring: an additional cost (CR 702.175a)
     (f.spree && a.mode != null ? [].concat(a.mode).map((m) => (f.modes[m] && f.modes[m].plus) || "").join("") : "") +
     (f.extraCostPerTarget && Array.isArray(a.target) && a.target.length > 1 ? `{${f.extraCostPerTarget * (a.target.length - 1)}}` : "") +
     (f.behold && f.behold.orPay && a.behold === "pay" ? f.behold.orPay : "") +
@@ -386,7 +393,10 @@
   // You get priority in every step except untap and cleanup; the turn is over once cleanup begins
   const hasPriority = (s) => at(s.phase) >= at("upkeep") && at(s.phase) < at("cleanup");
   const turnOver = (s) => at(s.phase) >= at("cleanup") || dead(s.player);
-  const canAttackNow = (s) => !s.attacked && !s.pending.length && !s.stack.length && (s.phase === "main1" || s.phase === "boc");
+  // (with "at the beginning of combat" triggers in the puzzle, attackers are declared from the beginning of combat step:
+  // those triggers happen first, CR 507.1 / 508.1)
+  const bocMatters = (s) => s.listens.includes("beginningOfCombat");
+  const canAttackNow = (s) => !s.attacked && !s.pending.length && !s.stack.length && ((s.phase === "main1" && !bocMatters(s)) || s.phase === "boc");
 
   // A permanent leaves the battlefield. CR 603.10a: leaves-the-battlefield triggers (dies, sacrificed, leaves) look
   // back in time: they're checked against the permanents just before the event (the leaving one included), using
@@ -415,7 +425,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -424,7 +434,8 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable"];   // (designations aren't copiable: CR 701.60b, 719.3b)
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid",
+    "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
     Object.keys(c).forEach((k) => { if (!NOT_COPIED.includes(k)) v[k] = clone(c[k]); });
@@ -983,7 +994,11 @@
   // (an object that lost all its abilities keeps only keyword triggers it gained afterwards, CR 613.1f)
   const triggersOf = (c) => [...((c.st && c.st.lost) ? [] : TRIGGER_TABLE.get(compile(c).tk) || []), ...keywords(c).filter((k) => KEYWORD_TRIGGERS[k]).map((k) => KEYWORD_TRIGGERS[k]),
     ...(isBattle(c) && /\bsiege\b/i.test(c.type || "") ? [SIEGE_TRIGGER] : []),
-    ...(c.toSolve && !(c.st && c.st.lost) ? [CASE_TRIGGER] : [])];
+    ...(c.toSolve && !(c.st && c.st.lost) ? [CASE_TRIGGER] : []),
+    ...(c.offspring && !(c.st && c.st.lost) ? [OFFSPRING_TRIGGER] : [])];
+  // CR 702.175a: offspring — "When this permanent enters, if its offspring cost was paid, create a token that's a copy of
+  // it, except it's 1/1."
+  const OFFSPRING_TRIGGER = { on: "enters", self: true, if: { offspringPaid: true }, effect: { offspringCopy: true } };
   // CR 719.3a: "To solve — [condition]" means "At the beginning of your end step, if [condition] and this Case is not
   // solved, this Case becomes solved." (c.toSolve: the condition, read by conditionHolds)
   const CASE_TRIGGER = { on: "endStep", filter: { controller: "you" }, if: { toSolve: true }, effect: { solve: true, self: true } };
@@ -1032,6 +1047,9 @@
     if (f.singleTarget && e.targetCount !== 1) return false;     // "a spell with a single target"
     if (f.maxPower != null && power(e.obj) > f.maxPower) return false;   // "another creature … with power 2 or less enters"
     if (f.spellNumber && e.spellNumber !== f.spellNumber) return false;  // "whenever you cast your second spell each turn"
+    if (f.expend && e.n !== f.expend) return false;                       // "whenever you expend 4"
+    if (f.level && e.level !== f.level) return false;                     // "when this Class becomes level 3"
+    if (t.byYou && e.controller !== "you") return false;                  // valiant: "a spell or ability you control"
     return true;
   }
   // An intervening "if" (CR 603.4): { controls: { filter, min } } — "if you control N or more …"
@@ -1053,6 +1071,10 @@
     if (cond.evidenced && !(self && self.evidenced)) return false;
     // "as long as you've committed a crime this turn" (CR 700.13); "while saddled" (CR 702.171b)
     if (cond.crime && !(side === "player" && s.crimes > 0)) return false;
+    // Threshold: "seven or more cards in your graveyard"; a Class's level N abilities (CR 716.2b-c); offspring paid
+    if (cond.threshold && !(s[side].graveyard.length >= 7)) return false;
+    if (cond.level != null && !(self && levelOf(self) >= cond.level)) return false;
+    if (cond.offspringPaid && !(self && self.offspringPaid)) return false;
     if (cond.saddled && !(self && self.saddled)) return false;
     // "if it was bargained" (CR 702.166c)
     if (cond.bargained && !(self && self.bargained)) return false;
@@ -1140,6 +1162,7 @@
     if (f.noncreature && isCreature(c)) return false;                     // "target noncreature artifact"
     if (f.artifactOrEnchantment && !isArtifact(c) && !typeHas(c, /enchantment/i)) return false;   // "target artifact or enchantment"
     if (f.artifactOrCreature && !isArtifact(c) && !isCreature(c)) return false;                     // "target artifact or creature"
+    if (f.equipped && ![...s.player.battlefield, ...s.opponent.battlefield].some((e) => e.equip && e.attachedTo === c.id)) return false;   // "equipped creatures"
     return true;
   }
 
@@ -1284,6 +1307,12 @@
       const [x, y] = [].concat(target || []).map((id) => find(s, id));
       // "Target creature you control gets +2/+0 until end of turn. It deals damage equal to its power to …" (Bite Down on Crime)
       if (eff.pumpFirst && x) addMod(s, x, eff.pumpFirst);
+      // "Put a +1/+1 counter on the creature you control … Then those creatures fight" (Longstalk Brawl, gift promised)
+      if (eff.counterFirst && x) {
+        x.counters = { ...(x.counters || {}) };
+        Object.entries(eff.counterFirst).forEach(([k, n]) => { x.counters[k] = (x.counters[k] || 0) + n; });
+        ev.push({ type: "counters", id: x.id, counters: eff.counterFirst });
+      }
       if (x && y) {
         const px = Math.max(power(x), 0), py = Math.max(power(y), 0);
         dealDamage(s, x, sideOf(s, x), y.id, px, ev);
@@ -1320,6 +1349,8 @@
       return;
     }
     if (Array.isArray(target)) { target.forEach((t) => applyEffect(s, eff, t, ctx, ev)); return; }
+    // offspring (CR 702.175a): a 1/1 token copy of the permanent (as it last existed, if it's gone)
+    if (eff.offspringCopy) { createToken(s, copyValues(find(s, ctx.selfId) || ctx.src, { pt: "1/1" }), ctx.side, ev); return; }
     // eff.to: "opp" is "each opponent" of the ability's controller; "eventObject" / "eventController" are the object
     // and player of the event that triggered it ("that creature", "that spell's controller")
     const to = eff.self ? ctx.selfId : eff.to ? relativeTo(eff.to, ctx) : target;
@@ -1469,6 +1500,22 @@
     if (eff.tapOrUntap && tgt) {
       const pick = choose(s, `Tap or untap ${tgt.name}?`, ["Tap it", "Untap it", "Neither"], ctx.side);
       if (pick === 0) tap(s, tgt, ev); else if (pick === 1) untap(s, tgt, ev);
+    }
+    // "It also gets +1/+0 until end of turn if you control a Mouse": part of the effect that needs a permanent of yours
+    if (eff.ifYouControl && tgt && s[ctx.side].battlefield.some((c) => objectIs(c, eff.ifYouControl.filter))) {
+      const { filter, ...more } = eff.ifYouControl;
+      applyEffect(s, more, tgt.id, ctx, ev);
+    }
+    // CR 716.2a: the Class's level becomes N ("when this Class becomes level N" triggers)
+    if (eff.levelUp && tgt) { tgt.level = eff.levelUp; changed(s); emit(s, { type: "levelUp", obj: tgt, side: ctx.side, level: eff.levelUp }, ev); }
+    // "… also deals 3 damage to that creature's controller" (Blooming Blast, gift promised)
+    if (eff.damageController && tgt) dealDamage(s, ctx.src, ctx.side, sideOf(s, tgt) === "player" ? "you" : "opp", eff.damageController, ev);
+    // "attach target Equipment you control to up to one target creature you control" (the Equipment: yours; with
+    // several, you choose)
+    if (eff.attachEquipment && tgt) {
+      const gear = s[ctx.side].battlefield.filter((c) => c.equip);
+      const g = gear.length ? gear[choose(s, `Attach which Equipment to ${tgt.name}?`, gear.map((c) => c.name), ctx.side)] : null;
+      if (g) { g.attachedTo = tgt.id; g.ts = stamp(s); changed(s); ev.push({ type: "attach", id: g.id, to: tgt.id }); }
     }
     // CR 719.3a-b: this Case becomes solved
     if (eff.solve && tgt) { tgt.solved = true; changed(s); ev.push({ type: "solved", id: tgt.id }); }
@@ -1620,6 +1667,15 @@
       commitCrime(s, a.target, side, ev);
     } else z.hand.push(found);
     emit(s, { type: "discovers", obj: { id: found.id }, side }, ev);
+  }
+
+  // CR 702.174d-h: the gift the opponent gets (the opponent never uses a Food or Treasure; a Fish arrives tapped; a card
+  // is one more unknown card in their hand)
+  const FISH = { name: "Fish", type: "Token Creature — Fish", pt: "1/1", colors: ["U"], tapped: true };
+  function giveGift(s, gift, ev) {
+    if (gift === "card") { s.opponent.handCount = (s.opponent.handCount || 0) + 1; s.opponent.libraryCount = Math.max(0, (s.opponent.libraryCount || 0) - 1); }
+    else createToken(s, gift === "Fish" ? FISH : gift === "Food" ? FOOD : { name: "Treasure", type: "Token Artifact — Treasure", colors: [] }, "opponent", ev);
+    ev.push({ type: "gift", gift });
   }
 
   // "Exile the top N cards of your library. Choose one of them. You may play that card this turn." The chosen card is
@@ -2002,6 +2058,8 @@
     s.phase = step;
     // "at the beginning of your end step" triggered abilities (a Case's "To solve", CR 719.3a)
     if (step === "end") emit(s, { type: "endStep", side: "player" }, ev);
+    // "at the beginning of combat on your turn" (CR 507.1: triggers as the step begins)
+    if (step === "boc") emit(s, { type: "beginningOfCombat", side: "player" }, ev);
     if (step === "attackers") s.attacked = true;              // no attackers declared: combat is over
     if (!s.combat) return;
     if (step === "blockers") declareBlocks(s, blocks, ev);
@@ -2157,6 +2215,8 @@
         if (a.blight === "pay" && !f.blight.orPay) return "That cost can't be paid with mana.";
         if (blighted(a) && !blightOptions(s).includes(a.blight)) return "You can only blight a creature you control.";
       } else if (a.blight != null) return `${f.name} has no blight cost.`;
+      if (a.offspring && !f.offspring) return `${f.name} has no offspring.`;
+      if (a.gift && !f.gift) return `${f.name} has no gift.`;
       // collect evidence N (CR 701.59a): exile cards from your graveyard with total mana value N or more (a.evidence)
       if (a.evidence != null) {
         if (!f.evidence) return `${f.name} doesn't collect evidence.`;
@@ -2213,7 +2273,9 @@
       return null;
     }
     if (a.type === "attack") {
-      if (!canAttackNow(s)) return s.attacked ? "Attackers have already been declared this turn." : "You can only declare attackers at the start of combat.";
+      if (!canAttackNow(s)) return s.attacked ? "Attackers have already been declared this turn."
+        : s.phase === "main1" && bocMatters(s) && !s.stack.length ? "First move on to the beginning of combat (Next phase): something happens there."
+        : "You can only declare attackers at the start of combat.";
       if (!a.ids.length) return "Choose at least one attacker.";
       // CR 506.2 / 508.1b: each attacker attacks the opponent, one of the opponent's planeswalkers, or a battle the
       // opponent protects — your own Sieges (CR 310.9b) (a.at)
@@ -2298,7 +2360,11 @@
       const live = parts.filter((p) => !(p.targets || p.slots) || stillLegal(s, f, p));
       if (targeted.length && !targeted.some((p) => live.includes(p))) ev.push({ type: "fizzled", id: card.id });
       // ("This spell can't be countered": ward's "counter it unless …" can't counter it, so nothing is paid)
-      else live.forEach((p) => { if (f.uncounterable || payWard(s, p.target, ev)) applyEffect(s, fillIn(p.effect, { color: a.color, x: a.x }), p.target, { ...ctx, split: p.split }, ev); });
+      // CR 702.174j: a promised gift is given first, before the spell's other effects
+      else {
+        if (a.gift) giveGift(s, f.gift, ev);
+        live.forEach((p) => { if (f.uncounterable || payWard(s, p.target, ev)) applyEffect(s, fillIn(p.effect, { color: a.color, x: a.x }), p.target, { ...ctx, split: p.split }, ev); });
+      }
       // an Adventure goes to exile, from where its creature can be cast later
       if (w.copy) ev.push({ type: "copy-gone", id: w.id });     // CR 707.10a: a copy of a spell off the stack ceases to exist
       else if (card.layout === "adventure" && (a.face || 0) === 1) s.player.exile.push({ ...card, onAdventure: true });
@@ -2344,6 +2410,9 @@
       const p = s.pending.shift();
       s.stack.unshift({ ...p, kind: "trigger", target: a.target });
       commitCrime(s, a.target, "player", ev);
+      // its targets "become the target of an ability you control" (valiant)
+      [...new Set([a.target].flat(2))].map((id) => id && find(s, id)).filter(Boolean)
+        .forEach((c) => emit(s, { type: "becomesTarget", obj: c, side: sideOf(s, c), by: "ability", controller: "you" }, ev));
     }
 
     if (a.type === "scry") {
@@ -2404,7 +2473,14 @@
       }
       const sac = a.sac != null ? find(s, a.sac) : null;
       const sacPower = sac ? Math.max(power(sac), 0) : 0;
+      // CR 700.14: expend N — the mana you've spent on spells this turn reaches N with this payment (convoked creatures
+      // and life aren't mana)
+      const manaPaid = pay.filter((id) => !id.startsWith("life:") && !(find(s, id.split("+")[0]) && (a.convoke || []).includes(id))).length;
+      const spentBefore = s.manaSpent || 0;
+      if (manaPaid) s.manaSpent = spentBefore + manaPaid;
       spend(s, pay, ev);
+      [4, 8].forEach((n) => { if (spentBefore < n && s.manaSpent >= n) emit(s, { type: "expend", n, side: "player" }, ev); });
+      if (a.offspring) card.offspringPaid = true;                // (the permanent remembers it, CR 702.175a)
       if (sac) leave(s, sac, "graveyard", ev, { sacrificed: true });
       // bargain: the sacrifice (CR 702.166a); a bargained permanent spell remembers it ("if it was bargained", 702.166c)
       if (a.bargain != null) {
@@ -2480,6 +2556,7 @@
       // battle cry; "attacks alone" for exalted, CR 702.83a), and go on the stack in the declare attackers step
       attackers.forEach((c) => emit(s, { type: "attacks", obj: c, side: "player", toBattle: !!(a.at && a.at[c.id] && isBattle(find(s, a.at[c.id]))) }, ev));
       if (attackers.length === 1) emit(s, { type: "attacksAlone", obj: attackers[0], side: "player" }, ev);
+      emit(s, { type: "youAttack", side: "player", count: attackers.length }, ev);   // "whenever you attack"
     }
 
     if (a.type === "pass") resolveTop(s, ev);                 // CR 117.4: everyone passed, the top object resolves
@@ -2603,6 +2680,9 @@
         // additional costs: which creature to blight (or not / pay instead), behold (any one Goblin does the same) or pay,
         // and which creatures help pay through convoke
         const blights = f.blight ? [...blightOptions(s), ...(f.blight.optional ? [undefined] : []), ...(f.blight.orPay ? ["pay"] : [])] : [undefined];
+        // offspring and gift: paid / promised or not
+        const offsprings = f.offspring ? [undefined, true] : [undefined];
+        const gifts = f.gift ? [undefined, true] : [undefined];
         // (beholding only shows cards: any choice of them does the same, so one is enough)
         const bn = f.behold && (f.behold.count || 1), bopts = f.behold ? beholdOptions(s, f) : [];
         const beholds = f.behold ? [...(bopts.length >= bn ? [bn > 1 ? bopts.slice(0, bn) : bopts[0]] : []), ...(f.behold.orPay ? ["pay"] : [])] : [undefined];
@@ -2614,10 +2694,12 @@
         // collect evidence (optional): not, or each set of graveyard cards that's just enough
         const evidences = f.evidence ? [undefined, ...evidenceOptions(s, f.evidence)] : [undefined];
         for (const mode of modes) for (const color of colors) for (const x of xs) for (const sac of sacs) for (const bargain of bargains) for (const evidence of evidences)
-          for (const blight of blights) for (const behold of beholds) for (const convoke of convokes) for (const lifePips of lifePipsList) {
-            for (const pick of castTargets(s, f, { mode, x, blight, bargain, evidence }, sac)) {
+          for (const blight of blights) for (const behold of beholds) for (const convoke of convokes) for (const lifePips of lifePipsList) for (const offspring of offsprings) for (const gift of gifts) {
+            for (const pick of castTargets(s, f, { mode, x, blight, bargain, evidence, gift }, sac)) {
               const a = { type: "cast", id: card.id, face, mode, color, x, sac, ...pick };
               if (evidence !== undefined) a.evidence = evidence;
+              if (offspring) a.offspring = true;
+              if (gift) a.gift = true;
               if (blight !== undefined) a.blight = blight;
               if (behold !== undefined) a.behold = behold;
               if (convoke !== undefined) a.convoke = convoke;
@@ -2671,6 +2753,7 @@
   // Where moving on from this step can matter. Other steps are equivalent windows for instants:
   // beginning of combat = main 1 (before attackers), combat damage and end of combat = main 2.
   function nextStop(s) {
+    if (s.phase === "main1" && bocMatters(s)) return "boc";                   // (combat begins: its triggers)
     if (s.phase === "main1" || s.phase === "boc") return "main2";              // skip combat
     if (s.phase === "attackers") return "blockers";
     if (s.phase === "blockers") return s.combat && firstStrikeStepNeeded(s) ? "fsdamage" : "main2";
@@ -2796,6 +2879,8 @@
     if (a.behold != null && a.behold !== "pay") d += ` (beholding ${nameOf(s, a.behold)})`;
     if (a.lifePips) d += ` (paying ${a.lifePips * 2} life)`;
     if (a.bargain != null) d += ` (bargaining ${nameOf(s, a.bargain)})`;
+    if (a.offspring) d += " (with offspring)";
+    if (a.gift) d += " (gift promised)";
     if (a.convoke && a.convoke.length) d += ` (convoking ${a.convoke.map((id) => nameOf(s, id)).join(" + ")})`;
     if (a.target) d += ` →${a.split ? [].concat(a.target).map((t, i) => `${a.split[i]} to ${nameOf(s, t)}`).join(", ") : nameOf(s, a.target)}`;
     return d;

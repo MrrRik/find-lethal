@@ -616,7 +616,62 @@
       text: "This land enters tapped. When this land enters, it deals 1 damage to target opponent. {T}: Add {R} or {W}." },
     "Razzle-Dazzler": { type: "Creature — Human Wizard", cost: "{1}{U}", pt: "1/2",
       triggers: [{ on: "cast", filter: { controller: "you", spellNumber: 2 }, effect: { counters: { "+1/+1": 1 }, grant: ["unblockable"], self: true } }],
-      text: "Whenever you cast your second spell each turn, put a +1/+1 counter on this creature. It can't be blocked this turn." }
+      text: "Whenever you cast your second spell each turn, put a +1/+1 counter on this creature. It can't be blocked this turn." },
+
+    // ---- Bloomburrow (BLB): offspring, valiant, gift, expend, threshold, Classes ----
+    // (offspring: its additional cost; gift: what the opponent gets; levels: a Class's level costs; a Class on the
+    // battlefield may list level: N)
+    "Sword": { type: "Token Artifact — Equipment", colors: [], token: true, equip: { cost: "{2}", static: { pump: [1, 1] } },
+      text: "Equipped creature gets +1/+1. Equip {2}" },
+    "Intrepid Rabbit": { type: "Creature — Rabbit Soldier", cost: "{2}{W}", pt: "3/2", offspring: "{1}",
+      etb: { pump: [1, 1] }, targets: "creature", targetFilter: { controller: "you" },
+      text: "Offspring {1} (You may pay an additional {1} as you cast this spell. If you do, when this creature enters, create a 1/1 token copy of it.) When this creature enters, target creature you control gets +1/+1 until end of turn." },
+    "Mouse Trapper": { type: "Creature — Mouse Soldier", cost: "{2}{W}", pt: "3/2", kw: ["flash"],
+      triggers: [{ on: "becomesTarget", self: true, byYou: true, oncePerTurn: true, targets: "opponent-creature", effect: { tap: true } }],
+      text: "Flash. Valiant — Whenever this creature becomes the target of a spell or ability you control for the first time each turn, tap target creature an opponent controls." },
+    "Blooming Blast": { type: "Instant", cost: "{1}{R}", gift: "Treasure", targets: "creature", effect: { damage: 2 },
+      ifGift: { effect: { damage: 2, damageController: 3 } },
+      text: "Gift a Treasure (You may promise an opponent a gift as you cast this spell. If you do, they create a Treasure token before its other effects.) Blooming Blast deals 2 damage to target creature. If the gift was promised, Blooming Blast also deals 3 damage to that creature's controller." },
+    "Nightwhorl Hermit": { type: "Creature — Rat Rogue", cost: "{2}{U}", pt: "1/4", kw: ["vigilance"], conditional: [{ if: { threshold: true }, pump: [1, 0], grant: ["unblockable"] }],
+      text: "Vigilance. Threshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+0 and can't be blocked." },
+    "Daggerfang Duo": { type: "Creature — Rat Squirrel", cost: "{2}{B}", pt: "3/2", kw: ["deathtouch"], etb: { mill: 2, mayMill: true },
+      text: "Deathtouch. When this creature enters, you may mill two cards." },
+    "Teapot Slinger": { type: "Creature — Raccoon Warrior", cost: "{3}{R}", pt: "3/4", kw: ["menace"],
+      triggers: [{ on: "expend", filter: { controller: "you", expend: 4 }, effect: { damage: 2, to: "opp" } }],
+      text: "Menace. Whenever you expend 4, this creature deals 2 damage to each opponent. (You expend 4 as you spend your fourth total mana to cast spells during a turn.)" },
+    "Rabid Gnaw": { type: "Instant", cost: "{1}{R}",
+      slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature", filter: { controller: "opponent" } }], effect: { bite: true, pumpFirst: [1, 0] },
+      text: "Target creature you control gets +1/+0 until end of turn. Then it deals damage equal to its power to target creature you don't control." },
+    "Gossip's Talent": { type: "Enchantment — Class", cost: "{1}{U}", levels: [{ level: 2, cost: "{1}{U}" }],
+      triggers: [{ on: "enters", filter: { controller: "you", creature: true }, effect: { surveil: 1 } },
+        { on: "youAttack", filter: { controller: "you" }, if: { level: 2 }, targets: "creature", targetFilter: { controller: "you", attacking: true, maxPower: 3 }, effect: { grant: ["unblockable"] } }],
+      text: "Whenever a creature you control enters, surveil 1. {1}{U}: Level 2 — Whenever you attack, target attacking creature with power 3 or less can't be blocked this turn. {3}{U}: Level 3 — Whenever a creature you control deals combat damage to a player, you may exile it, then return it to the battlefield under its owner's control." },
+    "Blacksmith's Talent": { type: "Enchantment — Class", cost: "{R}", etb: { create: { name: "Sword", type: "Token Artifact — Equipment", colors: [], equip: { cost: "{2}", static: { pump: [1, 1] } }, text: "Equipped creature gets +1/+1. Equip {2}" } },
+      levels: [{ level: 2, cost: "{2}{R}" }, { level: 3, cost: "{3}{R}" }],
+      triggers: [{ on: "beginningOfCombat", filter: { controller: "you" }, if: { level: 2 }, targets: "creature", targetFilter: { controller: "you" }, effect: { attachEquipment: true } }],
+      static: { team: { grant: ["double strike", "haste"] }, filter: { equipped: true }, if: { level: 3 } },
+      text: "When this Class enters, create a colorless Equipment artifact token named Sword with \"Equipped creature gets +1/+1\" and equip {2}. {2}{R}: Level 2 — At the beginning of combat on your turn, attach target Equipment you control to up to one target creature you control. {3}{R}: Level 3 — During your turn, equipped creatures you control have double strike and haste." },
+    "Flame Lash": { type: "Instant", cost: "{3}{R}", targets: "any", effect: { damage: 4 }, text: "Flame Lash deals 4 damage to any target." },
+    "Quaketusk Boar": { type: "Creature — Elemental Boar", cost: "{3}{R}{R}", pt: "5/5", kw: ["reach", "trample", "haste"], text: "Reach, trample, haste" },
+    "Coruscation Mage": { type: "Creature — Otter Wizard", cost: "{1}{R}", pt: "2/2", offspring: "{2}",
+      triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, effect: { damage: 1, to: "opp" } }],
+      text: "Offspring {2} (You may pay an additional {2} as you cast this spell. If you do, when this creature enters, create a 1/1 token copy of it.) Whenever you cast a noncreature spell, this creature deals 1 damage to each opponent." },
+    "Might of the Meek": { type: "Instant", cost: "{R}", targets: "creature", effect: { grant: ["trample"], draw: 1, ifYouControl: { filter: { type: "Mouse" }, pump: [1, 0] } },
+      text: "Target creature gains trample until end of turn. It also gets +1/+0 until end of turn if you control a Mouse. Draw a card." },
+    "Heartfire Hero": { type: "Creature — Mouse Soldier", cost: "{R}", pt: "1/1",
+      triggers: [{ on: "becomesTarget", self: true, byYou: true, oncePerTurn: true, effect: { counters: { "+1/+1": 1 }, self: true } }],
+      onDeath: { effect: { damage: "power", to: "opp" } },
+      text: "Valiant — Whenever this creature becomes the target of a spell or ability you control for the first time each turn, put a +1/+1 counter on it. When this creature dies, it deals damage equal to its power to each opponent." },
+    "Seedglaive Mentor": { type: "Creature — Mouse Soldier", cost: "{1}{R}{W}", pt: "3/2", kw: ["vigilance", "haste"],
+      triggers: [{ on: "becomesTarget", self: true, byYou: true, oncePerTurn: true, effect: { counters: { "+1/+1": 1 }, self: true } }],
+      text: "Vigilance, haste. Valiant — Whenever this creature becomes the target of a spell or ability you control for the first time each turn, put a +1/+1 counter on it." },
+    "Brave-Kin Duo": { type: "Creature — Rabbit Mouse", cost: "{W}", pt: "1/1",
+      abilities: [{ cost: "{1}", tap: true, sorcery: true, targets: "creature", effect: { pump: [1, 1] }, text: "{1}, {T}: Target creature gets +1/+1" }],
+      text: "{1}, {T}: Target creature gets +1/+1 until end of turn. Activate only as a sorcery." },
+    "Longstalk Brawl": { type: "Sorcery", cost: "{G}", gift: "Fish",
+      slots: [{ targets: "creature", filter: { controller: "you" } }, { targets: "creature", filter: { controller: "opponent" } }], effect: { fight: true },
+      ifGift: { effect: { fight: true, counterFirst: { "+1/+1": 1 } } },
+      text: "Gift a tapped Fish (You may promise an opponent a gift as you cast this spell. If you do, they create a tapped 1/1 blue Fish creature token before its other effects.) Choose target creature you control and target creature you don't control. Put a +1/+1 counter on the creature you control if the gift was promised. Then those creatures fight each other." }
   };
 
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
@@ -1466,6 +1521,137 @@ RULES: Crime (700.13) by a triggered ability's target. "Triggers only once each 
   the Bandit again. Abraded Bluffs enters tapped.
 WRONG LINES: Shocking the face: the Bears block one attacker. Tapping the Bandit after its trigger resolved: it can't
   attack. (Shock first, tapping the Bandit, then the land, is the same plan in another order.)
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= BLOOMBURROW (set BLB) ======================= */
+  // Offspring, valiant, gift, expend, threshold and Classes
+  window.PUZZLES.push(
+    puzzle({
+      id: "blb-01-litter", title: "Litter", set: "blb", tier: "easy",
+      opp: { life: 5 },
+      you: { hand: [c("Intrepid Rabbit")], battlefield: [c("Hill Giant"), ...many(4, "Plains")] },
+      explanation: "Pay offspring: Intrepid Rabbit comes with a 1/1 token copy, and the copy has the same enters ability. Two +1/+1 pumps on Hill Giant: 5.",
+      notes: `
+LETHAL: Intrepid Rabbit with offspring ({2}{W} + {1}): it enters (+1/+1 to Hill Giant), and its offspring trigger
+  creates a 1/1 token copy, which enters too (+1/+1 to Hill Giant). Giant 5/5: 5.
+RULES: Offspring (702.175a): the token is a copy, so its enters trigger triggers. Both are summoning sick.
+WRONG LINES: Without offspring: 4/4, 4 damage.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-02-mouse-trap", title: "Mouse Trap", set: "blb", tier: "easy",
+      opp: { life: 7, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Giant Growth")], battlefield: [c("Mouse Trapper"), c("Hill Giant"), c("Forest")] },
+      explanation: "Valiant: the first time each turn you target Mouse Trapper, it taps a creature of the opponent's. Giant Growth on the Trapper taps Grizzly Bears: 6 + 3 unblocked.",
+      notes: `
+LETHAL: Giant Growth on Mouse Trapper (6/5). Valiant: tap Grizzly Bears. Attack with both: 6 + 3 = 9.
+RULES: Valiant triggers when it becomes the target of your spell. A tapped creature can't block.
+WRONG LINES: Growth on Hill Giant: the Bears block one, at most 6. Growth after blocks: tapping a blocker doesn't
+  remove it from combat.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-03-gift-wrapped", title: "Gift-Wrapped", set: "blb", tier: "easy",
+      opp: { life: 6, battlefield: [c("Grizzly Bears")] },
+      you: { hand: [c("Blooming Blast")], battlefield: [c("Hill Giant"), c("Mountain"), c("Mountain")] },
+      explanation: "Promise the gift: the opponent gets a Treasure they'll never use, and Blooming Blast also deals 3 damage to the Bears' controller. The Bears die, Hill Giant gets through: 3 + 3.",
+      notes: `
+LETHAL: Blooming Blast with the gift promised, on Grizzly Bears: the opponent creates a Treasure; 2 damage kills the
+  Bears and 3 to the opponent (3). Hill Giant: 3.
+RULES: Gift (702.174a, h, j): the gift happens first, then the spell's effects; "if the gift was promised".
+WRONG LINES: Without the gift: 3 damage.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-04-threshold", title: "Threshold", set: "blb", tier: "easy",
+      opp: { life: 2, battlefield: [c("Wall of Wood")] },
+      you: { hand: [c("Daggerfang Duo")], battlefield: [c("Nightwhorl Hermit"), ...many(3, "Swamp")],
+        library: [c("Forest"), c("Forest")], graveyard: [c("Hill Giant"), c("Gray Ogre"), c("Grizzly Bears"), c("Lightning Bolt"), c("Shock"), c("Mountain")] },
+      explanation: "Six cards in your graveyard. Daggerfang Duo mills two: eight, so threshold turns on and Nightwhorl Hermit is a 2/4 that can't be blocked.",
+      notes: `
+LETHAL: Daggerfang Duo ({2}{B}): mill two (Forest, Forest): 8 cards in the graveyard. Threshold: Nightwhorl Hermit gets
+  +1/+0 and can't be blocked: 2.
+RULES: Threshold: seven or more cards in your graveyard (any cards).
+WRONG LINES: Not milling (it's optional): the Wall blocks.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-05-teapot", title: "Teapot", set: "blb", tier: "medium",
+      opp: { life: 6, battlefield: [c("Wall of Wood"), c("Grizzly Bears")] },
+      you: { hand: [c("Shock"), c("Shock"), c("Flame Lash")], battlefield: [c("Teapot Slinger"), ...many(4, "Mountain")] },
+      explanation: "Teapot Slinger deals 2 when you expend 4: spend your fourth mana on spells this turn. Two Shocks spend only 2. Flame Lash spends all 4: 4 to the face, plus 2 from the Slinger.",
+      notes: `
+LETHAL: Flame Lash ({3}{R}) at the opponent: 4 (2). Spending the fourth mana: expend 4: Teapot Slinger deals 2.
+RULES: Expend (700.14): mana spent to cast spells this turn reaches 4.
+WRONG LINES: Shock the Bears (the Wall alone can't block the menace Slinger: 3) + Shock the face: 5. Two Shocks: 4.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-06-gossip", title: "Gossip", set: "blb", tier: "medium",
+      opp: { life: 6, battlefield: [c("Wall of Wood"), c("Grizzly Bears")] },
+      you: { hand: [c("Giant Growth")], battlefield: [c("Gossip's Talent"), c("Hill Giant"), c("Gray Ogre"), c("Island"), c("Island"), c("Forest")] },
+      explanation: "Level Gossip's Talent up to 2. When you attack, Hill Giant (power 3 or less) can't be blocked. Only then cast Giant Growth on it: 6 unblockable. Grow it first and it's too big to be chosen.",
+      notes: `
+LETHAL: Level 2 ({1}{U}). Attack with Hill Giant (and Gray Ogre): the Talent's trigger: Hill Giant can't be blocked.
+  Then Giant Growth on it: 6.
+RULES: Class levels (716.2a): sorcery speed. The target restriction (power 3 or less) is checked as the trigger is put
+  on the stack and as it resolves; after that the Giant can grow.
+WRONG LINES: Growth before attacking: 6 power, not a legal target. The trigger on Gray Ogre: 5 at best.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-07-blacksmith", title: "Blacksmith", set: "blb", tier: "hard",
+      opp: { life: 9, battlefield: [c("Wall of Wood")] },
+      you: { battlefield: [c("Blacksmith's Talent"), c("Sword"), c("Quaketusk Boar"), ...many(7, "Mountain")] },
+      explanation: "Level Blacksmith's Talent to 2 and then 3 (7 mana). At the beginning of combat, level 2 attaches the Sword to Quaketusk Boar for free, and level 3 gives it double strike. A 6/6 double-striking trampler: 3 over the Wall, then 6.",
+      notes: `
+LETHAL: Level 2 ({2}{R}), Level 3 ({3}{R}). Move to combat: the level 2 trigger attaches the Sword to Quaketusk Boar
+  (6/6 trample). Level 3: equipped creatures have double strike and haste. Wall of Wood blocks: first strike 3 to the
+  Wall, 3 over; then 6 over (the Wall is dead): 9.
+RULES: Classes (716.2a): one level at a time, sorcery speed. Beginning of combat triggers (507.1). Equip by hand costs
+  {2}: not enough mana for that and both levels.
+WRONG LINES: Equip by hand + level 2: a 6/6 trampler without double strike, 3 over. Attacking without the levels: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-08-otter-pair", title: "Otter Pair", set: "blb", tier: "hard",
+      opp: { life: 6 },
+      you: { hand: [c("Coruscation Mage"), c("Shock"), c("Might of the Meek")], battlefield: [...many(6, "Mountain")] },
+      explanation: "Coruscation Mage with offspring: two Mages, each pinging for 1 whenever you cast a noncreature spell. Then Shock the opponent (2 + 2) and cast Might of the Meek (2 more).",
+      notes: `
+LETHAL: Coruscation Mage with offspring ({1}{R} + {2}): the Mage and a 1/1 token copy. Shock the opponent: 2 + 1 + 1
+  (4). Might of the Meek on a Mage: 1 + 1 (6).
+RULES: Offspring's token is a copy: it has the same triggered ability. Casting the Mage (a creature spell) doesn't
+  trigger it.
+WRONG LINES: No offspring: Shock 2 + 1 + 1 = 4. Spells before the Mages.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-09-valiant", title: "Valiant", set: "blb", tier: "hard",
+      opp: { life: 7, battlefield: [c("Grizzly Bears"), c("Wall of Wood")] },
+      you: { hand: [c("Might of the Meek"), c("Might of the Meek")], battlefield: [c("Mouse Trapper"), c("Seedglaive Mentor"), c("Mountain"), c("Mountain")] },
+      explanation: "Might of the Meek on each Mouse. Mouse Trapper's valiant taps a blocker: tap Wall of Wood, not the Bears. Seedglaive Mentor's valiant gives it a counter. Both get trample and +1/+0: whatever the Bears block, 7 gets through.",
+      notes: `
+LETHAL: Might of the Meek on Mouse Trapper: valiant: tap Wall of Wood; trample, +1/+0 (4/2). Might of the Meek on
+  Seedglaive Mentor: valiant: +1/+1 counter; trample, +1/+0 (5/3). Attack: the Bears block the Trapper: 2 over + 5 = 7;
+  block the Mentor: 3 over + 4 = 7.
+RULES: Valiant (first time each turn you target it). Trample over a 2/2 blocker; a 0/3 would soak 3.
+WRONG LINES: Tapping the Bears: the Wall soaks 3 of a trampler: 6.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "blb-10-heartfire", title: "Heartfire", set: "blb", tier: "hard",
+      opp: { life: 6, battlefield: [c("Colossal Dreadmaw")] },
+      you: { hand: [c("Giant Growth"), c("Longstalk Brawl")], battlefield: [c("Heartfire Hero"), c("Forest"), c("Forest")] },
+      explanation: "When Heartfire Hero dies, it deals damage equal to its power to the opponent. Giant Growth (valiant counter too) makes it 5/5. Longstalk Brawl with the gift adds a +1/+1 counter, then it fights Colossal Dreadmaw: both die, and the 6-power Hero deals 6.",
+      notes: `
+LETHAL: Giant Growth on Heartfire Hero: valiant: +1/+1 counter (2/2), +3/+3: 5/5. Longstalk Brawl with the gift (the
+  opponent gets a tapped Fish): +1/+1 counter (6/6), it fights Colossal Dreadmaw (6/6): both take 6 and die. The Hero's
+  death trigger uses its last power: 6.
+RULES: Leaves-the-battlefield triggers use last known information (603.10a, 608.2h). Gift (702.174f).
+WRONG LINES: No gift: 5/5 fights, dies, 5 damage. Attacking: the Dreadmaw blocks.
 UNIQUENESS: Solver-checked.`
     })
   );
