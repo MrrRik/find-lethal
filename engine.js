@@ -701,7 +701,7 @@
   // (statics that read counters or poison — perCounter, conditional — can change without a board change: then also
   // when the poison counters or the counters on permanents differ from the last rebuild)
   const LAST = new WeakMap();
-  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.player.speed || 0}|${s.gainedLife ? 1 : 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
+  const dynamicKey = (s) => `${s.player.poison || 0}|${s.opponent.poison || 0}|${s.player.speed || 0}|${s.gainedLife ? 1 : 0}|${s.player.enduringStory ? 1 : 0}|${s.celebration || 0}|${s.player.graveyard.length}|${s.crimes || 0}|` +
     [...s.player.battlefield, ...s.opponent.battlefield].map((c) => (c.counters ? c.id + JSON.stringify(c.counters) : "")).join();
   const refresh = (s) => { if (CHANGED.has(s) || (s.dynamicStatics && LAST.get(s) !== dynamicKey(s))) recomputeStatics(s); };
   function recomputeStatics(s) {
@@ -854,6 +854,13 @@
       // CR 704.5aa / 702.179a: a player with no speed who controls a permanent with start your engines! gets speed 1
       ["player", "opponent"].forEach((side) => {
         if (s[side].speed == null && s[side].battlefield.some((c) => has(c, "start your engines!"))) { s[side].speed = 1; ev.push({ type: "speed", side, speed: 1 }); }
+        // CR 702.195a: storied — controlling three or more artifacts, Sagas and/or legendary permanents gives you an enduring
+        // story for the rest of the game (CR 702.195c: continuous effects are reapplied right away)
+        const z = s[side];
+        if (!z.enduringStory && z.battlefield.some((c) => has(c, "storied")) &&
+          z.battlefield.filter((c) => isArtifact(c) || typeHas(c, /\bSaga\b/) || typeHas(c, /\blegendary\b/i)).length >= 3) {
+          z.enduringStory = true; changed(s); ev.push({ type: "enduringStory", side });
+        }
       });
       refresh(s);
       for (const c of [...s.player.battlefield, ...s.opponent.battlefield]) {
@@ -1220,6 +1227,7 @@
     if (cond.webSlung && !(self && self.webSlung)) return false;    // "if they were cast using web-slinging"
     if (cond.sneaked && !(self && self.sneaked)) return false;      // "if its sneak cost was paid"
     if (cond.infusion && !(side === "player" && s.gainedLife)) return false;   // Infusion (SOS): "if you gained life this turn"
+    if (cond.enduring && !s[side].enduringStory) return false;     // "as long as you have an enduring story" (CR 702.195b)
     // Disappear (TMT): "if a permanent left the battlefield under your control this turn"
     if (cond.disappear && !(side === "player" && s.leftYours)) return false;
     // "as long as there's a Lesson card in your graveyard" (lessons: how many)
@@ -1255,7 +1263,8 @@
   const permanentCardsIn = (s, side) => s[side].graveyard.filter((c) => isPermanent(faceOf(c, {}))).length;
   const objectIs = (c, f) => (!f.artifact || isArtifact(c)) && (!f.creature || isCreature(c)) && (!f.land || isLand(c)) &&
     (!f.treasure || isTreasure(c)) && (!f.type || hasType(c, f.type)) &&
-    (!f.hasCounter || Object.values(c.counters || {}).some((n) => n > 0));   // "a creature with a counter on it"
+    (!f.hasCounter || Object.values(c.counters || {}).some((n) => n > 0)) &&   // "a creature with a counter on it"
+    (f.minPower == null || power(c) >= f.minPower);                           // ferocious: "a creature with power 4 or greater"
 
   // The one place game events go: logged for the UI, and checked against every triggered ability that can
   // function (CR 603.2). Each matching ability triggers once per event (CR 603.2c) and waits in s.triggered
@@ -1782,6 +1791,14 @@
       if (pick === 1) createToken(s, { name: "Spirit", type: "Token Creature — Spirit", pt: `${n}/${n}`, colors: ["W"] }, ctx.side, ev);
     }
     // "Discard a card. If you do, draw two cards." (you choose which; with an empty hand nothing happens)
+    // "Draw a card, then discard a card" (loot: how many of each; you choose what to discard)
+    if (eff.loot && ctx.side === "player") {
+      draw(s, "player", eff.loot, ev);
+      for (let k = 0; k < eff.loot && s.player.hand.length; k++) {
+        const i = choose(s, "Discard which card?", s.player.hand.map((c) => c.name), "player");
+        discardCard(s, s.player.hand[i], ev);
+      }
+    }
     // ("Discard a card, then draw two cards": drawAnyway — the draw doesn't depend on the discard)
     if (eff.discardThenDraw && ctx.side === "player" && (s.player.hand.length || eff.drawAnyway)) {
       if (s.player.hand.length) {
@@ -1879,6 +1896,8 @@
       s[ctx.side].battlefield.filter((c) => isCreature(c) || (eff.team.vehicles && isVehicle(c))).filter((c) => matches(s, c, eff.team.filter, ctx.side) && !(eff.team.other && c.id === ctx.selfId)).forEach((c) => {
         if (eff.team.pump) addMod(s, c, eff.team.pump);
         if (eff.team.grant) grant(c, eff.team.grant, s);
+        // "put a +1/+1 counter on each creature you control"
+        if (eff.team.counters) { c.counters = { ...(c.counters || {}) }; Object.entries(eff.team.counters).forEach(([k, n]) => { c.counters[k] = (c.counters[k] || 0) + n; }); }
       });
     }
   }

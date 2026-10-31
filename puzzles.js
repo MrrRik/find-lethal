@@ -1479,6 +1479,51 @@
       text: "Unbreakable Skin — Whenever Luke Cage attacks alone, he gets +2/+0 and gains indestructible until end of turn." }
   });
 
+  // ---- The Hobbit (HOB): storied / enduring story, ferocious, landfall, Adventures, Equipment ----
+  const STORIED = "Storied (If you control three or more artifacts, legendaries, and/or Sagas, you have an enduring story for the rest of the game.)";
+  const FEROCIOUS = { controls: { filter: { creature: true, minPower: 4 } } };
+  Object.assign(CARDS, {
+    "Ori, Keeper of Songs": { type: "Legendary Creature — Dwarf Bard", cost: "{2}{W}", pt: "3/3", kw: ["storied"], conditional: [{ if: { enduring: true }, pump: [1, 0], grant: ["vigilance"] }],
+      text: `${STORIED} As long as you have an enduring story, Ori gets +1/+0 and has vigilance.` },
+    "Óin the Brave": { type: "Legendary Creature — Dwarf Warrior", cost: "{1}{R}", pt: "1/3", kw: ["storied"], conditional: [{ if: { enduring: true }, pump: [1, 0], grant: ["haste"] }],
+      abilities: [{ cost: "{1}", tap: true, discardCost: true, effect: { draw: 1 }, text: "{1}, {T}, Discard a card: Draw a card" }],
+      text: `${STORIED} As long as you have an enduring story, Óin gets +1/+0 and has haste. {1}, {T}, Discard a card: Draw a card.` },
+    "Dori, Bearer of Friends": { type: "Legendary Creature — Dwarf Warrior", cost: "{2}{R}", pt: "3/2", kw: ["trample"], etb: { create: { name: "Treasure", type: "Token Artifact — Treasure", colors: [] } },
+      text: "Trample. When Dori enters, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")" },
+    "Thrór's Map": { type: "Legendary Artifact", cost: "{2}", abilities: [{ cost: "{2}", tap: true, effect: { loot: 1 }, text: "{2}, {T}: Draw a card, then discard a card" }],
+      text: "When Thrór's Map enters, search your library for a basic land card, reveal it, put it into your hand, then shuffle. {2}, {T}: Draw a card, then discard a card." },
+    "Well-Worn Spatula": { type: "Artifact — Equipment", cost: "{1}", etb: { gainLife: 2 }, equip: { cost: "{1}", static: { pump: [1, 1] } },
+      text: "When this Equipment enters, you gain 2 life. Equipped creature gets +1/+1. Equip {1}" },
+    "Key to the Side-Door": { type: "Artifact", cost: "{1}",
+      abilities: [{ cost: "{2}", tap: true, targets: "creature", effect: { grant: ["unblockable"] }, text: "{2}, {T}: Target creature can't be blocked" }],
+      text: "{2}, {T}: Target creature can't be blocked this turn. {1}, {T}, Discard a legendary card with the same name as a legendary permanent you control: Draw two cards." },
+    // ferocious
+    "Nighthowl Pursuer": { type: "Creature — Wolf", cost: "{B}", pt: "1/1", kw: ["menace"],
+      triggers: [{ on: "attacks", self: true, if: FEROCIOUS, effect: { pump: [2, 2], self: true } }],
+      text: "Menace. Ferocious — Whenever this creature attacks while you control a creature with power 4 or greater, this creature gets +2/+2 until end of turn." },
+    "Wargling": { type: "Creature — Wolf", cost: "{1}{G}", pt: "2/2",
+      triggers: [{ on: "attacks", self: true, if: FEROCIOUS, effect: { pump: [1, 0], self: true, team: { grant: ["trample"] } } }],
+      text: "Ferocious — Whenever this creature attacks while you control a creature with power 4 or greater, until end of turn, this creature gets +1/+0 and creatures you control gain trample." },
+    "Wilderland Scrounger": { type: "Creature — Wolf", cost: "{4}{G}", pt: "3/6",
+      triggers: [{ on: "attacks", self: true, if: FEROCIOUS, effect: { team: { counters: { "+1/+1": 1 } } } }],
+      text: "Ferocious — Whenever this creature attacks while you control a creature with power 4 or greater, put a +1/+1 counter on each creature you control." },
+    // landfall
+    "Attercop": { type: "Creature — Spider", cost: "{1}{G}", pt: "2/1", kw: ["reach", "deathtouch"], landfall: { pump: [1, 1], self: true },
+      text: "Reach, deathtouch. Landfall — Whenever a land you control enters, this creature gets +1/+1 until end of turn." },
+    "Beorn's Hospitality": { type: "Enchantment", cost: "{1}{G}",
+      triggers: [{ on: "enters", filter: { land: true, controller: "you" }, targets: "creature", targetFilter: { controller: "you" }, effect: { counters: { "+1/+1": 1 } } }],
+      text: "Landfall — Whenever a land you control enters, put a +1/+1 counter on target creature you control. {5}{G}{G}: This enchantment becomes a Bear creature in addition to its other types and gains \"This creature's power and toughness are each equal to the number of lands you control.\"" },
+    // others
+    "Smaug, the Great Calamity": { type: "Legendary Creature — Dragon", cost: "{5}{R}{R}", pt: "5/5", kw: ["flying"], layout: "adventure",
+      faces: [{ name: "Smaug, the Great Calamity", type: "Legendary Creature — Dragon", cost: "{5}{R}{R}", pt: "5/5", kw: ["flying"], text: "Flying" },
+        { name: "Spew Flame", type: "Sorcery — Adventure", cost: "{4}{R}", targets: "creature", effect: { damage: 5 },
+          text: "Spew Flame deals 5 damage to target creature. (Then exile this card. You may cast the creature later from exile.)" }],
+      text: "Flying // Spew Flame {4}{R}: Spew Flame deals 5 damage to target creature." },
+    "Nori, Teller of Tales": { type: "Legendary Creature — Dwarf Bard", cost: "{1}{R/W}", pt: "2/2",
+      triggers: [{ on: "attacks", self: true, targets: "creature", targetFilter: { attacking: true }, effect: { grant: ["first strike"] } }],
+      text: "Whenever Nori attacks, target attacking creature gains first strike until end of turn." }
+  });
+
   // c("Grizzly Bears", { tapped: true }) → a fresh copy of a catalog card
   function c(name, extra) {
     if (!CARDS[name]) throw new Error("Unknown card: " + name);
@@ -3860,6 +3905,127 @@ LETHAL: Serpent Specialist power-up ({3}{G}, it didn't enter this turn): 3/3 dea
   Bears): double strike, trample. Blocked: first strike 1 + 2 over; regular 3 over. 5.
 RULES: Deathtouch + trample.
 WRONG LINES: Team Tactics without teamwork: no trample: 0.
+UNIQUENESS: Solver-checked.`
+    })
+  );
+
+  /* ======================= THE HOBBIT (set HOB) ======================= */
+  // Storied (enduring story), ferocious, landfall, Adventures
+  window.PUZZLES.push(
+    puzzle({
+      id: "hob-01-attercop", title: "Attercop", set: "hob", tier: "easy",
+      opp: { life: 3 },
+      you: { hand: [c("Forest")], battlefield: [c("Attercop")] },
+      explanation: "Landfall: play the Forest and Attercop gets +1/+1. 3 damage.",
+      notes: `
+LETHAL: Play Forest: landfall: Attercop 3/2. Attack: 3.
+RULES: Landfall: whenever a land you control enters.
+WRONG LINES: Attacking before playing the land: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-02-nighthowl", title: "Ferocious", set: "hob", tier: "easy",
+      opp: { life: 3, battlefield: [c("Grizzly Bears")] },
+      you: { battlefield: [c("Nighthowl Pursuer"), c("Krotiq Nestguard")] },
+      explanation: "Ferocious only needs you to control a creature with power 4 or greater — the Nestguard (a defender) counts. Nighthowl Pursuer attacks as a 3/3 with menace: one Bears can't block it.",
+      notes: `
+LETHAL: Attack with Nighthowl Pursuer: ferocious (you control the 4/4 Nestguard): +2/+2: 3/3 menace. The Bears alone can't
+  block. 3.
+RULES: Ferocious checks as it triggers: control a creature with power 4 or greater.
+WRONG LINES: None.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-03-ori", title: "Keeper of Songs", set: "hob", tier: "easy",
+      opp: { life: 4 },
+      you: { hand: [c("Dori, Bearer of Friends")], battlefield: [c("Ori, Keeper of Songs"), c("Thrór's Map"), ...many(3, "Mountain")] },
+      explanation: "Storied: three artifacts and/or legendaries give you an enduring story. Ori and Thrór's Map are two; Dori (legendary) and its Treasure make four. Ori gets +1/+0: 4.",
+      notes: `
+LETHAL: Dori ({2}{R}): legendary, and a Treasure (artifact). Ori + Map + Dori + Treasure: enduring story: Ori 4/3
+  vigilance. Attack: 4.
+RULES: Storied (702.195a): the enduring story stays for the rest of the game.
+WRONG LINES: Attacking first: 3.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-04-smaug", title: "Spew Flame", set: "hob", tier: "easy",
+      opp: { life: 5, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Smaug, the Great Calamity")], battlefield: [c("Hill Giant"), c("Gray Ogre"), ...many(5, "Mountain")] },
+      explanation: "Smaug costs 7, but its Adventure, Spew Flame, costs 5: 5 damage kills the Nestguard. Attack with both: 3 + 2.",
+      notes: `
+LETHAL: Spew Flame ({4}{R}, Smaug's Adventure): 5 to Krotiq Nestguard. Attack: 5.
+RULES: Adventures (715).
+WRONG LINES: Attacking into the Nestguard: it blocks the Giant: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-05-oin", title: "Óin the Brave", set: "hob", tier: "medium",
+      opp: { life: 6 },
+      you: { hand: [c("Óin the Brave")], battlefield: [c("Ori, Keeper of Songs"), c("Thrór's Map"), c("Mountain"), c("Mountain")] },
+      explanation: "Óin is the third legendary permanent: enduring story. Óin gets +1/+0 and haste, Ori gets +1/+0. 2 + 4.",
+      notes: `
+LETHAL: Óin the Brave ({1}{R}): Ori, Thrór's Map, Óin: enduring story. Óin 2/3 haste, Ori 4/3. Attack: 6.
+RULES: Storied (702.195a).
+WRONG LINES: None.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-06-side-door", title: "Side-Door", set: "hob", tier: "medium",
+      opp: { life: 3, battlefield: [c("Krotiq Nestguard")] },
+      you: { battlefield: [c("Key to the Side-Door"), c("Hill Giant"), c("Gray Ogre"), c("Mountain"), c("Mountain")] },
+      explanation: "Key to the Side-Door makes one creature unblockable — choose Hill Giant (3), not the Ogre.",
+      notes: `
+LETHAL: Key to the Side-Door ({2}, {T}): Hill Giant can't be blocked: 3.
+RULES: An unblockable creature still deals full damage.
+WRONG LINES: The Key on the Ogre: 2.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-07-bearer-of-friends", title: "Bearer of Friends", set: "hob", tier: "hard",
+      opp: { life: 6 },
+      you: { hand: [c("Dori, Bearer of Friends"), c("Óin the Brave")], battlefield: [c("Ori, Keeper of Songs"), ...many(4, "Mountain")] },
+      explanation: "Four lands for a 3-drop and a 2-drop: Dori's Treasure pays the difference. Dori, its Treasure and Óin bring the enduring story: Ori 4/3 and Óin 2/3 with haste.",
+      notes: `
+LETHAL: Dori ({2}{R}): Treasure. Óin ({1}{R}: the fourth Mountain + the Treasure). Legendaries: Ori, Dori, Óin (+ Treasure
+  while it lasted): enduring story. Attack with Ori (4) and Óin (2, haste): 6.
+RULES: Storied: once you have it, the enduring story stays (sacrificing the Treasure doesn't end it).
+WRONG LINES: Óin first: no mana left for Dori.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-08-scrounger", title: "Wilderland", set: "hob", tier: "hard",
+      opp: { life: 4, battlefield: [c("Krotiq Nestguard")] },
+      you: { hand: [c("Forest")], battlefield: [c("Wilderland Scrounger"), c("Nighthowl Pursuer"), c("Beorn's Hospitality")] },
+      explanation: "Play the Forest: Beorn's Hospitality puts a counter on Wilderland Scrounger — 4 power turns ferocious on. Attack with both: the Scrounger puts a counter on each creature, Nighthowl gets +2/+2: a 4/4 menace.",
+      notes: `
+LETHAL: Forest: landfall: +1/+1 counter on Wilderland Scrounger (4/7). Attack with both: ferocious: counters on each
+  creature (Nighthowl 2/2), Nighthowl +2/+2: 4/4 menace. The Nestguard blocks the Scrounger: 4.
+RULES: Ferocious (control a creature with power 4 or greater as it triggers).
+WRONG LINES: The counter on Nighthowl: no 4-power creature: no ferocious.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-09-wargling", title: "Wargling", set: "hob", tier: "hard",
+      opp: { life: 3, battlefield: [c("Grizzly Bears"), c("Grizzly Bears")] },
+      you: { hand: [c("Forest")], battlefield: [c("Wargling"), c("Hill Giant"), c("Beorn's Hospitality")] },
+      explanation: "The Forest's landfall counter makes Hill Giant 4/4: ferocious. Wargling attacks: +1/+0, and your creatures gain trample. Both get blocked by 2/2s: 2 + 1 tramples over.",
+      notes: `
+LETHAL: Forest: Beorn's Hospitality: counter on Hill Giant (4/4). Attack with both: Wargling ferocious: 3/2 and trample
+  for all. Each Bears blocks one: Giant 2 over, Wargling 1 over: 3.
+RULES: Ferocious; trample assigns lethal to the blocker first.
+WRONG LINES: The counter on Wargling: no 4-power creature.
+UNIQUENESS: Solver-checked.`
+    }),
+    puzzle({
+      id: "hob-10-mirkwood", title: "Mirkwood", set: "hob", tier: "hard",
+      opp: { life: 3, battlefield: [c("Grizzly Bears"), c("Grizzly Bears")] },
+      you: { hand: [c("Forest")], battlefield: [c("Attercop"), c("Nighthowl Pursuer"), c("Beorn's Hospitality")] },
+      explanation: "One Forest, two landfall triggers on Attercop: +1/+1 and Beorn's counter: 4/3. That turns on ferocious: Nighthowl Pursuer attacks as a 3/3 with menace. The two Bears can't stop both.",
+      notes: `
+LETHAL: Forest: Attercop +1/+1 (landfall) and a +1/+1 counter (Beorn's Hospitality): 4/3. Attack with both: Nighthowl
+  ferocious: 3/3 menace. Both Bears block Attercop: Nighthowl 3; one blocks Attercop: the other can't block menace alone: 3.
+RULES: Ferocious; menace.
+WRONG LINES: The counter on Nighthowl: no creature with power 4.
 UNIQUENESS: Solver-checked.`
     })
   );
