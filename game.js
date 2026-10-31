@@ -200,6 +200,10 @@
   /* ---------- card rendering ---------- */
   const scry = (name) =>
     "https://api.scryfall.com/cards/named?format=image&version=normal&exact=" + encodeURIComponent(name);
+  // Basic lands show the art of the puzzle's set ("&set=fra": that set's printing)
+  const BASICS = ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"];
+  const loadedArt = new Map();             // card image URL → the address it loaded from (after redirects/fallbacks)
+  const basicSet = (name) => (BASICS.includes(name) && current && diffOf(current.difficulty).set ? "&set=" + current.difficulty : "");
 
   function cardEl(c, { zoom = false, detached = false } = {}) {
     const el = document.createElement("div");
@@ -303,9 +307,21 @@
     const img = new Image();
     img.alt = "";
     img.draggable = false;
-    img.onload = () => { face.remove(); el.prepend(img); };
     // (a transformed double-faced card shows its back face: looked up by the front face's name)
-    img.src = c.image || (c.transformed && c.faces ? scry(c.faces[0].name) + "&face=back" : scry(c.name));
+    const url = c.image || (c.transformed && c.faces ? scry(c.faces[0].name) + "&face=back" : scry(c.name) + basicSet(c.name));
+    // an image that loaded before is shown straight away: every redraw rebuilds the board, and waiting for the load
+    // event again flashed each card's text face for a frame (on big desktop cards the whole board flickered)
+    const known = loadedArt.get(url);
+    if (known) {
+      img.decoding = "sync";
+      img.src = known;
+      face.remove();
+      el.prepend(img);
+      return el;
+    }
+    img.onload = () => { loadedArt.set(url, img.src); face.remove(); el.prepend(img); };
+    img.onerror = () => { if (img.src.includes("&set=")) img.src = scry(c.name); };   // (no basic in that set: any printing)
+    img.src = url;
     return el;
   }
 
@@ -645,14 +661,24 @@
     const id = el.dataset.id;
     const all = [].concat(
       state.opponent.battlefield, state.player.battlefield, state.player.hand,
-      state.opponent.graveyard, state.player.graveyard, state.opponent.exile, state.player.exile
+      state.opponent.graveyard, state.player.graveyard, state.opponent.exile, state.player.exile,
+      state.player.library || [], state.opponent.library || []      // (the library viewer's known cards)
     );
     return all.find((c) => c.id === id) || null;
   }
 
   function showZoom(card) {
     const z = $("zoom");
-    z.replaceChildren(cardEl(card, { zoom: true }));
+    // a double-faced card shows both faces next to each other, front first (the face that's up keeps its counters etc.)
+    const dfc = !card.faceDown && card.faces && card.faces.length === 2 && ["transform", "modal_dfc"].includes(card.layout);
+    if (dfc) {
+      const up = card.transformed ? 1 : 0;
+      const f = card.faces[1 - up];
+      const other = cardEl({ ...f, name: f.name || card.name, faces: card.faces, layout: card.layout, transformed: up === 0, colors: f.colors || card.colors }, { zoom: true, detached: true });
+      const shown = cardEl(card, { zoom: true });
+      z.replaceChildren(...(up ? [other, shown] : [shown, other]));
+    } else z.replaceChildren(cardEl(card, { zoom: true }));
+    z.classList.toggle("pair", !!dfc);
     z.classList.add("on");
     zooming = true;
   }

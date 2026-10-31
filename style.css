@@ -128,7 +128,8 @@ button{font:inherit;color:inherit}
 .card{position:relative;width:var(--cw);height:var(--ch);border-radius:var(--r);flex:none;
   background:linear-gradient(160deg,#3b3329,#241f19);border:2px solid #0b0a09;
   box-shadow:0 4px 14px rgba(0,0,0,.5);cursor:pointer;touch-action:manipulation;
-  transition:transform .18s ease, box-shadow .18s ease, filter .18s}
+  /* only transform animates: shadows and filters repaint every frame, slow on big desktop cards */
+  transition:transform .18s ease}
 .card img{position:absolute;inset:0;width:100%;height:100%;border-radius:calc(var(--r) - 1px);display:block;pointer-events:none;-webkit-user-drag:none}
 .card .face{position:absolute;inset:0;padding:7%;display:flex;flex-direction:column;gap:4%;pointer-events:none;
   font-size:calc(var(--cw) * .09);line-height:1.2}
@@ -303,9 +304,12 @@ body.targeting .targetable:hover{box-shadow:0 0 0 3px var(--red),0 0 18px 2px rg
 @keyframes toast{0%{opacity:0;scale:.9}12%{opacity:1;scale:1}70%{opacity:1}100%{opacity:0}}
 
 /* zoom overlay */
-.zoom{position:fixed;inset:0;z-index:50;display:none;place-items:center;pointer-events:none;
+.zoom{position:fixed;inset:0;z-index:68;display:none;place-items:center;pointer-events:none;
   background:rgba(8,7,6,.78);backdrop-filter:blur(3px)}
 .zoom.on{display:grid}
+/* a double-faced card: both faces next to each other */
+.zoom.pair{grid-auto-flow:column;place-content:center;gap:2vw}
+.zoom.pair .card{--cw:min(47vw, 80vh / 1.395, 480px)}
 .zoom .card{--cw:min(80vw, 80vh / 1.395, 600px);width:var(--cw);height:calc(var(--cw)*1.395);cursor:default;transform:none;
   box-shadow:0 20px 60px rgba(0,0,0,.7);animation:pop .14s ease-out}
 .zoom .card:hover{transform:none}
