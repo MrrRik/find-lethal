@@ -509,7 +509,7 @@
     if (a.target != null && !Array.isArray(a.target)) {
       const p = plan(f, a)[0];
       const others = p && p.targets ? targetsFor(s, f, p.targets, p.filter, side).filter((t) => t !== a.target) : [];
-      const pick = choose(s, `Copy of ${f.name}: new target?`, ["Keep the same target", ...others.map((t) => `New target: ${nameIn(s, t)}`)], side);
+      const pick = choose(s, `Copy of ${f.name}: new target?`, ["Keep the same target", ...others.map((t) => `New target: ${nameIn(s, t)}`)], side, [null, ...others.map((t) => (t === "opp" || t === "you" ? null : t))]);
       if (pick > 0) a = { ...a, target: others[pick - 1] };
     }
     if (gain.length) item.gain = [...(item.gain || []), ...gain];
@@ -581,7 +581,7 @@
       else if (z.libraryCount > 0) { z.libraryCount--; two.push({ id: `unknown-${s.nextId++}`, name: "Unknown card", type: "Card", unknown: true }); }
     }
     if (!two.length) return;
-    const pick = choose(s, "Manifest dread: which card goes onto the battlefield face down?", two.map((c) => c.name), side);
+    const pick = choose(s, "Manifest dread: which card goes onto the battlefield face down?", two.map((c) => c.name), side, two.map((c) => c.id));
     const perm = faceDownOf({ ...two[pick], owner: side }, { manifest: true });
     perm.sick = true;
     two.filter((_, i) => i !== pick).forEach((c) => putCard(s, c, side, "graveyard"));
@@ -664,7 +664,8 @@
   // the order the questions come up. The opponent's choices: the one that leaves you no way to win (puzzle policy).
   class NeedChoice { constructor(q) { this.q = q; } }
   const CHOICES = [];
-  // (about: the permanent the question is about, so the game can show its card)
+  // (about: what the question is about, so the game can show the cards — one card id for the whole question, a
+  // list with a card id (or null) for each answer, or { all: [ids] }: several cards for the whole question)
   function choose(s, name, labels, chooser, about) {
     const ctx = CHOICES[CHOICES.length - 1];
     if (!ctx || labels.length < 2) return 0;
@@ -1727,7 +1728,7 @@
         leave(s, b, "exile", ev);
         const card = s[owner].exile.find((x) => x.id === ctx.selfId);
         const back = card && card.faces && card.faces[1];
-        if (back && choose(s, `Cast ${back.name} (${card.name} transformed) for free?`, ["Cast it", "Don't cast it"], ctx.side) === 0) {
+        if (back && choose(s, `Cast ${back.name} (${card.name} transformed) for free?`, ["Cast it", "Don't cast it"], ctx.side, card.id) === 0) {
           s[owner].exile = s[owner].exile.filter((x) => x !== card);
           const a = { type: "cast", id: card.id, face: 1 };
           const f = faceOf(card, a);
@@ -1758,7 +1759,7 @@
     if (eff.eachDeals && tgt) s[ctx.side].battlefield.filter(isCreature).forEach((c) => dealDamage(s, c, ctx.side, tgt.id, eff.eachDeals, ev));
     // "you may tap or untap target creature"
     if (eff.tapOrUntap && tgt) {
-      const pick = choose(s, `Tap or untap ${tgt.name}?`, ["Tap it", "Untap it", "Neither"], ctx.side);
+      const pick = choose(s, `Tap or untap ${tgt.name}?`, ["Tap it", "Untap it", "Neither"], ctx.side, tgt.id);
       if (pick === 0) tap(s, tgt, ev); else if (pick === 1) untap(s, tgt, ev);
     }
     // "It also gets +1/+0 until end of turn if you control a Mouse": part of the effect that needs a permanent of yours
@@ -1770,7 +1771,7 @@
     // "you may blight N. If you do, …" (CR 701.68a: N -1/-1 counters on a creature you control; you choose which, or not)
     if (eff.mayBlight && ctx.side === "player") {
       const mine = s.player.battlefield.filter(isCreature);
-      const pick = mine.length ? choose(s, `Blight ${eff.mayBlight.n}?`, ["Don't blight", ...mine.map((c) => `Blight ${c.name}`)], "player") : 0;
+      const pick = mine.length ? choose(s, `Blight ${eff.mayBlight.n}?`, ["Don't blight", ...mine.map((c) => `Blight ${c.name}`)], "player", [null, ...mine.map((c) => c.id)]) : 0;
       if (pick > 0) {
         const b = mine[pick - 1];
         b.counters = { ...(b.counters || {}), "-1/-1": ((b.counters || {})["-1/-1"] || 0) + eff.mayBlight.n };
@@ -1815,7 +1816,7 @@
     // CR 701.63a: endure N — N +1/+1 counters on it, or an N/N white Spirit creature token instead (its controller chooses)
     if (eff.endure && tgt) {
       const n = amount(eff.endure);
-      const pick = n > 0 ? choose(s, `${tgt.name} endures ${n}`, [`Put ${n} +1/+1 counter${n > 1 ? "s" : ""} on ${tgt.name}`, `Create a ${n}/${n} Spirit token`], ctx.side) : -1;
+      const pick = n > 0 ? choose(s, `${tgt.name} endures ${n}`, [`Put ${n} +1/+1 counter${n > 1 ? "s" : ""} on ${tgt.name}`, `Create a ${n}/${n} Spirit token`], ctx.side, tgt.id) : -1;
       if (pick === 0) { tgt.counters = { ...(tgt.counters || {}), "+1/+1": ((tgt.counters || {})["+1/+1"] || 0) + n }; ev.push({ type: "counters", id: tgt.id, counters: { "+1/+1": n } }); }
       if (pick === 1) createToken(s, { name: "Spirit", type: "Token Creature — Spirit", pt: `${n}/${n}`, colors: ["W"] }, ctx.side, ev);
     }
@@ -1824,14 +1825,14 @@
     if (eff.loot && ctx.side === "player") {
       draw(s, "player", eff.loot, ev);
       for (let k = 0; k < eff.loot && s.player.hand.length; k++) {
-        const i = choose(s, "Discard which card?", s.player.hand.map((c) => c.name), "player");
+        const i = choose(s, "Discard which card?", s.player.hand.map((c) => c.name), "player", s.player.hand.map((c) => c.id));
         discardCard(s, s.player.hand[i], ev);
       }
     }
     // ("Discard a card, then draw two cards": drawAnyway — the draw doesn't depend on the discard)
     if (eff.discardThenDraw && ctx.side === "player" && (s.player.hand.length || eff.drawAnyway)) {
       if (s.player.hand.length) {
-        const i = choose(s, "Discard which card?", s.player.hand.map((c) => c.name), "player");
+        const i = choose(s, "Discard which card?", s.player.hand.map((c) => c.name), "player", s.player.hand.map((c) => c.id));
         discardCard(s, s.player.hand[i], ev);
       }
       draw(s, "player", eff.discardThenDraw, ev);
@@ -1866,7 +1867,7 @@
     // several, you choose)
     if (eff.attachEquipment && tgt) {
       const gear = s[ctx.side].battlefield.filter((c) => c.equip);
-      const g = gear.length ? gear[choose(s, `Attach which Equipment to ${tgt.name}?`, gear.map((c) => c.name), ctx.side)] : null;
+      const g = gear.length ? gear[choose(s, `Attach which Equipment to ${tgt.name}?`, gear.map((c) => c.name), ctx.side, gear.map((c) => c.id))] : null;
       if (g) { g.attachedTo = tgt.id; g.ts = stamp(s); changed(s); ev.push({ type: "attach", id: g.id, to: tgt.id }); }
     }
     // CR 719.3a-b: this Case becomes solved
@@ -1876,7 +1877,8 @@
     if (eff.impulse) impulse(s, eff.impulse, ctx.side, ev);
     if (eff.map) for (let i = 0; i < eff.map; i++) createToken(s, MAP, ctx.side, ev);          // "create a Map token"
     // "(you may) mill N": the top N cards of your library into your graveyard (CR 701.17a)
-    if (eff.mill && (!eff.mayMill || choose(s, `Mill ${eff.mill}?`, [`Mill ${eff.mill}`, "Don't mill"], ctx.side) === 0)) {
+    if (eff.mill && (!eff.mayMill || choose(s, `Mill ${eff.mill}?`, [`Mill ${eff.mill}`, "Don't mill"], ctx.side,
+      { all: s[ctx.side].library.slice(0, eff.mill).map((c) => c.id) }) === 0)) {   // (the known cards it would mill)
       const z = s[ctx.side];
       for (let i = 0; i < eff.mill; i++) {
         const top = z.library.shift() || (!(z.libraryCount > 0) ? z.libraryBottom.shift() : null);
@@ -1988,7 +1990,7 @@
       ev.push({ type: "explore-land", id: top.id });
     } else {
       if (me) { me.counters = { ...(me.counters || {}), "+1/+1": ((me.counters || {})["+1/+1"] || 0) + 1 }; ev.push({ type: "counters", id: me.id, counters: { "+1/+1": 1 } }); }
-      if (top && choose(s, `Explore: put ${top.name} into your graveyard?`, ["Leave it on top", "Into the graveyard"], side) === 1) {
+      if (top && choose(s, `Explore: put ${top.name} into your graveyard?`, ["Leave it on top", "Into the graveyard"], side, top.id) === 1) {
         (z.library[0] === top ? z.library : z.libraryBottom).shift();
         putCard(s, top, side, "graveyard");
       }
@@ -2015,7 +2017,7 @@
     const simple = parts.length === 1 && !f.modes && f.divided == null && !p.slots && !parseCost(f.cost).x && !f.aura;
     const targets = simple && p.targets ? targetsFor(s, f, p.targets, p.filter, side) : null;
     const casts = !simple ? [] : targets ? targets.map((t) => ({ target: t, label: `Cast it → ${nameIn(s, t)}` })) : [{ target: undefined, label: "Cast it" }];
-    const pick = choose(s, `Discover ${n}: ${found.name}`, [...casts.map((x) => x.label), "Put it into your hand"], side);
+    const pick = choose(s, `Discover ${n}: ${found.name}`, [...casts.map((x) => x.label), "Put it into your hand"], side, found.id);
     if (pick < casts.length) {
       const a = { type: "cast", id: found.id, target: casts[pick].target };
       s.stack.unshift({ kind: "spell", name: f.name, id: found.id, a, card: found });
@@ -2048,7 +2050,7 @@
     known.forEach((c) => z.exile.push(c));
     ev.push({ type: "impulse", ids: known.map((c) => c.id) });
     if (!known.length) return;
-    const pick = choose(s, "Choose the card you may play this turn", known.map((c) => c.name), side);
+    const pick = choose(s, "Choose the card you may play this turn", known.map((c) => c.name), side, known.map((c) => c.id));
     known[pick].playable = true;
   }
 
@@ -2159,7 +2161,7 @@
     // chosen as it enters; it enters as the copy, so the copied "enters" abilities and triggers apply
     if (perm.entersAsCopy) {
       const options = battlefieldNow(s).map(({ card }) => card).filter(isCreature);
-      const pick = choose(s, `${perm.name}: enter as a copy of a creature?`, ["Don't copy", ...options.map((c) => `Copy ${c.name}`)], side);
+      const pick = choose(s, `${perm.name}: enter as a copy of a creature?`, ["Don't copy", ...options.map((c) => `Copy ${c.name}`)], side, [null, ...options.map((c) => c.id)]);
       if (pick > 0) {
         const keep = { id: perm.id, owner: perm.owner, sick: perm.sick };
         const v = copyValues(options[pick - 1], perm.entersAsCopy.except);

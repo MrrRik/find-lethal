@@ -1223,7 +1223,7 @@
           .map((a) => {
             const onField = state.player.battlefield.find((c) => c.id === a.craft);
             const c = onField || state.player.graveyard.find((x) => x.id === a.craft);
-            return [a.craft, `${c ? c.name : a.craft}${onField ? "" : " (graveyard)"}`];
+            return [a.craft, `${c ? c.name : a.craft}${onField ? "" : " (graveyard)"}`, c];
           });
         if (!opts.length) { cancelCast(); return rulesNote(`${card.name} has nothing to craft with.`); }
         return askChoice(`${card.name}: craft with what?`, opts, again("craft"));
@@ -1634,9 +1634,10 @@
     $("choice-title").textContent = title;
     const cards = options.some(([, , card]) => card);
     $("choice-options").classList.toggle("cardopts", cards);
-    const aboutEl = about ? Object.assign(document.createElement("div"), { className: "choice-about" }) : null;
-    if (aboutEl) { const el = cardEl(about, { detached: true }); el.classList.remove("tapped"); aboutEl.append(el); }
-    $("choice-options").replaceChildren(...(aboutEl ? [aboutEl] : []), ...options.map(([value, label, card]) => {
+    const aboutCards = [].concat(about || []).filter(Boolean);
+    $("choice-about").replaceChildren(...aboutCards.map((card) => { const el = cardEl(card, { detached: true }); el.classList.remove("tapped"); return el; }));
+    $("choice-about").hidden = !aboutCards.length;
+    $("choice-options").replaceChildren(...options.map(([value, label, card]) => {
       const b = Object.assign(document.createElement("button"), { type: "button", className: cards ? "ghost cardopt" : "ghost" });
       if (cards && card) {
         const el = cardEl(card, { detached: true });
@@ -1664,6 +1665,10 @@
     document.querySelectorAll(".abil.on").forEach((b) => b.classList.remove("on"));
   }
 
+  // A card in any zone, by id (what a choice is about: the top of your library, a discarded card, an exiled one …)
+  const anyCard = (id) => (id == null ? null : ["player", "opponent"].flatMap((side) =>
+    ["battlefield", "hand", "library", "graveyard", "exile"].flatMap((z) => state[side][z] || [])).find((c) => c.id === id) || null);
+
   // Something of yours is waiting: a trigger's target ("when this dies, …"), or a scry/surveil choice
   function promptTrigger() {
     cancelCast();
@@ -1671,13 +1676,17 @@
     if (p.kind === "scry") {
       casting = { trigger: true, card: null, results: [], picks: [] };
       const opts = E.legalActions(state).filter((a) => a.type === "scry").map((a) => [a, E.describe(state, a).replace(/^scry: /, "")]);
-      return askChoice(`${p.name} ${p.n}: what goes where?`, opts, (a) => { cancelCast(); perform(a); }, { mandatory: true });
+      // (the cards being looked at, top first, above the ways to arrange them)
+      return askChoice(`${p.name} ${p.n}: what goes where?`, opts, (a) => { cancelCast(); perform(a); }, { mandatory: true, about: state.player.library.slice(0, p.n) });
     }
     // two replacement effects want to change the same event: you choose which applies (CR 616.1)
     if (p.kind === "choice") {
       casting = { trigger: true, card: null, results: [], picks: [] };
-      const about = p.about && [...state.player.battlefield, ...state.opponent.battlefield].find((c) => c.id === p.about);
-      return askChoice(p.name, p.labels.map((label, pick) => [{ type: "choice", pick }, label]), (a) => { cancelCast(); perform(a); }, { mandatory: true, about });
+      // the cards it's about: one for the whole question (above the answers), or one per answer
+      const perAnswer = Array.isArray(p.about) ? p.about.map(anyCard) : null;
+      const about = perAnswer || !p.about ? null : p.about.all ? p.about.all.map(anyCard) : anyCard(p.about);
+      return askChoice(p.name, p.labels.map((label, pick) => [{ type: "choice", pick }, label, perAnswer && perAnswer[pick]]),
+        (a) => { cancelCast(); perform(a); }, { mandatory: true, about });
     }
     // several of your triggers at once: you choose which goes on the stack first (it resolves last)
     const order = E.legalActions(state).filter((a) => a.type === "order");
@@ -1775,11 +1784,12 @@
     const label = (w) => E.isBattle(w) ? `${w.name} (${E.defenseOf(w)} defense)` : `${w.name} (${E.loyaltyOf(w)} loyalty)`;
     const ask = (i) => {
       if (i >= action.ids.length) { setPrompt(current.prompt); return perform(action); }
-      const id = action.ids[i], name = state.player.battlefield.find((c) => c.id === id).name;
-      askChoice(`${name} attacks:`, [["opp", "Your opponent"], ...walkers.map((w) => [w.id, label(w)])], (to) => {
+      const attacker = state.player.battlefield.find((c) => c.id === id);
+      // (the attacker above the choice; each planeswalker or battle shown as its card)
+      askChoice(`${attacker.name} attacks:`, [["opp", "Your opponent"], ...walkers.map((w) => [w.id, label(w), w])], (to) => {
         if (to !== "opp") action.at = { ...(action.at || {}), [id]: to };
         ask(i + 1);
-      }, { mandatory: true });
+      }, { mandatory: true, about: attacker });
     };
     if (walkers.length) return ask(0);
     setPrompt(current.prompt);

@@ -273,7 +273,8 @@ body.targeting .targetable:hover{box-shadow:0 0 0 3px var(--red),0 0 18px 2px rg
 .choice-options .cardopt span{font-size:.78rem;line-height:1.25;text-align:center}
 .choice-options .cardopt:hover,.choice-options .cardopt:focus-visible{border-color:var(--gold)}
 /* the card a yes/no question is about (proliferate), above the buttons */
-.choice-about{flex:1 0 100%;display:flex;justify-content:center;--cw:clamp(90px, 30vw, 9.5rem);--ch:calc(var(--cw) * 1.395);--r:calc(var(--cw) * .05)}
+.choice-about[hidden]{display:none}
+.choice-about{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin-bottom:.75rem;--cw:clamp(90px, 30vw, 9.5rem);--ch:calc(var(--cw) * 1.395);--r:calc(var(--cw) * .05)}
 .choice-about .card{position:relative}
 .choice-about .card .abils{display:none}
 /* a picked card (targets, or cards chosen for a cost): gold, and it must win over the red "can be picked" outline */
