@@ -545,13 +545,25 @@
     if (c.levels) gainedKw.unshift(`level ${c.level || 1}`);       // a Class's level
     if (c.exhausted && c.exhausted.length) gainedKw.unshift("exhaust used");   // its exhaust ability was activated
     if (c.prepared) gainedKw.unshift("prepared");                  // it may cast a copy of its prepare spell
-    // a Room: which doors are unlocked
-    if (c.layout === "room" && c.unlocked) gainedKw.unshift(...c.faces.map((f, i) => `${f.name}: ${c.unlocked[i] ? "unlocked" : "locked"}`));
+    // (a Room's locked doors show as locks over their art, below)
     if (gainedKw.length) {
       const k = document.createElement("div");
       k.className = "kwchips";
       k.textContent = [...new Set(gainedKw)].join(" · ");
       el.appendChild(k);
+    }
+
+    // A Room on the battlefield: a lock over the art of each locked door (the card's halves are printed sideways:
+    // door 1 is the top half of the upright image, door 0 the bottom half; the rules text stays readable)
+    if (c.layout === "room" && c.unlocked && !c.faceDown) {
+      c.unlocked.forEach((open, i) => {
+        if (open) return;
+        const lock = document.createElement("div");
+        lock.className = "doorlock d" + i;
+        lock.title = `${c.faces[i].name}: locked`;
+        lock.innerHTML = LOCK_SVG;
+        el.appendChild(lock);
+      });
     }
 
     // An Aura or Equipment says what it's attached to
@@ -969,14 +981,25 @@
     const z = $("zoom");
     // a double-faced card shows both faces next to each other, front first (the face that's up keeps its counters etc.)
     const dfc = !card.faceDown && card.faces && card.faces.length === 2 && ["transform", "modal_dfc"].includes(card.layout);
+    // printed sideways: a battle's face and split cards like Rooms (turned so they read left to right)
+    const sideways = (face) => !card.faceDown && (["room", "split"].includes(card.layout) || /\bbattle\b/i.test((face && face.type) || ""));
+    const slot = (el, face) => {
+      const s = document.createElement("div");
+      s.className = "zslot" + (sideways(face) ? " side" : "");
+      s.append(el);
+      return s;
+    };
+    let slots;
     if (dfc) {
       const up = card.transformed ? 1 : 0;
       const f = card.faces[1 - up];
-      const other = cardEl({ ...f, name: f.name || card.name, faces: card.faces, layout: card.layout, transformed: up === 0, colors: f.colors || card.colors }, { zoom: true, detached: true });
-      const shown = cardEl(card, { zoom: true });
-      z.replaceChildren(...(up ? [other, shown] : [shown, other]));
-    } else z.replaceChildren(cardEl(card, { zoom: true }));
+      const other = slot(cardEl({ ...f, name: f.name || card.name, faces: card.faces, layout: card.layout, transformed: up === 0, colors: f.colors || card.colors }, { zoom: true, detached: true }), f);
+      const shown = slot(cardEl(card, { zoom: true }), card.faces[up]);
+      slots = up ? [other, shown] : [shown, other];
+    } else slots = [slot(cardEl(card, { zoom: true }), card)];
+    z.replaceChildren(...slots);
     z.classList.toggle("pair", !!dfc);
+    z.classList.toggle("side", slots.some((s) => s.classList.contains("side")));
     z.classList.add("on");
     zooming = true;
   }

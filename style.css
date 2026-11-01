@@ -307,13 +307,36 @@ body.targeting .targetable:hover{box-shadow:0 0 0 3px var(--red),0 0 18px 2px rg
 .zoom{position:fixed;inset:0;z-index:68;display:none;place-items:center;pointer-events:none;
   background:rgba(8,7,6,.78);backdrop-filter:blur(3px)}
 .zoom.on{display:grid}
-/* a double-faced card: both faces next to each other */
-.zoom.pair{grid-auto-flow:column;place-content:center;gap:2vw}
-.zoom.pair .card{--cw:min(47vw, 80vh / 1.395, 480px)}
-.zoom .card{--cw:min(80vw, 80vh / 1.395, 600px);width:var(--cw);height:calc(var(--cw)*1.395);cursor:default;transform:none;
+/* the card's size is set on the overlay; each face sits in a slot the size it takes up on screen */
+.zoom{--cw:min(80vw, 80vh / 1.395, 600px)}
+.zoom .zslot{display:grid;place-items:center}
+.zoom .card{width:var(--cw);height:calc(var(--cw)*1.395);cursor:default;transform:none;
   box-shadow:0 20px 60px rgba(0,0,0,.7);animation:pop .14s ease-out}
 .zoom .card:hover{transform:none}
 @keyframes pop{from{transform:scale(.88);opacity:.4}}
+/* a card printed sideways (a battle's front, a Room): turned 90° clockwise so its text reads left to right */
+/* (centred by hand: the upright card is taller than its slot, and an overflowing grid item isn't centred) */
+.zoom .zslot.side{position:relative;width:calc(var(--cw)*1.395);height:var(--cw)}
+.zoom .zslot.side .card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg);animation:popside .14s ease-out}
+.zoom .zslot.side .card:hover{transform:translate(-50%,-50%) rotate(90deg)}
+@keyframes popside{from{transform:translate(-50%,-50%) rotate(90deg) scale(.88);opacity:.4}}
+/* (a Room's door labels would run across the turned card; the board shows them) */
+.zoom .zslot.side .card .kwchips{display:none}
+/* a Room's locked door: a lock over that half's art (upright image: door 1's art top-left, door 0's bottom-left) */
+.card .doorlock{position:absolute;left:11%;width:39%;z-index:2;display:grid;place-items:center;pointer-events:none;
+  background:rgba(10,8,6,.6);border-radius:calc(var(--r) * .6);color:var(--gold)}
+.card .doorlock.d0{top:49%;height:42%}
+.card .doorlock.d1{top:6%;height:40%}
+.card .doorlock svg{width:55%;height:auto;max-height:70%;filter:drop-shadow(0 1px 3px rgba(0,0,0,.8))}
+.zoom .zslot.side .card .doorlock svg{transform:rotate(-90deg)}   /* (upright when the card is turned) */
+.zoom.side{--cw:min(92vw / 1.395, 80vh, 600px)}
+/* a double-faced card: both faces next to each other */
+.zoom.pair{grid-auto-flow:column;place-content:center;gap:2vw;--cw:min(47vw, 80vh / 1.395, 480px)}
+/* … with a sideways face: side by side when it fits, stacked on a portrait screen */
+.zoom.pair.side{--cw:min(94vw / 2.4, 80vh / 1.395, 400px)}
+@media (orientation:portrait){
+  .zoom.pair.side{grid-auto-flow:row;gap:2vh;--cw:min(94vw / 1.395, 88vh / 2.45, 480px)}
+}
 
 /* result sheet */
 .sheet{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(8,7,6,.7);padding:1.25rem}
