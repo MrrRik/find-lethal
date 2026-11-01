@@ -54,13 +54,13 @@
   }
 
   /* ---------- stats for achievements (per-browser) ---------- */
-  // wins: every lethal found (replays too); got[achievement id]: when it was unlocked; seen: how many of them the
-  // player has looked at (the ribbon shows a dot for the rest)
+  // got[achievement id]: when it was unlocked; seen: how many of them the player has looked at (the ribbon shows a
+  // dot for the rest). (A stored "wins" count from before is ignored: wins are the different puzzles solved.)
   const STATS = "find-lethal:stats";
-  const freshStats = () => ({ wins: Object.values(progress).filter((v) => v === "solved").length,   // (earlier solves count)
-    got: {}, seen: 0 });
+  const freshStats = () => ({ got: {}, seen: 0 });
   const stats = (() => {
-    try { return { ...freshStats(), ...(JSON.parse(localStorage.getItem(STATS) || "null") || {}) }; } catch (_) { return freshStats(); }
+    try { const { got, seen } = { ...freshStats(), ...(JSON.parse(localStorage.getItem(STATS) || "null") || {}) }; return { got, seen }; }
+    catch (_) { return freshStats(); }
   })();
   const saveStats = () => { try { localStorage.setItem(STATS, JSON.stringify(stats)); } catch (_) { /* fine */ } };
 
@@ -127,14 +127,18 @@
   // count() against goal: unlocked once count reaches goal (bigger goals show a progress bar)
   const ACHIEVEMENTS = [
     ...[1, 10, 25, 50, 100, 200].map((n) => ({ id: `wins-${n}`, group: "Find lethal", name: WIN_NAMES[n],
-      desc: n === 1 ? "Find lethal for the first time." : `Find lethal ${n} times (playing a puzzle again counts too).`,
-      count: () => stats.wins, goal: n })),
+      desc: n === 1 ? "Find lethal for the first time." : `Find lethal in ${n} different puzzles (replaying one doesn't count).`,
+      count: () => solvedIn(allPuzzles()), goal: n })),
     ...DIFFS.map((d) => ({ id: `set-${d.id}`, group: "Sets", set: d, name: d.label,
       desc: `Solve every ${d.label} puzzle.`, count: () => solvedIn(setOf(d.id)), goal: setOf(d.id).length })),
     { id: "all", group: "Sets", name: "Multiverse Champion", desc: "Solve every puzzle in every set.",
       count: () => solvedIn(allPuzzles()), goal: allPuzzles().length }
   ];
   const isDone = (a) => a.goal > 0 && a.count() >= a.goal;
+  // (replays counted as wins in the first version: win milestones reached only that way are taken back)
+  ACHIEVEMENTS.filter((a) => /^wins-/.test(a.id) && stats.got[a.id] && !isDone(a)).forEach((a) => { delete stats.got[a.id]; });
+  stats.seen = Math.min(stats.seen, Object.keys(stats.got).length);
+  saveStats();
 
   // Unlocks what's newly reached; returns those
   function checkAchievements() {
@@ -149,12 +153,6 @@
     const got = Object.keys(stats.got).length;
     $("ach-dot").hidden = got <= stats.seen;
     $("ach-open").title = `Achievements (${got} / ${ACHIEVEMENTS.length})`;
-  }
-  // A found lethal (play-testing a created puzzle doesn't count)
-  function recordWin() {
-    if (current.custom) return;
-    stats.wins++;
-    saveStats();
   }
 
   function showAchievements() {
@@ -1725,7 +1723,6 @@
   }
 
   function victory() {
-    recordWin();
     mark(current.id, "solved");
     const fresh = checkAchievements();
     confetti();
