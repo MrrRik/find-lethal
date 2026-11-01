@@ -15,8 +15,10 @@
     ["msh", "Marvel Super Heroes"], ["hob", "The Hobbit"], ["fra", "Reality Fracture"]
   ];
   const DIFFS = SET_LIST.map(([id, label]) => ({ id, label, short: id.toUpperCase(), icon: `sets/${id}.svg`, set: true }));
+  // Puzzles players made in the creator and a moderator accepted (loaded from online.js after start)
+  const USER_GROUP = { id: "user", label: "User submissions", short: "Users", set: true, user: true };
   const TIERS = { easy: "Easy", medium: "Medium", hard: "Hard" };
-  const diffOf = (id) => DIFFS.find((d) => d.id === id) || { id, label: id };
+  const diffOf = (id) => DIFFS.find((d) => d.id === id) || (id === "user" ? USER_GROUP : { id, label: id });
   // The set symbol, drawn in the text color (a mask, so it works in light and dark mode)
   const setIcon = (d) => {
     if (!d.icon) return null;
@@ -97,14 +99,17 @@
     };
     $("sheet-body").replaceChildren(
       toggle("Unlock every puzzle", () => unlockAll, (v) => { unlockAll = v; keep(CHEAT, v); }),
-      toggle("Solution button in puzzles", () => showSolution, (v) => { showSolution = v; keep(SOLUTION, v); document.body.classList.toggle("show-solution", v); }));
+      toggle("Solution button in puzzles", () => showSolution, (v) => { showSolution = v; keep(SOLUTION, v); document.body.classList.toggle("show-solution", v); }),
+      Object.assign(document.createElement("button"), { type: "button", className: "ghost debug-opt", textContent: "Mod view: review submitted puzzles",
+        onclick: () => { $("sheet").hidden = true; showMod(); } }));
     const btn = $("sheet-btn");
     btn.textContent = "Close"; btn.onclick = () => { $("sheet").hidden = true; showMenu(); };
     $("sheet-alt").hidden = true;
     $("sheet").hidden = false;
   }
 
-  const unlocked = (set, i) => unlockAll || i === 0 || progress[set[i - 1].id] === "solved";
+  // (user submissions can be played in any order)
+  const unlocked = (set, i) => unlockAll || i === 0 || set[i].difficulty === "user" || progress[set[i - 1].id] === "solved";
 
   $("clear-progress").addEventListener("click", () => {
     if (!confirm("Clear all puzzle progress and achievements? Every puzzle goes back to untried and locked.")) return;
@@ -121,9 +126,13 @@
 
   /* ---------- achievements ---------- */
   const RIBBON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.6 13.9 7 22l5-3 5 3-1.6-8.1"/></svg>`;
-  const allPuzzles = () => window.PUZZLES.filter((p) => !p.custom);
+  // (the sets' puzzles; user submissions have their own achievements)
+  const allPuzzles = () => window.PUZZLES.filter((p) => !p.custom && p.difficulty !== "user");
   const solvedIn = (list) => list.filter((p) => progress[p.id] === "solved").length;
+  // user submissions solved: read from the saved progress, so it's right before they've loaded (and if one is removed)
+  const userSolved = () => Object.keys(progress).filter((id) => id.startsWith("user-") && progress[id] === "solved").length;
   const WIN_NAMES = { 1: "First Blood", 10: "Combat Trick", 25: "Calculated Risk", 50: "Math Wizard", 100: "Lethal Weapon", 200: "Puzzle Master" };
+  const USER_NAMES = { 1: "Guest Star", 10: "Open Mind", 25: "Fan Favorite", 100: "Community Pillar", 250: "Connoisseur", 500: "Hall of Fame", 1000: "Living Legend" };
   // count() against goal: unlocked once count reaches goal (bigger goals show a progress bar)
   const ACHIEVEMENTS = [
     ...[1, 10, 25, 50, 100, 200].map((n) => ({ id: `wins-${n}`, group: "Find lethal", name: WIN_NAMES[n],
@@ -132,7 +141,10 @@
     ...DIFFS.map((d) => ({ id: `set-${d.id}`, group: "Sets", set: d, name: d.label,
       desc: `Solve every ${d.label} puzzle.`, count: () => solvedIn(setOf(d.id)), goal: setOf(d.id).length })),
     { id: "all", group: "Sets", name: "Multiverse Champion", desc: "Solve every puzzle in every set.",
-      count: () => solvedIn(allPuzzles()), goal: allPuzzles().length }
+      count: () => solvedIn(allPuzzles()), goal: allPuzzles().length },
+    ...[1, 10, 25, 100, 250, 500, 1000].map((n) => ({ id: `user-${n}`, group: "User submissions", name: USER_NAMES[n],
+      desc: n === 1 ? "Solve a puzzle made by another player." : `Solve ${n} puzzles made by other players.`,
+      count: userSolved, goal: n }))
   ];
   const isDone = (a) => a.goal > 0 && a.count() >= a.goal;
   // (replays counted as wins in the first version: win milestones reached only that way are taken back)
@@ -206,13 +218,14 @@
     if (screen !== "game") $("stackview").hidden = $("stack-show").hidden = true;   // (the stack popup belongs to a game)
     const back = $("back");
     back.hidden = screen === "menu";
-    back.textContent = screen !== "game" ? "← Menu" : current && current.custom ? "← Creator" : "← Puzzles";
+    back.textContent = screen !== "game" ? "← Menu" : current && current.reviewing ? "← Mod view" : current && current.custom ? "← Creator" : "← Puzzles";
     $("sheet").hidden = true;
     window.scrollTo(0, 0);
   }
 
   function showMenu() {
-    $("diff-list").replaceChildren(...DIFFS.map((d) => {
+    const groups = [...DIFFS, ...(window.Online && window.Online.ready ? [USER_GROUP] : [])];
+    $("diff-list").replaceChildren(...groups.map((d) => {
       const set = setOf(d.id);
       const done = set.filter((p) => progress[p.id] === "solved").length;
       const b = document.createElement("button");
@@ -222,12 +235,28 @@
       b.innerHTML = `<span class="dl"></span><span class="dc"></span>`;
       b.querySelector(".dl").textContent = d.label;
       if (d.icon) b.querySelector(".dl").prepend(setIcon(d));
-      b.querySelector(".dc").textContent = set.length ? `${done} / ${set.length} solved` : "Coming soon";
+      b.querySelector(".dc").textContent = set.length ? `${done} / ${set.length} solved` : d.user ? userState : "Coming soon";
       b.onclick = () => showLevels(d.id);
       return b;
     }));
     show("menu");
   }
+
+  // The accepted user submissions, as puzzles of the "user" group (they come with the creator's winning line)
+  let userState = "Loading…";
+  async function loadUserPuzzles() {
+    if (!window.Online || !window.Online.ready) return;
+    try {
+      const rows = await window.Online.accepted();
+      window.PUZZLES = window.PUZZLES.filter((p) => p.difficulty !== "user");
+      rows.forEach((r) => window.PUZZLES.push(userPuzzle(r)));
+      userState = rows.length ? "" : "None yet";
+    } catch (_) { userState = "Couldn't load (offline?)"; }
+    if (document.body.dataset.screen === "menu") showMenu();
+    checkAchievements();
+  }
+  const userPuzzle = (r) => ({ ...r.puzzle, id: `user-${r.id}`, title: r.title, difficulty: "user", tier: r.tier,
+    author: r.author || "", solution: r.solution, custom: false });
 
   const LOCK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
 
@@ -267,7 +296,7 @@
   }
 
   // From a puzzle, back goes to its grid, or to the creator when play-testing a created puzzle
-  const leaveGame = () => (current.custom ? showCreator() : showLevels(current.difficulty));
+  const leaveGame = () => (current.reviewing ? showMod() : current.custom ? showCreator() : showLevels(current.difficulty));
 
   /* ---------- puzzle creator (creator.js) ---------- */
   function showCreator() {
@@ -275,6 +304,80 @@
     if (window.FindLethal.onCreator) window.FindLethal.onCreator();
   }
   $("open-creator").addEventListener("click", showCreator);
+
+  /* ---------- mod view: review submitted puzzles (debug menu, or ?mod) ---------- */
+  // Only a logged-in moderator gets submissions from the server (the database checks it, not this page).
+  let modTab = "pending";
+  function showMod() {
+    show("mod");
+    const on = window.Online && window.Online.ready;
+    $("mod-setup").hidden = on;
+    $("mod-login").hidden = !on || window.Online.loggedIn();
+    $("mod-panel").hidden = !on || !window.Online.loggedIn();
+    if (on && window.Online.loggedIn()) loadMod();
+  }
+  const modMsg = (t, bad = false) => { $("mod-msg").textContent = t; $("mod-msg").className = "cr-status " + (bad ? "bad" : ""); };
+  $("mod-login-btn").addEventListener("click", async () => {
+    $("mod-login-msg").textContent = "Logging in…";
+    try {
+      await window.Online.login($("mod-email").value.trim(), $("mod-pass").value);
+      $("mod-pass").value = ""; $("mod-login-msg").textContent = "";
+      showMod();
+    } catch (err) { $("mod-login-msg").textContent = "Couldn't log in: " + err.message; }
+  });
+  $("mod-logout").addEventListener("click", () => { window.Online.logout(); showMod(); });
+  document.querySelectorAll("#mod-tabs button").forEach((b) => b.addEventListener("click", () => { modTab = b.dataset.tab; loadMod(); }));
+
+  async function loadMod() {
+    document.querySelectorAll("#mod-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === modTab));
+    modMsg("Loading…");
+    $("mod-list").replaceChildren();
+    let rows;
+    try { rows = await window.Online.list(modTab); } catch (err) {
+      if (!window.Online.loggedIn()) return showMod();          // (the login ran out)
+      return modMsg("Couldn't load: " + err.message, true);
+    }
+    modMsg(rows.length ? "" : `No ${modTab} submissions.`);
+    $("mod-list").replaceChildren(...rows.map(modItem));
+  }
+
+  function modItem(r) {
+    const el = document.createElement("div");
+    el.className = "mod-item";
+    const def = { ...r.puzzle, id: "review-" + r.id, title: r.title, custom: true, reviewing: true };
+    const ok = replayWins(def, r.solution);
+    const cards = [def.player.hand, def.player.battlefield, def.opponent.battlefield].flat().length;
+    const head = document.createElement("div");
+    head.className = "mod-head";
+    head.append(Object.assign(document.createElement("b"), { textContent: r.title }),
+      Object.assign(document.createElement("span"), { className: "mod-badge " + (ok ? "ok" : "bad"),
+        textContent: ok ? "✓ Solution checked" : "✗ Solution doesn't win" }));
+    const meta = Object.assign(document.createElement("small"), {
+      textContent: `by ${r.author || "anonymous"} · ${new Date(r.created_at).toLocaleString()} · opponent at ${def.opponent.life} life · ${cards} cards` });
+    const steps = document.createElement("details");
+    steps.append(Object.assign(document.createElement("summary"), { textContent: "The creator's winning line" }),
+      Object.assign(document.createElement("pre"), { textContent: solutionText(r.solution) }));
+    const tier = document.createElement("select");
+    tier.setAttribute("aria-label", "Tier");
+    Object.entries(TIERS).forEach(([v, label]) => tier.append(new Option(label, v, false, v === r.tier)));
+    const btn = (label, cls, fn) => { const b = Object.assign(document.createElement("button"), { type: "button", className: cls, textContent: label }); b.onclick = fn; return b; };
+    const review = (status) => async () => {
+      try {
+        await window.Online.review(r.id, { status, tier: tier.value });
+        toast(status === "accepted" ? "Accepted: it's in User submissions" : status === "declined" ? "Declined" : "Moved back to pending");
+        loadMod();
+        loadUserPuzzles();
+      } catch (err) { modMsg("Couldn't save: " + err.message, true); }
+    };
+    const actions = document.createElement("div");
+    actions.className = "mod-actions";
+    actions.append(tier, btn("Play", "ghost", () => play(def)));
+    if (r.status !== "declined") actions.append(btn("Decline", "ghost danger", review("declined")));
+    if (r.status !== "pending") actions.append(btn("Back to pending", "ghost", review("pending")));
+    if (r.status !== "accepted") actions.append(btn("Accept", "primary", review("accepted")));
+    el.append(head, meta, steps, actions);
+    return el;
+  }
 
   $("back").addEventListener("click", () => {
     if (document.body.dataset.screen === "game") leaveGame();
@@ -292,7 +395,8 @@
     ["The stack", "Spells and abilities wait on the stack: respond with another one, or press Resolve."]
   ];
   // What creator.js needs from the game
-  window.FindLethal = { cardEl: (c) => cardEl(c, { detached: true }), play: (p) => play(p), menu: () => showMenu() };
+  window.FindLethal = { cardEl: (c) => cardEl(c, { detached: true }), play: (p) => play(p), menu: () => showMenu(),
+    replayWins: (p, sol) => replayWins(p, sol) };
 
   $("show-rules").addEventListener("click", () => {
     $("sheet").classList.remove("fail");
@@ -316,7 +420,7 @@
   // Basic lands show the art of the puzzle's set ("&set=fra": that set's printing)
   const BASICS = ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"];
   const loadedArt = new Map();             // card image URL → the address it loaded from (after redirects/fallbacks)
-  const puzzleSet = () => (current && diffOf(current.difficulty).set ? current.difficulty : null);   // its set code, if any
+  const puzzleSet = () => (current && diffOf(current.difficulty).icon ? current.difficulty : null);   // its set code, if any
   const basicSet = (name) => (BASICS.includes(name) && puzzleSet() ? "&set=" + puzzleSet() : "");
 
   function cardEl(c, { zoom = false, detached = false } = {}) {
@@ -543,6 +647,7 @@
     gen++;
     $("zoneview").hidden = true;
     state = E.init(current);
+    moves = [];
     mark(current.id, "started");
     selected = new Set();
     locked = false;
@@ -1584,7 +1689,13 @@
 
   /* ---------- resolving actions ---------- */
   // Animate on the current board, then swap in the engine's new state
+  // Every action of this attempt, with how it reads ("cast Shock → opponent"): a creator's winning line is sent
+  // with their submission as its solution (and replayed in the mod view to check it)
+  let moves = [];
   function perform(action) {
+    let text = "";
+    try { text = E.describe(state, action); } catch (_) { /* (a description is only a label) */ }
+    moves.push({ action: JSON.parse(JSON.stringify(action)), text });
     const { state: next, events } = E.apply(state, action);
     locked = true;
     selected = new Set();
@@ -1680,7 +1791,7 @@
         : "Your turn is over and your opponent survived. Try again.";
       const btn = $("sheet-btn"), alt = $("sheet-alt");
       btn.textContent = "Try again"; btn.onclick = load;
-      alt.hidden = false; alt.textContent = current.custom ? "Back to creator" : "Back to puzzles"; alt.onclick = leaveGame;
+      alt.hidden = false; alt.textContent = current.reviewing ? "Back to mod view" : current.custom ? "Back to creator" : "Back to puzzles"; alt.onclick = leaveGame;
       $("sheet").hidden = false;
     }, 300);
   }
@@ -1723,6 +1834,9 @@
   }
 
   function victory() {
+    // a play-tested creator puzzle: the creator keeps the winning line (it unlocks submitting)
+    const created = current.custom && !current.reviewing;
+    if (created && window.FindLethal.onCustomWin) window.FindLethal.onCustomWin(current, moves.slice());
     mark(current.id, "solved");
     const fresh = checkAchievements();
     confetti();
@@ -1736,12 +1850,17 @@
       d.querySelector("b").textContent = a.name;
       return d;
     }));
+    if (created) $("sheet-body").append(Object.assign(document.createElement("div"), { className: "sheet-note",
+      textContent: "Your winning line is saved as this puzzle's solution. You can submit it from the creator now." }));
     const set = setOf(current.difficulty);
     const next = set[set.indexOf(current) + 1];
     const btn = $("sheet-btn"), alt = $("sheet-alt");
     const toLevels = () => showLevels(current.difficulty);
     alt.hidden = false;
-    if (current.custom) {
+    if (current.reviewing) {
+      btn.textContent = "Back to mod view"; btn.onclick = showMod;
+      alt.textContent = "Play again"; alt.onclick = load;
+    } else if (current.custom) {
       btn.textContent = "Back to creator"; btn.onclick = showCreator;
       alt.textContent = "Play again"; alt.onclick = load;
     } else if (next) {
@@ -1755,6 +1874,22 @@
   }
 
   $("reset").addEventListener("click", load);
+
+  // A submitted solution ({ steps: [{ action, text }] }) as numbered lines, without the turn-step moves
+  const solutionText = (sol) => ((sol && sol.steps) || []).filter((m) => m.text && m.action.type !== "advance")
+    .map((m, i) => `${i + 1}. ${m.text}`).join("\n") || "(no steps)";
+  // Replays a submitted solution on a fresh board: does it really win? (moves the creator's browser recorded)
+  function replayWins(puzzleDef, sol) {
+    try {
+      let s = E.init(puzzleDef);
+      for (const m of (sol && sol.steps) || []) {
+        if (E.check(s, m.action)) return false;
+        s = E.apply(s, m.action).state;
+        if (E.won(s)) return true;
+      }
+      return E.won(s);
+    } catch (_) { return false; }
+  }
 
   // Testing aid: show the intended line without ending the attempt
   $("solution").addEventListener("click", () => {
@@ -1773,6 +1908,7 @@
       const r = E.solve(current);
       const plans = r.minimal.map((l, i) => `${r.minimal.length > 1 ? `${i + 1}. ` : ""}${l.join(" → ")}`);
       body.textContent = (current.explanation ? current.explanation + "\n\n" : "") +
+        (current.solution ? `The creator's winning line:\n${solutionText(current.solution)}\n\n` : "") +
         (plans.length ? `Winning line${plans.length > 1 ? "s" : ""} (any order that's legal works):\n${plans.join("\n")}` : "No winning line found.");
     }, 30);
   });
@@ -1781,5 +1917,6 @@
 
   // ?p=<id> jumps straight into a puzzle; otherwise start at the menu
   const deep = window.PUZZLES.find((p) => p.id === new URLSearchParams(location.search).get("p"));
-  if (deep) play(deep); else showMenu();
+  if (deep) play(deep); else if (/[?&]mod\b/.test(location.search)) showMod(); else showMenu();
+  loadUserPuzzles();
 })();

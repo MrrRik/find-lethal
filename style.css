@@ -345,7 +345,8 @@ body:not([data-screen="game"]) #solution{display:none}
 #clear-progress:hover{color:var(--red);border-color:var(--red)}
 body:not([data-screen="menu"]) #menu,
 body:not([data-screen="levels"]) #levels,
-body:not([data-screen="creator"]) #creator{display:none}
+body:not([data-screen="creator"]) #creator,
+body:not([data-screen="mod"]) #mod{display:none}
 .make-btn{width:min(100%, 22rem)}
 
 /* puzzle creator */
@@ -485,6 +486,32 @@ body:not([data-screen="creator"]) #creator{display:none}
 .theme-toggle .sun{display:none}
 :root[data-theme="light"] .theme-toggle .sun{display:block}
 :root[data-theme="light"] .theme-toggle .moon{display:none}
+
+/* puzzle submissions: the creator's Submit dialog, the win-sheet note, the mod view */
+.cr-submit-title{margin:0 0 .5rem;font-size:1.2rem;color:var(--gold)}
+.cr-submit-note{margin:0 0 .8rem;font-size:.9rem;line-height:1.45;color:var(--ink)}
+#cr-author{display:block;width:100%;margin-top:.3rem}
+.sheet-note{margin:.25rem 0 0;font-size:.9rem;color:var(--mute)}
+.screen.mod{justify-content:flex-start;align-items:stretch;width:100%;max-width:46rem;margin:0 auto;padding:1rem}
+.mod-note{color:var(--mute);font-size:.9rem;text-align:center}
+.mod-login{display:flex;flex-direction:column;gap:.6rem;max-width:20rem;margin:1rem auto}
+.mod-login input{padding:.6rem .75rem;border-radius:.5rem;border:1px solid var(--line);background:var(--felt-2);color:var(--ink);font:1rem var(--font)}
+.mod [hidden]{display:none}
+.mod-tabs{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:center;margin-bottom:.5rem}
+.mod-tabs button.on{border-color:var(--gold);color:var(--gold)}
+#mod-logout{margin-left:auto}
+.mod-list{display:flex;flex-direction:column;gap:.75rem}
+.mod-item{display:flex;flex-direction:column;gap:.45rem;padding:.85rem 1rem;border:1px solid var(--line);border-radius:.75rem;background:var(--felt-2)}
+.mod-head{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;justify-content:space-between}
+.mod-head b{font-size:1.05rem}
+.mod-item small{color:var(--mute)}
+.mod-badge{font:600 .72rem var(--font);padding:.15rem .5rem;border-radius:99px;border:1px solid}
+.mod-badge.ok{color:var(--green)} .mod-badge.bad{color:var(--red)}
+.mod-item details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
+.mod-item pre{margin:.4rem 0 0;white-space:pre-wrap;font:.82rem/1.45 var(--font);color:var(--ink)}
+.mod-actions{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.mod-actions select{padding:.45rem;border-radius:.5rem;border:1px solid var(--line);background:var(--felt);color:var(--ink)}
+.mod-actions .primary{margin-left:auto}
 
 /* the Solution button only with the debug option on (tap the title 5 times) */
 body:not(.show-solution) #solution{display:none}

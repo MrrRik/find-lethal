@@ -67,6 +67,8 @@
     if (attaching) status("Tap the creature to attach it to (or tap it again to cancel).", "warn");
     else status(unmodeled.length ? `⚠ The game can't play part of these cards yet: ${unmodeled.map((x) => `${x.name} (${(x.unread || []).join(" / ") || "special"})`).join("; ")}.` : "", "warn");
     renderSaved();
+    // Submit lights up once this exact board was won in a play test
+    $("cr-submit-open").className = verifiedNow() ? "primary" : "ghost";
   }
 
   function status(text, kind = "") {
@@ -346,6 +348,71 @@ UNIQUENESS: check with tools/solver.html\`
     const done = () => status("Copied. Paste it into puzzles.js (or send it to Claude) to add the puzzle.", "ok");
     if (navigator.clipboard) navigator.clipboard.writeText(code).then(done, () => prompt("Copy the puzzle code:", code));
     else prompt("Copy the puzzle code:", code);
+  });
+
+  /* ---------- submitting (only a board you found lethal in yourself) ---------- */
+  // What a play test must have won: the board, not the title or tier (so renaming doesn't need another test)
+  const boardKey = (p) => JSON.stringify({ opp: p.opponent, you: p.player, landPlayed: p.landPlayed, prompt: p.prompt });
+  const verifiedNow = () => !!(draft.verified && draft.verified.key === boardKey(buildPuzzle()));
+  // the game reports a won play test with every move made: that's the solution sent along
+  app.onCustomWin = (p, moves) => {
+    draft.verified = { key: boardKey(p), steps: moves };
+    save();
+  };
+  const AUTHOR = "find-lethal:author";
+  const TIER_OK = ["easy", "medium", "hard"];
+
+  // Why this board can't be sent yet ("" when it can)
+  function submitProblem(p) {
+    if (!window.Online || !window.Online.ready) return "Puzzle submissions aren't open yet.";
+    if (!draft.title.trim()) return "Give your puzzle a title first.";
+    const unmodeled = ZONES.flatMap((z) => draft.zones[z]).filter((x) => x.unmodeled);
+    if (unmodeled.length) return `The game can't fully play ${unmodeled.map((x) => x.name).join(", ")}, so this puzzle can't be submitted.`;
+    if (!verifiedNow()) return draft.verified ? "You changed the board after your play test: play-test it again and find lethal." :
+      "Play-test your puzzle and find lethal first: only puzzles you solved yourself can be submitted.";
+    if (!app.replayWins(p, { steps: draft.verified.steps })) return "Your saved winning line doesn't win anymore: play-test it again.";
+    if (draft.submittedKey === draft.verified.key) return "You already sent this puzzle. Change it and play-test again to send a new version.";
+    return "";
+  }
+
+  $("cr-submit-open").addEventListener("click", () => {
+    closeMenu();
+    const p = buildPuzzle();
+    const why = submitProblem(p);
+    if (why) return status(why, "bad");
+    const n = draft.verified.steps.filter((m) => m.action.type !== "advance").length;
+    $("cr-submit-note").textContent = `"${draft.title.trim()}" (${TIER_OK.includes(draft.difficulty) ? draft.difficulty : "hard"}). ` +
+      `Your winning line (${n} step${n === 1 ? "" : "s"}) is sent along as the solution. A moderator looks at every puzzle before it ` +
+      "goes into User submissions.";
+    $("cr-author").value = load(AUTHOR, "");
+    $("cr-submit-msg").textContent = "";
+    $("cr-submit-send").disabled = false;
+    $("cr-submit").hidden = false;
+  });
+  const closeSubmit = () => { $("cr-submit").hidden = true; };
+  $("cr-submit-cancel").addEventListener("click", closeSubmit);
+  $("cr-submit").addEventListener("click", (e) => { if (e.target === $("cr-submit")) closeSubmit(); });
+  $("cr-submit-send").addEventListener("click", async () => {
+    const p = buildPuzzle();
+    const why = submitProblem(p);
+    if (why) { $("cr-submit-msg").textContent = why; return; }
+    const author = $("cr-author").value.trim().slice(0, 30);
+    store(AUTHOR, author);
+    const puzzleData = JSON.parse(JSON.stringify(p));
+    delete puzzleData.custom;
+    $("cr-submit-send").disabled = true;
+    $("cr-submit-msg").textContent = "Sending…";
+    try {
+      await window.Online.submit({ title: draft.title.trim().slice(0, 40), author,
+        tier: TIER_OK.includes(draft.difficulty) ? draft.difficulty : "hard", puzzle: puzzleData, solution: { steps: draft.verified.steps } });
+      draft.submittedKey = draft.verified.key;
+      save();
+      closeSubmit();
+      status(`Sent "${draft.title.trim()}"! If it's accepted, it shows up under User submissions.`, "ok");
+    } catch (err) {
+      $("cr-submit-send").disabled = false;
+      $("cr-submit-msg").textContent = "Couldn't send it: " + err.message;
+    }
   });
 
   app.onCreator = () => { closeMenu(); render(); };

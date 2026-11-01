@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap">
-<link rel="stylesheet" href="style.css?v=bacd91a555">
+<link rel="stylesheet" href="style.css?v=e9d8f8c008">
 <script>
   // apply saved (or system) theme before first paint to avoid a flash
   (function () {
@@ -56,11 +56,11 @@
   <div class="cr-toolbar">
     <input id="cr-title" type="text" maxlength="40" placeholder="Puzzle title" aria-label="Puzzle title">
     <select id="cr-diff" aria-label="Difficulty">
-      <option value="easy">Easy</option><option value="medium">Medium</option>
-      <option value="hard">Hard</option><option value="very-hard">Very hard</option>
+      <option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>
     </select>
     <button id="cr-add" class="primary" type="button">+ Add card</button>
     <button id="cr-play" class="ghost" type="button">Play test</button>
+    <button id="cr-submit-open" class="ghost" type="button">Submit</button>
     <button id="cr-save" class="ghost" type="button">Save</button>
     <select id="cr-load" aria-label="Saved puzzles"></select>
     <button id="cr-copy" class="ghost" type="button">Copy as code</button>
@@ -121,8 +121,46 @@
   </div>
 </div>
 
+<!-- Creator: send the puzzle in (only after the creator found lethal in it) -->
+<div class="cr-modal" id="cr-submit" hidden>
+  <div class="cr-search-box" role="dialog" aria-labelledby="cr-submit-title">
+    <h2 id="cr-submit-title" class="cr-submit-title">Submit your puzzle</h2>
+    <p class="cr-submit-note" id="cr-submit-note"></p>
+    <label class="cr-dest">Your name (optional, shown with the puzzle)
+      <input id="cr-author" type="text" maxlength="30" autocomplete="nickname"></label>
+    <p class="cr-search-msg" id="cr-submit-msg"></p>
+    <div class="sheet-actions">
+      <button id="cr-submit-cancel" class="ghost" type="button">Cancel</button>
+      <button id="cr-submit-send" class="primary" type="button">Send</button>
+    </div>
+  </div>
+</div>
+
 <!-- Creator: options for one card -->
 <div class="cr-menu" id="cr-menu" hidden></div>
+
+<!-- Mod view: review submitted puzzles (debug menu, or ?mod) -->
+<section class="screen mod" id="mod">
+  <h2 class="levels-title">Submitted puzzles</h2>
+  <p class="mod-note" id="mod-setup" hidden>Online submissions aren't set up yet (online.js has no Supabase project).</p>
+  <div class="mod-login" id="mod-login" hidden>
+    <p class="mod-note">Moderators only. Log in with your Supabase account.</p>
+    <input id="mod-email" type="email" placeholder="Email" autocomplete="username" aria-label="Email">
+    <input id="mod-pass" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
+    <button id="mod-login-btn" class="primary" type="button">Log in</button>
+    <p class="mod-note" id="mod-login-msg"></p>
+  </div>
+  <div class="mod-panel" id="mod-panel" hidden>
+    <div class="mod-tabs" id="mod-tabs">
+      <button type="button" class="ghost small-btn" data-tab="pending">Pending</button>
+      <button type="button" class="ghost small-btn" data-tab="accepted">Accepted</button>
+      <button type="button" class="ghost small-btn" data-tab="declined">Declined</button>
+      <button type="button" class="ghost small-btn" id="mod-logout">Log out</button>
+    </div>
+    <p class="cr-status" id="mod-msg"></p>
+    <div class="mod-list" id="mod-list"></div>
+  </div>
+</section>
 
 <!-- Puzzle grid for one difficulty -->
 <section class="screen levels" id="levels">
@@ -261,9 +299,10 @@
 <script src="engine.js?v=4156975d04"></script>
 <script src="puzzles.js?v=c21b0dc456"></script>
 <script src="tokenart.js?v=d95e424dce"></script>
-<script src="game.js?v=c94b1becde"></script>
+<script src="online.js?v=a6268abaa5"></script>
+<script src="game.js?v=6f044b554c"></script>
 <script src="cardtext.js?v=54893ea046"></script>
-<script src="creator.js?v=00eada5994"></script><script>
+<script src="creator.js?v=da028d299d"></script><script>
   document.getElementById("theme-toggle").addEventListener("click", function () {
     var root = document.documentElement;
     var t = root.dataset.theme === "light" ? "dark" : "light";
