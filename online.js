@@ -7,8 +7,8 @@
 window.Online = (() => {
   "use strict";
   // Filled in once the Supabase project exists (Project Settings → API: the project URL and the public key)
-  const URL = "";
-  const KEY = "";
+  const URL = "https://angolesgtievvhebycbj.supabase.co";
+  const KEY = "sb_publishable_1hefawuqVlL_rGUNcXQU6g_TTPNvUrT";
   const ready = !!(URL && KEY);
 
   const SESSION = "find-lethal:mod-session";
