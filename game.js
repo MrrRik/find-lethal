@@ -536,7 +536,9 @@
       el.appendChild(b);
     }
     // (including keywords from Auras, Equipment and anthems)
-    const gainedKw = ((c.st && c.st.kw) || []).filter((k) => !(c.kw || []).includes(k));
+    // (first strike isn't shown next to double strike: double strike already deals first-strike damage, CR 702.4c-d)
+    const doubleStrike = E.has(c, "double strike");
+    const gainedKw = ((c.st && c.st.kw) || []).filter((k) => !(c.kw || []).includes(k) && !(doubleStrike && k === "first strike"));
     if (c.st && c.st.lost) gainedKw.unshift("no abilities");
     // designations: suspected, saddled, a solved Case
     if (c.suspected) gainedKw.unshift("suspected");
