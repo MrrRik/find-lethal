@@ -1627,12 +1627,25 @@
   $("pick-alt").addEventListener("click", () => { if (casting && casting.pick && casting.pick.alt) endPick(casting.pick.alt.value); });
   $("pick-cancel").addEventListener("click", () => { cancelCast(); setPrompt(current.prompt); });
 
-  // A small box of buttons for a choice made while casting (side, modes, color, X, divided damage, scry)
-  function askChoice(title, options, then, { mandatory = false } = {}) {
+  // A small box of buttons for a choice made while casting (side, modes, color, X, divided damage, scry). An option
+  // about a card ([value, label, card]) shows that card with the label under it, like the stack does.
+  // (about: the one card the whole question is about, shown above the buttons: "Proliferate: Gray Ogre?")
+  function askChoice(title, options, then, { mandatory = false, about = null } = {}) {
     $("choice-title").textContent = title;
-    $("choice-options").replaceChildren(...options.map(([value, label]) => {
-      const b = Object.assign(document.createElement("button"), { type: "button", className: "ghost", textContent: label });
-      b.addEventListener("click", () => { $("choice").hidden = true; then(value); });
+    const cards = options.some(([, , card]) => card);
+    $("choice-options").classList.toggle("cardopts", cards);
+    const aboutEl = about ? Object.assign(document.createElement("div"), { className: "choice-about" }) : null;
+    if (aboutEl) { const el = cardEl(about, { detached: true }); el.classList.remove("tapped"); aboutEl.append(el); }
+    $("choice-options").replaceChildren(...(aboutEl ? [aboutEl] : []), ...options.map(([value, label, card]) => {
+      const b = Object.assign(document.createElement("button"), { type: "button", className: cards ? "ghost cardopt" : "ghost" });
+      if (cards && card) {
+        const el = cardEl(card, { detached: true });
+        el.classList.remove("tapped");
+        b.append(el);
+      }
+      b.append(Object.assign(document.createElement("span"), { textContent: label }));
+      // (letting go of a press-and-hold zoom on its card isn't a pick)
+      b.addEventListener("click", () => { if (swallowClick) return; $("choice").hidden = true; then(value); });
       return b;
     }));
     $("choice-cancel").hidden = mandatory;
@@ -1663,13 +1676,15 @@
     // two replacement effects want to change the same event: you choose which applies (CR 616.1)
     if (p.kind === "choice") {
       casting = { trigger: true, card: null, results: [], picks: [] };
-      return askChoice(p.name, p.labels.map((label, pick) => [{ type: "choice", pick }, label]), (a) => { cancelCast(); perform(a); }, { mandatory: true });
+      const about = p.about && [...state.player.battlefield, ...state.opponent.battlefield].find((c) => c.id === p.about);
+      return askChoice(p.name, p.labels.map((label, pick) => [{ type: "choice", pick }, label]), (a) => { cancelCast(); perform(a); }, { mandatory: true, about });
     }
     // several of your triggers at once: you choose which goes on the stack first (it resolves last)
     const order = E.legalActions(state).filter((a) => a.type === "order");
     if (order.length) {
       casting = { trigger: true, card: null, results: [], picks: [] };
-      const opts = order.map((a) => [a, `${state.pending[a.pick].name}'s trigger`]);
+      // (each trigger shown with its source card, as on the stack)
+      const opts = order.map((a) => [a, `${state.pending[a.pick].name}'s trigger`, stackSource({ kind: "trigger", srcId: state.pending[a.pick].srcId, name: state.pending[a.pick].name })]);
       return askChoice("Your triggers: which goes on the stack first? (It resolves last.)", opts, (a) => { cancelCast(); perform(a); }, { mandatory: true });
     }
     casting = { trigger: true, card: null, results: [], picks: [] };

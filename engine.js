@@ -664,12 +664,13 @@
   // the order the questions come up. The opponent's choices: the one that leaves you no way to win (puzzle policy).
   class NeedChoice { constructor(q) { this.q = q; } }
   const CHOICES = [];
-  function choose(s, name, labels, chooser) {
+  // (about: the permanent the question is about, so the game can show its card)
+  function choose(s, name, labels, chooser, about) {
     const ctx = CHOICES[CHOICES.length - 1];
     if (!ctx || labels.length < 2) return 0;
     const k = ctx.i++;
     if (ctx.list[k] != null) return ctx.list[k];
-    if (chooser === "player") throw new NeedChoice({ name, labels, k });
+    if (chooser === "player") throw new NeedChoice({ name, labels, k, about });
     const canWin = makeSearch();
     for (let j = 0; j < labels.length; j++) {
       const answers = [...ctx.list]; answers[k] = j;
@@ -1960,7 +1961,7 @@
       });
       perms.forEach((c) => {
         const kinds = Object.keys(c.counters).filter((k) => c.counters[k] > 0);
-        if (choose(s, `Proliferate: ${c.name} (${kinds.map((k) => `${c.counters[k]} ${k}`).join(", ")})?`, ["Add one", "Skip"], ctx.side) !== 0) return;
+        if (choose(s, `Proliferate: ${c.name} (${kinds.map((k) => `${c.counters[k]} ${k}`).join(", ")})?`, ["Add one", "Skip"], ctx.side, c.id) !== 0) return;
         c.counters = { ...c.counters };
         kinds.forEach((k) => { c.counters[k] += 1; });
         changed(s);
@@ -2958,7 +2959,8 @@
     catch (e) {
       if (!(e instanceof NeedChoice)) throw e;
       const s = cloneState(s0);
-      s.pending.unshift({ kind: "choice", side: "player", name: e.q.name, labels: e.q.labels, k: e.q.k, replay: { ...a, choices: [...(a.choices || [])] } });
+      s.pending.unshift({ kind: "choice", side: "player", name: e.q.name, labels: e.q.labels, k: e.q.k, ...(e.q.about ? { about: e.q.about } : {}),
+        replay: { ...a, choices: [...(a.choices || [])] } });
       return { state: s, events: [] };
     } finally { CHOICES.pop(); }
   }
