@@ -194,7 +194,6 @@
     paintRibbon();
   }
   const closeAchievements = () => { $("achview").hidden = true; };
-  $("ach-open").innerHTML = RIBBON_SVG + `<i class="ach-dot" id="ach-dot" hidden></i>`;
   $("ach-open").addEventListener("click", showAchievements);
   $("ach-close").addEventListener("click", closeAchievements);
   $("achview").addEventListener("click", (e) => { if (e.target === $("achview")) closeAchievements(); });
