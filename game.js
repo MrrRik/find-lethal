@@ -203,7 +203,8 @@
   // Basic lands show the art of the puzzle's set ("&set=fra": that set's printing)
   const BASICS = ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"];
   const loadedArt = new Map();             // card image URL → the address it loaded from (after redirects/fallbacks)
-  const basicSet = (name) => (BASICS.includes(name) && current && diffOf(current.difficulty).set ? "&set=" + current.difficulty : "");
+  const puzzleSet = () => (current && diffOf(current.difficulty).set ? current.difficulty : null);   // its set code, if any
+  const basicSet = (name) => (BASICS.includes(name) && puzzleSet() ? "&set=" + puzzleSet() : "");
 
   function cardEl(c, { zoom = false, detached = false } = {}) {
     const el = document.createElement("div");
@@ -300,15 +301,25 @@
       el.appendChild(box);
     }
 
-    // Tokens keep the text face: looking them up by name can return an unrelated card
-    // (e.g. "Treasure" isn't a unique card name). Give a token an explicit `image` to show art.
-    if ((c.token && !c.image) || c.faceDown) return el;          // (a face-down card shows its card back)
+    if (c.faceDown) return el;                                   // (a face-down card shows its card back)
+    // Tokens: art from Scryfall's token printings, the puzzle's set first (looked up by name alone, "Treasure" could
+    // find an unrelated card). A token Scryfall has no printing of keeps its text face.
+    if (c.token && !c.image) {
+      const url = tokenArt(c);
+      if (url) showArt(el, face, url);
+      return el;
+    }
+    // (a transformed double-faced card shows its back face: looked up by the front face's name)
+    showArt(el, face, c.image || (c.transformed && c.faces ? scry(c.faces[0].name) + "&face=back" : scry(c.name) + basicSet(c.name)),
+      scry(c.name));
+    return el;
+  }
 
+  // Puts a card's image over its text face once it loads (fallback: another address to try if that one fails)
+  function showArt(el, face, url, fallback) {
     const img = new Image();
     img.alt = "";
     img.draggable = false;
-    // (a transformed double-faced card shows its back face: looked up by the front face's name)
-    const url = c.image || (c.transformed && c.faces ? scry(c.faces[0].name) + "&face=back" : scry(c.name) + basicSet(c.name));
     // an image that loaded before is shown straight away: every redraw rebuilds the board, and waiting for the load
     // event again flashed each card's text face for a frame (on big desktop cards the whole board flickered)
     const known = loadedArt.get(url);
@@ -317,12 +328,22 @@
       img.src = known;
       face.remove();
       el.prepend(img);
-      return el;
+      return;
     }
     img.onload = () => { loadedArt.set(url, img.src); face.remove(); el.prepend(img); };
-    img.onerror = () => { if (img.src.includes("&set=")) img.src = scry(c.name); };   // (no basic in that set: any printing)
+    img.onerror = () => { if (fallback && img.src !== fallback && url.includes("&set=")) img.src = fallback; };   // (no basic in that set: any printing)
     img.src = url;
-    return el;
+  }
+
+  /* ---------- token art ---------- */
+  // tokenart.js (made by tools/token-art.ps1) has Scryfall's token printings: "name|power/toughness|colors" → the
+  // image from each set's token set ("t" + its code) and "*" from any set. The puzzle's set comes first.
+  // (a token whose power/toughness is worked out in play, like a Spirit X/X, is listed as "name||colors")
+  function tokenArt(c) {
+    const art = window.TOKEN_ART || {};
+    const colors = [...(c.colors || [])].sort().join("");
+    const e = art[`${c.name}|${c.pt || ""}|${colors}`] || art[`${c.name}||${colors}`];
+    return e ? e[puzzleSet()] || e["*"] : null;
   }
 
   /* ---------- turn structure tracker ---------- */
