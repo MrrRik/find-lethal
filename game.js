@@ -53,36 +53,152 @@
     try { localStorage.setItem(STORE, JSON.stringify(progress)); } catch (_) { /* storage unavailable: fine */ }
   }
 
-  // Cheat: tap the "Find Lethal" title 5 times in a row (or open the page with ?unlock) to unlock every puzzle;
-  // the same 5 taps lock them again. Kept per browser.
-  const CHEAT = "find-lethal:unlock-all";
-  let unlockAll = false;
+  /* ---------- stats for achievements (per-browser) ---------- */
+  // wins: every lethal found (replays too); got[achievement id]: when it was unlocked; seen: how many of them the
+  // player has looked at (the ribbon shows a dot for the rest)
+  const STATS = "find-lethal:stats";
+  const freshStats = () => ({ wins: Object.values(progress).filter((v) => v === "solved").length,   // (earlier solves count)
+    got: {}, seen: 0 });
+  const stats = (() => {
+    try { return { ...freshStats(), ...(JSON.parse(localStorage.getItem(STATS) || "null") || {}) }; } catch (_) { return freshStats(); }
+  })();
+  const saveStats = () => { try { localStorage.setItem(STATS, JSON.stringify(stats)); } catch (_) { /* fine */ } };
+
+  /* ---------- debug menu: tap the "Find Lethal" title 5 times in a row ---------- */
+  // Unlock every puzzle (also ?unlock) and show the Solution button in puzzles (also ?debug). Kept per browser.
+  const CHEAT = "find-lethal:unlock-all", SOLUTION = "find-lethal:show-solution";
+  let unlockAll = false, showSolution = false;
   try {
     if (/[?&]unlock\b/.test(location.search)) localStorage.setItem(CHEAT, "1");
+    if (/[?&]debug\b/.test(location.search)) localStorage.setItem(SOLUTION, "1");
     unlockAll = localStorage.getItem(CHEAT) === "1";
-  } catch (_) { /* storage unavailable: no cheat */ }
+    showSolution = localStorage.getItem(SOLUTION) === "1";
+  } catch (_) { /* storage unavailable: no debug options */ }
+  const keep = (key, on) => { try { if (on) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch (_) { /* fine */ } };
+  document.body.classList.toggle("show-solution", showSolution);
   let titleTaps = 0, tapTimer = null;
   document.querySelector(".menu-title").addEventListener("click", () => {
     clearTimeout(tapTimer);
     tapTimer = setTimeout(() => { titleTaps = 0; }, 1500);
     if (++titleTaps < 5) return;
     titleTaps = 0;
-    unlockAll = !unlockAll;
-    try { if (unlockAll) localStorage.setItem(CHEAT, "1"); else localStorage.removeItem(CHEAT); } catch (_) { /* fine */ }
-    alert(unlockAll ? "Cheat on: every puzzle is unlocked." : "Cheat off: puzzles unlock one by one again.");
+    debugMenu();
   });
+  function debugMenu() {
+    $("sheet").classList.remove("fail");
+    $("sheet").classList.add("long");
+    $("sheet-title").textContent = "Debug";
+    const toggle = (label, get, set) => {
+      const b = Object.assign(document.createElement("button"), { type: "button", className: "ghost debug-opt" });
+      const paint = () => { b.textContent = `${label}: ${get() ? "on" : "off"}`; };
+      b.onclick = () => { set(!get()); paint(); };
+      paint();
+      return b;
+    };
+    $("sheet-body").replaceChildren(
+      toggle("Unlock every puzzle", () => unlockAll, (v) => { unlockAll = v; keep(CHEAT, v); }),
+      toggle("Solution button in puzzles", () => showSolution, (v) => { showSolution = v; keep(SOLUTION, v); document.body.classList.toggle("show-solution", v); }));
+    const btn = $("sheet-btn");
+    btn.textContent = "Close"; btn.onclick = () => { $("sheet").hidden = true; showMenu(); };
+    $("sheet-alt").hidden = true;
+    $("sheet").hidden = false;
+  }
 
   const unlocked = (set, i) => unlockAll || i === 0 || progress[set[i - 1].id] === "solved";
 
   $("clear-progress").addEventListener("click", () => {
-    if (!confirm("Clear all puzzle progress? Every puzzle goes back to untried and locked.")) return;
+    if (!confirm("Clear all puzzle progress and achievements? Every puzzle goes back to untried and locked.")) return;
     Object.keys(progress).forEach((id) => delete progress[id]);
+    Object.assign(stats, freshStats());
     try {
       localStorage.removeItem(STORE);
       localStorage.removeItem("find-lethal:v1");   // or the old save would be migrated back in
+      localStorage.removeItem(STATS);
     } catch (_) { /* storage unavailable: fine */ }
+    paintRibbon();
     showMenu();
   });
+
+  /* ---------- achievements ---------- */
+  const RIBBON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.6 13.9 7 22l5-3 5 3-1.6-8.1"/></svg>`;
+  const allPuzzles = () => window.PUZZLES.filter((p) => !p.custom);
+  const solvedIn = (list) => list.filter((p) => progress[p.id] === "solved").length;
+  const WIN_NAMES = { 1: "First Blood", 10: "Combat Trick", 25: "Calculated Risk", 50: "Math Wizard", 100: "Lethal Weapon", 200: "Puzzle Master" };
+  // count() against goal: unlocked once count reaches goal (bigger goals show a progress bar)
+  const ACHIEVEMENTS = [
+    ...[1, 10, 25, 50, 100, 200].map((n) => ({ id: `wins-${n}`, group: "Find lethal", name: WIN_NAMES[n],
+      desc: n === 1 ? "Find lethal for the first time." : `Find lethal ${n} times (playing a puzzle again counts too).`,
+      count: () => stats.wins, goal: n })),
+    ...DIFFS.map((d) => ({ id: `set-${d.id}`, group: "Sets", set: d, name: d.label,
+      desc: `Solve every ${d.label} puzzle.`, count: () => solvedIn(setOf(d.id)), goal: setOf(d.id).length })),
+    { id: "all", group: "Sets", name: "Multiverse Champion", desc: "Solve every puzzle in every set.",
+      count: () => solvedIn(allPuzzles()), goal: allPuzzles().length }
+  ];
+  const isDone = (a) => a.goal > 0 && a.count() >= a.goal;
+
+  // Unlocks what's newly reached; returns those
+  function checkAchievements() {
+    const fresh = ACHIEVEMENTS.filter((a) => !stats.got[a.id] && isDone(a));
+    fresh.forEach((a) => { stats.got[a.id] = Date.now(); });
+    if (fresh.length) saveStats();
+    paintRibbon();
+    return fresh;
+  }
+  // The ribbon button: a dot while there are unlocked achievements the player hasn't looked at
+  function paintRibbon() {
+    const got = Object.keys(stats.got).length;
+    $("ach-dot").hidden = got <= stats.seen;
+    $("ach-open").title = `Achievements (${got} / ${ACHIEVEMENTS.length})`;
+  }
+  // A found lethal (play-testing a created puzzle doesn't count)
+  function recordWin() {
+    if (current.custom) return;
+    stats.wins++;
+    saveStats();
+  }
+
+  function showAchievements() {
+    const got = ACHIEVEMENTS.filter((a) => stats.got[a.id]).length;
+    $("ach-count").textContent = `${got} / ${ACHIEVEMENTS.length}`;
+    const groups = [...new Set(ACHIEVEMENTS.map((a) => a.group))];
+    $("ach-list").replaceChildren(...groups.flatMap((g) => [
+      Object.assign(document.createElement("h3"), { textContent: g }),
+      ...ACHIEVEMENTS.filter((a) => a.group === g).map((a) => {
+        const done = !!stats.got[a.id];
+        const row = document.createElement("div");
+        row.className = "ach " + (done ? "got" : "locked");
+        const ic = document.createElement("span");
+        ic.className = "ach-ic";
+        if (a.set) ic.append(setIcon(a.set)); else ic.innerHTML = RIBBON_SVG;
+        const tx = document.createElement("div");
+        tx.className = "ach-tx";
+        tx.append(Object.assign(document.createElement("b"), { textContent: a.name }),
+          Object.assign(document.createElement("small"), { textContent: a.desc }));
+        if (!done && a.goal > 1) {
+          const n = Math.min(a.count(), a.goal);
+          const bar = document.createElement("div");
+          bar.className = "ach-bar";
+          bar.innerHTML = `<i></i><span></span>`;
+          bar.querySelector("i").style.width = `${(100 * n) / a.goal}%`;
+          bar.querySelector("span").textContent = `${n} / ${a.goal}`;
+          tx.append(bar);
+        }
+        row.append(ic, tx);
+        if (done) row.title = `Unlocked ${new Date(stats.got[a.id]).toLocaleDateString()}`;
+        return row;
+      })
+    ]));
+    $("achview").hidden = false;
+    stats.seen = got;
+    saveStats();
+    paintRibbon();
+  }
+  const closeAchievements = () => { $("achview").hidden = true; };
+  $("ach-open").innerHTML = RIBBON_SVG + `<i class="ach-dot" id="ach-dot" hidden></i>`;
+  $("ach-open").addEventListener("click", showAchievements);
+  $("ach-close").addEventListener("click", closeAchievements);
+  $("achview").addEventListener("click", (e) => { if (e.target === $("achview")) closeAchievements(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("achview").hidden) closeAchievements(); });
 
   /* ---------- screens: menu → levels → game ---------- */
   let current = null;   // the puzzle definition being played
@@ -1610,11 +1726,20 @@
   }
 
   function victory() {
+    recordWin();
     mark(current.id, "solved");
+    const fresh = checkAchievements();
     confetti();
     $("sheet").classList.remove("fail", "long");
     $("sheet-title").textContent = "Lethal!";
-    $("sheet-body").textContent = "";
+    // achievements this win unlocked
+    $("sheet-body").replaceChildren(...fresh.map((a) => {
+      const d = document.createElement("div");
+      d.className = "ach-new";
+      d.innerHTML = RIBBON_SVG + `<span><small>Achievement unlocked</small><b></b></span>`;
+      d.querySelector("b").textContent = a.name;
+      return d;
+    }));
     const set = setOf(current.difficulty);
     const next = set[set.indexOf(current) + 1];
     const btn = $("sheet-btn"), alt = $("sheet-alt");
@@ -1655,6 +1780,8 @@
         (plans.length ? `Winning line${plans.length > 1 ? "s" : ""} (any order that's legal works):\n${plans.join("\n")}` : "No winning line found.");
     }, 30);
   });
+
+  checkAchievements();                                     // (earlier progress may already have reached some)
 
   // ?p=<id> jumps straight into a puzzle; otherwise start at the menu
   const deep = window.PUZZLES.find((p) => p.id === new URLSearchParams(location.search).get("p"));
