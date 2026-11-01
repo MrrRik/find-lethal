@@ -344,6 +344,7 @@ body:not([data-screen="game"]) #solution{display:none}
 #clear-progress{margin-top:.5rem;color:var(--mute)}
 #clear-progress:hover{color:var(--red);border-color:var(--red)}
 body:not([data-screen="menu"]) #menu,
+body:not([data-screen="sets"]) #sets,
 body:not([data-screen="levels"]) #levels,
 body:not([data-screen="creator"]) #creator,
 body:not([data-screen="mod"]) #mod{display:none}
@@ -447,6 +448,14 @@ body:not([data-screen="mod"]) #mod{display:none}
 .life.speed[hidden]{display:none}
 .tier-bar{display:inline-block;width:1.1rem;height:.25rem;border-radius:.2rem;vertical-align:middle}
 .tier-bar.easy{background:var(--green)} .tier-bar.medium{background:var(--gold)} .tier-bar.hard{background:#e57f3a}
+/* the main menu: Daily / Set / User puzzles */
+.diff-btn.home{flex-direction:column;align-items:flex-start;gap:.2rem;padding:1.1rem 1.3rem;color:var(--ink);border-left-color:var(--gold)}
+.diff-btn.home .dl{font-size:1.3rem}
+.diff-btn.home.daily{border-color:var(--gold);border-left-width:.35rem;background:linear-gradient(120deg, rgba(224,164,58,.14), var(--felt-2) 60%)}
+/* daily grid: a heading per month, today's tile outlined */
+.grid-month{grid-column:1 / -1;margin:.5rem 0 0;font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.grid-month:first-child{margin-top:0}
+.tile.today{outline:2px solid var(--gold);outline-offset:2px}
 /* set-themed categories sit a little apart from the difficulties */
 .diff-btn .dl{display:flex;align-items:center}
 

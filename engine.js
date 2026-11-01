@@ -3502,8 +3502,9 @@
   };
 
   /* ---------- solver ---------- */
-  // Can the player still win from here, whatever the opponent blocks?
-  function makeSearch() {
+  // Can the player still win from here, whatever the opponent blocks? (allow(s, a): only moves it accepts — puzzle
+  // tools use it to ask "is this winnable without acting in combat?" or "… without responding on the stack?")
+  function makeSearch({ allow } = {}) {
     const memo = new Map();
     function canWin(s) {
       if (won(s)) return true;
@@ -3513,6 +3514,7 @@
       memo.set(key, false);                                    // guards against cycles
       let r = false;
       for (const a of moves(s)) {
+        if (allow && !blockNode(s, a) && !allow(s, a)) continue;
         if (blockNode(s, a)) r = afterEachBlock(s, a.to).every(canWin);
         else r = canWin(apply(s, a).state);
         if (r) break;

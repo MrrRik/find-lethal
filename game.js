@@ -16,9 +16,14 @@
   ];
   const DIFFS = SET_LIST.map(([id, label]) => ({ id, label, short: id.toUpperCase(), icon: `sets/${id}.svg`, set: true }));
   // Puzzles players made in the creator and a moderator accepted (loaded from online.js after start)
-  const USER_GROUP = { id: "user", label: "User submissions", short: "Users", set: true, user: true };
+  const USER_GROUP = { id: "user", label: "User puzzles", short: "Users", set: true, user: true };
+  // One puzzle a day (dailies.js); a day's puzzle shows up once that date is reached on this device
+  const DAILY_GROUP = { id: "daily", label: "Daily puzzles", short: "Daily", set: true, daily: true };
   const TIERS = { easy: "Easy", medium: "Medium", hard: "Hard" };
-  const diffOf = (id) => DIFFS.find((d) => d.id === id) || (id === "user" ? USER_GROUP : { id, label: id });
+  const diffOf = (id) => DIFFS.find((d) => d.id === id) || (id === "user" ? USER_GROUP : id === "daily" ? DAILY_GROUP : { id, label: id });
+  // today as "2026-11-01" (local time: a new daily appears at the player's midnight)
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   // The set symbol, drawn in the text color (a mask, so it works in light and dark mode)
   const setIcon = (d) => {
     if (!d.icon) return null;
@@ -28,8 +33,11 @@
     i.style.setProperty("--icon", `url("${d.icon}")`);
     return i;
   };
-  // Each difficulty is its own linear set, in the order listed in puzzles.js
-  const setOf = (diff) => window.PUZZLES.filter((p) => p.difficulty === diff);
+  // Each difficulty is its own linear set, in the order listed in puzzles.js; the dailies: the days reached so far,
+  // newest first
+  const setOf = (diff) => diff === "daily"
+    ? window.PUZZLES.filter((p) => p.difficulty === "daily" && p.date <= today()).sort((a, b) => (a.date < b.date ? 1 : -1))
+    : window.PUZZLES.filter((p) => p.difficulty === diff);
 
   /* ---------- progress (per-browser) ---------- */
   // status per puzzle id: "started" < "failed" < "solved" (never downgrades)
@@ -109,7 +117,7 @@
   }
 
   // (user submissions can be played in any order)
-  const unlocked = (set, i) => unlockAll || i === 0 || set[i].difficulty === "user" || progress[set[i - 1].id] === "solved";
+  const unlocked = (set, i) => unlockAll || i === 0 || ["user", "daily"].includes(set[i].difficulty) || progress[set[i - 1].id] === "solved";
 
   $("clear-progress").addEventListener("click", () => {
     if (!confirm("Clear all puzzle progress and achievements? Every puzzle goes back to untried and locked.")) return;
@@ -127,7 +135,12 @@
   /* ---------- achievements ---------- */
   const RIBBON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.6 13.9 7 22l5-3 5 3-1.6-8.1"/></svg>`;
   // (the sets' puzzles; user submissions have their own achievements)
-  const allPuzzles = () => window.PUZZLES.filter((p) => !p.custom && p.difficulty !== "user");
+  const allPuzzles = () => window.PUZZLES.filter((p) => DIFFS.some((d) => d.id === p.difficulty));
+  // daily puzzles solved in a month ("2026-11"), from the saved progress (ids "daily-2026-11-05")
+  const dailySolved = (month) => Object.keys(progress).filter((id) => id.startsWith(`daily-${month}-`) && progress[id] === "solved").length;
+  const dailyMonths = [...new Set(window.PUZZLES.filter((p) => p.difficulty === "daily").map((p) => p.date.slice(0, 7)))].sort();
+  const monthName = (m) => MONTHS[Number(m.slice(5, 7)) - 1];
+  const DAILY_STEPS = [[1, "Early Bird"], [7, "Regular"], [15, "Devotee"], ["all", "Perfect Month"]];
   const solvedIn = (list) => list.filter((p) => progress[p.id] === "solved").length;
   // user submissions solved: read from the saved progress, so it's right before they've loaded (and if one is removed)
   const userSolved = () => Object.keys(progress).filter((id) => id.startsWith("user-") && progress[id] === "solved").length;
@@ -142,7 +155,15 @@
       desc: `Solve every ${d.label} puzzle.`, count: () => solvedIn(setOf(d.id)), goal: setOf(d.id).length })),
     { id: "all", group: "Sets", name: "Multiverse Champion", desc: "Solve every puzzle in every set.",
       count: () => solvedIn(allPuzzles()), goal: allPuzzles().length },
-    ...[1, 10, 25, 100, 250, 500, 1000].map((n) => ({ id: `user-${n}`, group: "User submissions", name: USER_NAMES[n],
+    // per month of daily puzzles: solve 1, 7, 15 and all of that month's dailies
+    ...dailyMonths.flatMap((m) => {
+      const days = window.PUZZLES.filter((p) => p.difficulty === "daily" && p.date.startsWith(m)).length;
+      return DAILY_STEPS.map(([n, title]) => ({ id: `daily-${m}-${n}`, group: "Daily puzzles", name: `${monthName(m)} ${title}`,
+        desc: n === "all" ? `Solve every daily puzzle of ${monthName(m)} ${m.slice(0, 4)}.` : n === 1 ? `Solve a daily puzzle from ${monthName(m)} ${m.slice(0, 4)}.`
+          : `Solve ${n} daily puzzles from ${monthName(m)} ${m.slice(0, 4)}.`,
+        count: () => dailySolved(m), goal: n === "all" ? days : n }));
+    }),
+    ...[1, 10, 25, 100, 250, 500, 1000].map((n) => ({ id: `user-${n}`, group: "User puzzles", name: USER_NAMES[n],
       desc: n === 1 ? "Solve a puzzle made by another player." : `Solve ${n} puzzles made by other players.`,
       count: userSolved, goal: n }))
   ];
@@ -223,23 +244,45 @@
     window.scrollTo(0, 0);
   }
 
+  // A big menu button: label, a line under it, and what it opens
+  function menuButton(cls, label, sub, onclick, icon) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "diff-btn " + cls;
+    b.innerHTML = `<span class="dl"></span><span class="dc"></span>`;
+    b.querySelector(".dl").textContent = label;
+    if (icon) b.querySelector(".dl").prepend(icon);
+    b.querySelector(".dc").textContent = sub;
+    b.onclick = onclick;
+    return b;
+  }
+  const solvedCount = (set) => set.filter((p) => progress[p.id] === "solved").length;
+
+  // The main menu: Daily puzzles (on top), Set puzzles, User puzzles
   function showMenu() {
-    const groups = [...DIFFS, ...(window.Online && window.Online.ready ? [USER_GROUP] : [])];
-    $("diff-list").replaceChildren(...groups.map((d) => {
+    const days = setOf("daily");
+    const todays = days.find((p) => p.date === today());
+    const official = allPuzzles();
+    const users = setOf("user");
+    $("home-list").replaceChildren(
+      menuButton("home daily", "Daily puzzles", todays ? (progress[todays.id] === "solved" ? "Today's puzzle: solved ✓" : "Today's puzzle is ready")
+        : "Coming soon", () => showLevels("daily")),
+      menuButton("home sets", "Set puzzles", `${solvedCount(official)} / ${official.length} solved · ${DIFFS.length} sets`, showSets),
+      ...(window.Online && window.Online.ready
+        ? [menuButton("home user", "User puzzles", users.length ? `${solvedCount(users)} / ${users.length} solved` : userState, () => showLevels("user"))] : []));
+    $("home-list").querySelectorAll("button").forEach((b, i) => { if (i === 0) b.disabled = !days.length; if (i === 2) b.disabled = !users.length; });
+    show("menu");
+  }
+
+  // Set puzzles: one button per set
+  function showSets() {
+    $("diff-list").replaceChildren(...DIFFS.map((d) => {
       const set = setOf(d.id);
-      const done = set.filter((p) => progress[p.id] === "solved").length;
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "diff-btn " + d.id + (d.set ? " set" : "");
+      const b = menuButton(d.id + " set", d.label, set.length ? `${solvedCount(set)} / ${set.length} solved` : "Coming soon", () => showLevels(d.id), setIcon(d));
       b.disabled = !set.length;
-      b.innerHTML = `<span class="dl"></span><span class="dc"></span>`;
-      b.querySelector(".dl").textContent = d.label;
-      if (d.icon) b.querySelector(".dl").prepend(setIcon(d));
-      b.querySelector(".dc").textContent = set.length ? `${done} / ${set.length} solved` : d.user ? userState : "Coming soon";
-      b.onclick = () => showLevels(d.id);
       return b;
     }));
-    show("menu");
+    show("sets");
   }
 
   // The accepted user submissions, as puzzles of the "user" group (they come with the creator's winning line)
@@ -262,24 +305,37 @@
 
   function showLevels(diff) {
     const set = setOf(diff);
+    levelsOf = diff;
     const title = $("levels-title");
     const d = diffOf(diff);
     title.textContent = d.label;
     if (d.icon) title.prepend(setIcon(d));
     title.className = "levels-title " + diff;
-    $("grid").replaceChildren(...set.map((p, i) => {
+    // (daily puzzles: newest first, under a heading per month, each tile showing its day)
+    $("grid").replaceChildren(...set.flatMap((p, i) => {
       const open = unlocked(set, i);
       const b = document.createElement("button");
       b.type = "button";
       b.className = "tile " + (open ? progress[p.id] || "new" : "locked") + (p.tier ? " tier-" + p.tier : "");
-      if (open) b.textContent = i + 1; else b.innerHTML = LOCK_SVG;
-      b.title = open ? `${p.title}${p.tier ? " (" + TIERS[p.tier] + ")" : ""}` : "Solve the previous puzzle first";
-      b.setAttribute("aria-label", `Puzzle ${i + 1}` + (p.tier ? `, ${TIERS[p.tier]}` : "") + (open ? `: ${p.title}` : " (locked)"));
-      if (!open) b.setAttribute("aria-disabled", "true");   // still clickable, to show it's locked
-      b.onclick = () => (open ? play(p) : refuse(b));
-      return b;
+      if (open) b.textContent = p.date ? Number(p.date.slice(8, 10)) : i + 1; else b.innerHTML = LOCK_SVG;
+      if (p.date && p.date === today()) b.classList.add("today");
+      const month = p.date && p.date.slice(0, 7);
+      if (month && (i === 0 || set[i - 1].date.slice(0, 7) !== month)) {
+        return [Object.assign(document.createElement("h3"), { className: "grid-month", textContent: `${monthName(month)} ${month.slice(0, 4)}` }), finishTile(b, p, i, open)];
+      }
+      return [finishTile(b, p, i, open)];
     }));
     show("levels");
+    $("back").textContent = DIFFS.some((d) => d.id === diff) ? "← Sets" : "← Menu";
+  }
+  let levelsOf = null;                                       // (the group whose grid is showing)
+  // A grid tile's tooltip, label and click
+  function finishTile(b, p, i, open) {
+    b.title = open ? `${p.title}${p.tier ? " (" + TIERS[p.tier] + ")" : ""}` : "Solve the previous puzzle first";
+    b.setAttribute("aria-label", (p.date ? p.title : `Puzzle ${i + 1}`) + (p.tier ? `, ${TIERS[p.tier]}` : "") + (open ? (p.date ? "" : `: ${p.title}`) : " (locked)"));
+    if (!open) b.setAttribute("aria-disabled", "true");   // still clickable, to show it's locked
+    b.onclick = () => (open ? play(p) : refuse(b));
+    return b;
   }
 
   // A locked level was clicked: its tile shakes and pulses red
@@ -380,7 +436,9 @@
   }
 
   $("back").addEventListener("click", () => {
-    if (document.body.dataset.screen === "game") leaveGame();
+    const screen = document.body.dataset.screen;
+    if (screen === "game") leaveGame();
+    else if (screen === "levels" && DIFFS.some((d) => d.id === levelsOf)) showSets();   // (a set's grid: back to the sets)
     else showMenu();
   });
 
@@ -420,7 +478,8 @@
   // Basic lands show the art of the puzzle's set ("&set=fra": that set's printing)
   const BASICS = ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"];
   const loadedArt = new Map();             // card image URL → the address it loaded from (after redirects/fallbacks)
-  const puzzleSet = () => (current && diffOf(current.difficulty).icon ? current.difficulty : null);   // its set code, if any
+  // its set code, if any (a daily puzzle has the set its cards come from)
+  const puzzleSet = () => (current && current.artSet) || (current && diffOf(current.difficulty).icon ? current.difficulty : null);
   const basicSet = (name) => (BASICS.includes(name) && puzzleSet() ? "&set=" + puzzleSet() : "");
 
   function cardEl(c, { zoom = false, detached = false } = {}) {
@@ -671,7 +730,7 @@
     }
     if (df.icon) d.prepend(setIcon(df));
     d.className = "badge " + (current.tier || current.difficulty);
-    $("puzzle-title").textContent = current.custom ? current.title : `#${setOf(current.difficulty).indexOf(current) + 1} · ${current.title}`;
+    $("puzzle-title").textContent = current.custom || current.date ? current.title : `#${setOf(current.difficulty).indexOf(current) + 1} · ${current.title}`;
 
     $("opp-life").querySelector("b").textContent = p.opponent.life;
     $("opp-poison").hidden = !(p.opponent.poison > 0);                // a second way to win: 10 poison counters
@@ -1916,7 +1975,8 @@
   checkAchievements();                                     // (earlier progress may already have reached some)
 
   // ?p=<id> jumps straight into a puzzle; otherwise start at the menu
-  const deep = window.PUZZLES.find((p) => p.id === new URLSearchParams(location.search).get("p"));
+  // (a daily puzzle only from its day on)
+  const deep = window.PUZZLES.find((p) => p.id === new URLSearchParams(location.search).get("p") && !(p.date && p.date > today()));
   if (deep) play(deep); else if (/[?&]mod\b/.test(location.search)) showMod(); else showMenu();
   loadUserPuzzles();
 })();
