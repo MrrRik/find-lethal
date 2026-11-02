@@ -1375,7 +1375,7 @@
         : f.modes.map((m, i) => [i, m.text || `Mode ${i + 1}`]);
       if (!opts.length) { cancelCast(); return rulesNote(`Not enough mana for any mode of ${f.name}.`); }
       const choose = f.oneOrMore ? "choose one or more" : f.spree ? "choose one or more (spree)" : f.tiered ? "choose one (tiered)" : `choose ${n === 1 ? "one" : n}`;
-      return askChoice(`${f.name}: ${choose}`, opts, again("mode"));
+      return askModes(card, f, opts, choose, again("mode"));
     }
     if (f.chooseColor && casting.color == null) {
       return askChoice(`${f.name}: choose a color`, [..."WUBRG"].map((col) => [col, E.WORD_OF[col]]), again("color"));
@@ -1668,6 +1668,52 @@
     $("choice").hidden = false;
   }
   $("choice-cancel").addEventListener("click", () => { $("choice").hidden = true; cancelCast(); setPrompt(current.prompt); });
+
+  // Choosing modes ("choose one", "choose two", "one or more", spree, tiered): the card, large, with a see-through
+  // button for each mode over its text. One mode: tapping it chooses it. Several: tap them on and off, then confirm.
+  // (opts: the allowed answers, [value, label]; a value is a mode index, or a list of them)
+  function askModes(card, f, opts, how, then) {
+    const multi = opts.some(([v]) => Array.isArray(v));
+    const keyOf = (v) => [].concat(v).slice().sort((a, b) => a - b).join(",");
+    const byKey = new Map(opts.map(([v]) => [keyOf(v), v]));
+    const usable = new Set(opts.flatMap(([v]) => [].concat(v)));
+    let picked = [];
+    $("choice-title").textContent = `${f.name}: ${how}`;
+    setPrompt(multi ? `Choose the modes for ${f.name}, then confirm.` : `Choose a mode for ${f.name}.`);
+    $("choice-about").hidden = true;
+    $("choice-options").classList.remove("cardopts");
+    const wrap = Object.assign(document.createElement("div"), { className: "modecard" });
+    const shown = cardEl(card, { zoom: true, detached: true });
+    shown.classList.remove("tapped");
+    const list = Object.assign(document.createElement("div"), { className: "modepicks" });
+    const confirm = multi ? Object.assign(document.createElement("button"), { type: "button", className: "primary modeconfirm" }) : null;
+    const refresh = () => {
+      list.querySelectorAll(".modepick").forEach((b) => b.classList.toggle("on", picked.includes(Number(b.dataset.mode))));
+      if (!confirm) return;
+      const ok = byKey.has(keyOf(picked));
+      confirm.disabled = !ok;
+      confirm.textContent = !picked.length ? "Choose modes" : ok ? `Cast with ${picked.length} mode${picked.length > 1 ? "s" : ""}` : "Can't cast with these";
+    };
+    f.modes.forEach((m, i) => {
+      const b = Object.assign(document.createElement("button"), { type: "button", className: "modepick" + (multi ? " multi" : "") });
+      b.dataset.mode = i;
+      b.disabled = !usable.has(i);
+      b.textContent = `${m.plus ? m.plus + " — " : ""}${m.text || `Mode ${i + 1}`}`;
+      b.addEventListener("click", () => {
+        if (swallowClick) return;
+        if (!multi) { $("choice").hidden = true; return then(byKey.get(keyOf(i))); }
+        picked = picked.includes(i) ? picked.filter((x) => x !== i) : [...picked, i];
+        refresh();
+      });
+      list.append(b);
+    });
+    if (confirm) confirm.addEventListener("click", () => { if (confirm.disabled) return; $("choice").hidden = true; then(byKey.get(keyOf(picked))); });
+    wrap.append(shown, list);
+    $("choice-options").replaceChildren(wrap, ...(confirm ? [confirm] : []));
+    refresh();
+    $("choice-cancel").hidden = false;
+    $("choice").hidden = false;
+  }
 
   function cancelCast() {
     closePick();
