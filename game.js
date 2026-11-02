@@ -364,6 +364,7 @@
   /* ---------- mod view: review submitted puzzles (debug menu, or ?mod) ---------- */
   // Only a logged-in moderator gets submissions from the server (the database checks it, not this page).
   let modTab = "pending";
+  const TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>`;
   function showMod() {
     show("mod");
     const on = window.Online && window.Online.ready;
@@ -432,10 +433,16 @@
     if (r.status !== "pending") actions.append(btn("Back to pending", "ghost", review("pending")));
     if (r.status !== "accepted") actions.append(btn("Accept", "primary", review("accepted")));
     // a declined puzzle can be deleted for good
-    if (r.status === "declined") actions.append(btn("Delete", "ghost danger", async () => {
-      if (!confirm(`Delete "${r.title}" for good? This can't be undone.`)) return;
-      try { await window.Online.remove(r.id); toast("Deleted"); loadMod(); } catch (err) { modMsg("Couldn't delete: " + err.message, true); }
-    }));
+    if (r.status === "declined") {
+      const del = btn("", "ghost mod-delete", async () => {
+        if (!confirm(`Delete "${r.title}" for good? This can't be undone.`)) return;
+        try { await window.Online.remove(r.id); toast("Deleted"); loadMod(); } catch (err) { modMsg("Couldn't delete: " + err.message, true); }
+      });
+      del.innerHTML = TRASH_SVG;
+      del.title = "Delete for good";
+      del.setAttribute("aria-label", `Delete ${r.title}`);
+      actions.append(del);
+    }
     el.append(head, meta, steps, actions);
     return el;
   }

@@ -559,6 +559,10 @@ body:not([data-screen="mod"]) #mod{display:none}
 .mod-actions{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
 .mod-actions select{padding:.45rem;border-radius:.5rem;border:1px solid var(--line);background:var(--felt);color:var(--ink)}
 .mod-actions .primary{margin-left:auto}
+.mod-actions .primary + .mod-delete{margin-left:0}
+.mod-actions .mod-delete{margin-left:auto;display:grid;place-items:center;width:2.4rem;height:2.4rem;padding:0;color:var(--red);border-color:var(--red)}
+.mod-actions .mod-delete svg{width:1.15rem;height:1.15rem}
+.mod-actions .mod-delete:hover{background:var(--red);color:#fff}
 
 /* the Solution button only with the debug option on (tap the title 5 times) */
 body:not(.show-solution) #solution{display:none}
