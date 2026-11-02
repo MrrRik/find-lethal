@@ -431,6 +431,11 @@
     if (r.status !== "declined") actions.append(btn("Decline", "ghost danger", review("declined")));
     if (r.status !== "pending") actions.append(btn("Back to pending", "ghost", review("pending")));
     if (r.status !== "accepted") actions.append(btn("Accept", "primary", review("accepted")));
+    // a declined puzzle can be deleted for good
+    if (r.status === "declined") actions.append(btn("Delete", "ghost danger", async () => {
+      if (!confirm(`Delete "${r.title}" for good? This can't be undone.`)) return;
+      try { await window.Online.remove(r.id); toast("Deleted"); loadMod(); } catch (err) { modMsg("Couldn't delete: " + err.message, true); }
+    }));
     el.append(head, meta, steps, actions);
     return el;
   }

@@ -63,6 +63,8 @@ window.Online = (() => {
     // moderators: submissions with this status, newest first
     list: (status) => call(`/rest/v1/submissions?status=eq.${status}&select=${COLUMNS}&order=created_at.desc`, { auth: true }),
     review: (id, fields) => call(`/rest/v1/submissions?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", auth: true,
-      body: { ...fields, reviewed_at: new Date().toISOString() }, prefer: "return=minimal" })
+      body: { ...fields, reviewed_at: new Date().toISOString() }, prefer: "return=minimal" }),
+    // moderators: delete a submission for good
+    remove: (id) => call(`/rest/v1/submissions?id=eq.${encodeURIComponent(id)}`, { method: "DELETE", auth: true, prefer: "return=minimal" })
   };
 })();
