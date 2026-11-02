@@ -1351,16 +1351,19 @@
     if (f.modes && casting.mode == null) {
       // spree: one or more modes, each adding its cost (only the combinations you can pay for and target are offered)
       const ids = f.modes.map((_, i) => i);
+      // (checked with the way it's being cast: sneak, warp or web-slinging change what it costs)
+      const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined,
+        webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined };
       const opts = f.spree
-        ? E.subsets(ids).filter((l) => l.length && !E.check(state, { type: "cast", id: card.id, mode: l }))
+        ? E.subsets(ids).filter((l) => l.length && !E.check(state, { type: "cast", id: card.id, mode: l, ...how }))
           .map((l) => [l, l.map((i) => `${f.modes[i].plus ? f.modes[i].plus + " " : ""}${f.modes[i].text}`).join(" + ")])
         : n > 1 ? combos(ids, n).map((c) => [c, c.map((i) => f.modes[i].text).join(" + ")])
         // (tiered: each mode with its additional cost, only the ones you can pay for)
-        : f.tiered ? f.modes.map((m, i) => [i, `${m.plus} — ${m.text}`]).filter(([i]) => !E.check(state, { type: "cast", id: card.id, mode: i }))
+        : f.tiered ? f.modes.map((m, i) => [i, `${m.plus} — ${m.text}`]).filter(([i]) => !E.check(state, { type: "cast", id: card.id, mode: i, ...how }))
         : f.modes.map((m, i) => [i, m.text || `Mode ${i + 1}`]);
       if (!opts.length) { cancelCast(); return rulesNote(`Not enough mana for any mode of ${f.name}.`); }
-      const how = f.oneOrMore ? "choose one or more" : f.spree ? "choose one or more (spree)" : f.tiered ? "choose one (tiered)" : `choose ${n === 1 ? "one" : n}`;
-      return askChoice(`${f.name}: ${how}`, opts, again("mode"));
+      const choose = f.oneOrMore ? "choose one or more" : f.spree ? "choose one or more (spree)" : f.tiered ? "choose one (tiered)" : `choose ${n === 1 ? "one" : n}`;
+      return askChoice(`${f.name}: ${choose}`, opts, again("mode"));
     }
     if (f.chooseColor && casting.color == null) {
       return askChoice(`${f.name}: choose a color`, [..."WUBRG"].map((col) => [col, E.WORD_OF[col]]), again("color"));
