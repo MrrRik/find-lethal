@@ -2345,4 +2345,111 @@
       triggers: [{ on: "enters", filter: { controller: "you", creature: true, minManaValue: 5 }, modes: [{ text: "Attach it", effect: { attachTo: "eventObject", self: true } }, { text: "Don't", effect: {} }] }],
       text: "Whenever a creature you control with mana value 5 or greater enters, you may attach this Equipment to it. Equipped creature gets +4/+4. Equip {5}" }
   });
+
+  // ---- Avatar: The Last Airbender (TLA) ----
+  // Not modeled yet: Airbender Ascension, Hakoda, The Legend of Yangchen, Momo, The Legend of Kuruk, Secret of Bloodbending,
+  // Spirit Water Revival, Yue, Boiling Rock Rioter, The Fire Nation Drill, Foggy Swamp Visions, Koh, Obsessive Pursuit,
+  // Phoenix Fleet Airship, Raven Eagle, The Rise of Sozin, Firebender Ascension, Firebending Student, The Last Agni Kai, Ran
+  // and Shaw, Redirect Lightning, Zhao, Avatar Destiny, Badgermole Cub, Diligent Zookeeper, The Earth King, Earthbender
+  // Ascension, Earthen Ally, Elemental Teachings, Great Divide Guide, The Legend of Kyoshi, Aang, Swift Savior, Avatar Aang,
+  // Azula, Cunning Usurper, Bumi, Fire Lord Azula, Fire Lord Zuko, Iroh, Grand Lotus, Iroh, Tea Master, Katara, the
+  // Fearless, Katara, Water Tribe's Hope, Ozai, Sandbender Scavengers, Toph, Hardheaded Teacher, Toph, the First
+  // Metalbender, Planetarium of Wan Shi Tong, The Walls of Ba Sing Se, White Lotus Tile, Jasmine Dragon Tea Shop, Realm of
+  // Koh, Secret Tunnel
+  const ALLY_T = { name: "Ally", type: "Token Creature — Ally", pt: "1/1", colors: ["W"] };
+  const AIRBEND_T = "(Exile it. While it's exiled, its owner may cast it for {2} rather than its mana cost.)";
+  const EARTH_T = (n) => `Earthbend ${n}. (Target land you control becomes a 0/0 creature with haste that's still a land. Put ${n} +1/+1 counter${n === 1 ? "" : "s"} on it. When it dies or is exiled, return it to the battlefield tapped.)`;
+  const WATER_T = "(While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)";
+  const FIRE_T = (n) => `Firebending ${n} (Whenever this creature attacks, add ${"{R}".repeat(n)}. This mana lasts until end of combat.)`;
+  const SAGA_LAND = (land, produces, abilities, text) => ({ type: "Land", produces, entersTappedUnless: { basic: true }, abilities,
+    text: `This land enters tapped unless you control a basic land. {T}: Add {${produces}}. ${text}` });
+  Object.assign(CARDS, {
+    "Aang's Iceberg": { type: "Enchantment", cost: "{2}{W}", kw: ["flash"],
+      triggers: [{ on: "enters", self: true, targets: "permanent", targetFilter: { nonland: true, other: true }, targetCount: { min: 0, max: 1 }, effect: { exileUntilLeaves: true } }],
+      abilities: [{ cost: "{3}", waterbend: true, sacSelf: true, effect: { scry: 2 }, text: "Waterbend {3}: Sacrifice it, scry 2" }],
+      text: `Flash. When this enchantment enters, exile up to one other target nonland permanent until this enchantment leaves the battlefield. Waterbend {3}: Sacrifice this enchantment. If you do, scry 2. ${WATER_T}` },
+    "Appa, Steadfast Guardian": { type: "Legendary Creature — Bison Ally", cost: "{2}{W}{W}", pt: "3/4", kw: ["flash", "flying"],
+      triggers: [{ on: "enters", self: true, targets: "permanent", targetFilter: { controller: "you", nonland: true, other: true }, targetCount: { min: 0, max: 30 }, effect: { airbend: true } },
+        { on: "cast", filter: { controller: "you", fromExile: true }, effect: { create: ALLY_T } }],
+      text: `Flash. Flying. When Appa enters, airbend any number of other target nonland permanents you control. ${AIRBEND_T} Whenever you cast a spell from exile, create a 1/1 white Ally creature token.` },
+    "Avatar's Wrath": { type: "Sorcery", cost: "{2}{W}{W}", targets: "creature", targetCount: { min: 0, max: 1 }, effect: { airbendOthers: true }, exileSelf: true,
+      text: `Choose up to one target creature, then airbend all other creatures. ${AIRBEND_T} Until your next turn, your opponents can't cast spells from anywhere other than their hands. Exile Avatar's Wrath.` },
+    "South Pole Voyager": { type: "Creature — Human Scout Ally", cost: "{1}{W}", pt: "2/2",
+      triggers: [{ on: "enters", filter: { controller: "you", subtypeIs: "Ally" }, effect: { seq: [{ gainLife: 1 }, { onNthResolution: { key: "voyager", n: 2, then: { draw: 1 } } }] } }],
+      text: "Whenever this creature or another Ally you control enters, you gain 1 life. If this is the second time this ability has resolved this turn, draw a card." },
+    "Suki, Courageous Rescuer": { type: "Legendary Creature — Human Warrior Ally", cost: "{1}{W}{W}", pt: "2/4", static: { team: { pump: [1, 0] }, other: true },
+      triggers: [{ on: "leaves", other: true, filter: { controller: "you" }, oncePerTurn: true, effect: { create: ALLY_T } }],
+      text: "Other creatures you control get +1/+0. Whenever another permanent you control leaves the battlefield during your turn, create a 1/1 white Ally creature token. This ability triggers only once each turn." },
+    "United Front": { type: "Sorcery", cost: "{X}{W}{W}", effect: { seq: [{ create: { ...ALLY_T, count: "X" } }, { team: { counters: { "+1/+1": 1 } } }] },
+      text: "Create X 1/1 white Ally creature tokens, then put a +1/+1 counter on each creature you control." },
+    "The Mechanist, Aerial Artisan": { type: "Legendary Creature — Human Artificer Ally", cost: "{2}{U}", pt: "1/3",
+      triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, effect: { create: CLUE_TOKEN } }],
+      abilities: [{ tap: true, targets: "permanent", filter: { controller: "you", artifact: true, token: true }, effect: { becomeCreature: true, setBase: [3, 1], grant: ["flying"] }, text: "{T}: An artifact token becomes a 3/1 flier" }],
+      text: "Whenever you cast a noncreature spell, create a Clue token. {T}: Until end of turn, target artifact token you control becomes a 3/1 Construct artifact creature with flying." },
+    "Tiger-Seal": { type: "Creature — Cat Seal", cost: "{U}", pt: "3/3", kw: ["vigilance"],
+      triggers: [{ on: "draws", filter: { controller: "you", drawNumber: 2 }, effect: { untap: true, self: true } }],
+      text: "Vigilance. At the beginning of your upkeep, tap this creature. Whenever you draw your second card each turn, untap this creature." },
+    "Ty Lee, Chi Blocker": { type: "Legendary Creature — Human Performer Ally", cost: "{2}{U}", pt: "2/1", kw: ["flash", "prowess"],
+      etb: { tap: true }, targets: "creature", targetCount: { min: 0, max: 1 },
+      text: "Flash. Prowess. When Ty Lee enters, tap up to one target creature. It doesn't untap during its controller's untap step for as long as you control Ty Lee." },
+    "The Unagi of Kyoshi Island": { type: "Legendary Creature — Serpent", cost: "{3}{U}{U}", pt: "5/5", kw: ["flash", "ward 4"],
+      triggers: [{ on: "draws", filter: { controller: "opponent", drawNumber: 2 }, effect: { draw: 2 } }],
+      text: `Flash. Ward—Waterbend {4}. Whenever an opponent draws their second card each turn, you draw two cards.` },
+    "Wan Shi Tong, Librarian": { type: "Legendary Creature — Bird Spirit", cost: "{X}{U}{U}", pt: "1/1", kw: ["flash", "flying", "vigilance"],
+      etb: { seq: [{ counters: { "+1/+1": "selfX" }, self: true }, { draw: "halfSelfXDown" }] },
+      text: "Flash. Flying, vigilance. When Wan Shi Tong enters, put X +1/+1 counters on him. Then draw half X cards, rounded down. Whenever an opponent searches their library, put a +1/+1 counter on Wan Shi Tong and draw a card." },
+    "Waterbender Ascension": { type: "Enchantment", cost: "{1}{U}",
+      triggers: [{ on: "combatDamage", filter: { controller: "you", creature: true }, effect: { seq: [{ counters: { quest: 1 }, self: true }, { ifSelfCounters: { kind: "quest", min: 4, then: { draw: 1 } } }] } }],
+      abilities: [{ cost: "{4}", waterbend: true, targets: "creature", effect: { grant: ["unblockable"] }, text: "Waterbend {4}: Target creature can't be blocked" }],
+      text: `Whenever a creature you control deals combat damage to a player, put a quest counter on this enchantment. Then if it has four or more quest counters on it, draw a card. Waterbend {4}: Target creature can't be blocked this turn. ${WATER_T}` },
+    "Day of Black Sun": { type: "Sorcery", cost: "{X}{B}{B}", effect: { blackSun: "X" },
+      text: "Each creature with mana value X or less loses all abilities until end of turn. Destroy those creatures." },
+    "Mai, Scornful Striker": { type: "Legendary Creature — Human Noble Ally", cost: "{1}{B}", pt: "2/2", kw: ["first strike"],
+      triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, effect: { lifeLoss: 2, to: "you" } }],
+      text: "First strike. Whenever a player casts a noncreature spell, they lose 2 life. (The opponent casts no spells.)" },
+    "Fated Firepower": { type: "Enchantment", cost: "{X}{R}{R}{R}", kw: ["flash"], entersWithCounters: { fire: "X" }, fatedFirepower: true,
+      text: "Flash. This enchantment enters with X fire counters on it. If a source you control would deal damage to an opponent or a permanent an opponent controls, it deals that much damage plus an amount of damage equal to the number of fire counters on this enchantment instead." },
+    "The Legend of Roku": TF("The Legend of Roku", { type: "Enchantment — Saga", cost: "{2}{R}{R}", chapters: [
+      { n: [1], effect: { impulseAll: 3 } }, { n: [2], effect: { chooseColorMana: 1 } }, { n: [3], effect: { blinkTransformed: { face: 1 } } }],
+      text: `${SAGA()} I — Exile the top three cards of your library. Until the end of your next turn, you may play those cards. II — Add one mana of any color. III — Exile this Saga, then return it to the battlefield transformed under your control.` },
+      { name: "Avatar Roku", type: "Legendary Creature — Avatar", pt: "4/4", colors: ["R"], kw: ["firebending 4"],
+        abilities: [{ cost: "{8}", effect: { create: { name: "Dragon", type: "Token Creature — Dragon", pt: "4/4", colors: ["R"], kw: ["flying", "firebending 4"] } }, text: "{8}: Create a 4/4 Dragon with flying and firebending 4" }],
+        text: `${FIRE_T(4)} {8}: Create a 4/4 red Dragon creature token with flying and firebending 4.` }),
+    "Sozin's Comet": { type: "Sorcery", cost: "{3}{R}{R}", effect: { team: { grant: ["firebending 5"] } },
+      text: "Each creature you control gains firebending 5 until end of turn. (Whenever it attacks, add {R}{R}{R}{R}{R}. This mana lasts until end of combat.) Foretell {2}{R} (Foretelling only matters on a later turn.)" },
+    "Wartime Protestors": { type: "Creature — Human Rebel Ally", cost: "{3}{R}", pt: "4/4", kw: ["haste"],
+      triggers: [{ on: "enters", other: true, filter: { controller: "you", subtypeIs: "Ally" }, effect: { counters: { "+1/+1": 1 }, grant: ["haste"], to: "eventObject" } }],
+      text: "Haste. Whenever another Ally you control enters, put a +1/+1 counter on that creature and it gains haste until end of turn." },
+    "Aang, at the Crossroads": TF("Aang, at the Crossroads", { type: "Legendary Creature — Human Avatar Ally", cost: "{2}{G}{W}{U}", pt: "3/3", kw: ["flying"],
+      etb: { lookTop: { n: 5, filter: { creature: true, maxMV: 4 }, max: 1, to: "battlefield" } },
+      text: "Flying. When Aang enters, look at the top five cards of your library. You may put a creature card with mana value 4 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order. When another creature you control leaves the battlefield, transform Aang at the beginning of the next upkeep." },
+      { name: "Aang, Destined Savior", type: "Legendary Creature — Avatar Ally", pt: "4/4", colors: ["G", "W", "U"], kw: ["flying"],
+        text: `Flying. Land creatures you control have vigilance. At the beginning of combat on your turn, earthbend 2. (It transforms only in an upkeep.)` }),
+    "Beifong's Bounty Hunters": { type: "Creature — Human Mercenary", cost: "{2}{B}{G}", pt: "4/4",
+      triggers: [{ on: "dies", filter: { controller: "you", creature: true, nonland: true }, targets: "land", targetFilter: { controller: "you" }, effect: { earthbend: "eventLastPower" } }],
+      text: `Whenever a nonland creature you control dies, earthbend X, where X is that creature's power. ${EARTH_T("X").replace(/^Earthbend X\. /, "")}` },
+    "Earth King's Lieutenant": { type: "Creature — Human Soldier Ally", cost: "{G}{W}", pt: "1/1", kw: ["trample"],
+      etb: { team: { counters: { "+1/+1": 1 }, other: true, filter: { subtypeIs: "Ally" } } },
+      triggers: [{ on: "enters", other: true, filter: { controller: "you", subtypeIs: "Ally" }, effect: { counters: { "+1/+1": 1 }, self: true } }],
+      text: "Trample. When this creature enters, put a +1/+1 counter on each other Ally creature you control. Whenever another Ally you control enters, put a +1/+1 counter on this creature." },
+    "The Lion-Turtle": { type: "Legendary Creature — Elder Cat Turtle", cost: "{1}{G}{U}", pt: "3/6", kw: ["reach", "vigilance"], produces: "WUBRG", etb: { gainLife: 3 },
+      conditional: [{ if: { not: { lessons: 3 } }, grant: ["can't attack", "can't block"] }],
+      text: "Reach, vigilance. When The Lion-Turtle enters, you gain 3 life. The Lion-Turtle can't attack or block unless there are three or more Lesson cards in your graveyard. {T}: Add one mana of any color." },
+    "Sokka, Bold Boomeranger": { type: "Legendary Creature — Human Warrior Ally", cost: "{U}{R}", pt: "1/1", etb: { discardUpToDraw: 2 },
+      triggers: [{ on: "cast", filter: { controller: "you", artifactOrLesson: true }, effect: { counters: { "+1/+1": 1 }, self: true } }],
+      text: "When Sokka enters, discard up to two cards, then draw that many cards. Whenever you cast an artifact or Lesson spell, put a +1/+1 counter on Sokka." },
+    "Sokka, Tenacious Tactician": { type: "Legendary Creature — Human Warrior Ally", cost: "{1}{U}{R}{W}", pt: "3/3", kw: ["menace", "prowess"],
+      static: { team: { grant: ["menace", "prowess"] }, other: true, filter: { subtypeIs: "Ally" } },
+      triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, effect: { create: ALLY_T } }],
+      text: "Menace, prowess. Other Allies you control have menace and prowess. Whenever you cast a noncreature spell, create a 1/1 white Ally creature token." },
+    "Zuko, Conflicted": { type: "Legendary Creature — Human Rogue", cost: "{B}{R}", pt: "2/3",
+      text: "At the beginning of your first main phase, choose one that hasn't been chosen and you lose 2 life — • Draw a card. • Put a +1/+1 counter on Zuko. • Add {R}. • Exile Zuko, then return him to the battlefield under an opponent's control. (The puzzle starts in your first main phase.)" },
+    "Abandoned Air Temple": SAGA_LAND("Abandoned Air Temple", "W", [{ cost: "{3}{W}", tap: true, effect: { team: { counters: { "+1/+1": 1 } } }, text: "{3}{W}, {T}: +1/+1 counter on each creature you control" }],
+      "{3}{W}, {T}: Put a +1/+1 counter on each creature you control."),
+    "Agna Qel'a": SAGA_LAND("Agna Qel'a", "U", [{ cost: "{2}{U}", tap: true, effect: { loot: 1 }, text: "{2}{U}, {T}: Draw, then discard" }], "{2}{U}, {T}: Draw a card, then discard a card."),
+    "Ba Sing Se": SAGA_LAND("Ba Sing Se", "G", [{ cost: "{2}{G}", tap: true, sorcery: true, targets: "land", filter: { controller: "you" }, effect: { earthbend: 2 }, text: "{2}{G}, {T}: Earthbend 2" }],
+      `{2}{G}, {T}: ${EARTH_T(2)} Activate only as a sorcery.`),
+    "Fire Nation Palace": SAGA_LAND("Fire Nation Palace", "R", [{ cost: "{1}{R}", tap: true, targets: "creature", filter: { controller: "you" }, effect: { grant: ["firebending 4"] }, text: "{1}{R}, {T}: Firebending 4" }],
+      "{1}{R}, {T}: Target creature you control gains firebending 4 until end of turn.")
+  });
 })();
