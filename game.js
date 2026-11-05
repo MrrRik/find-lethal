@@ -2138,7 +2138,7 @@
     { text: "Tap Next phase.", at: () => $("next-phase"), done: () => state && state.phase !== "main1" },
     { text: "Tap your Gremlin to attack with it.", at: () => myCard("furnace-gremlin"), done: () => selected.has("furnace-gremlin") || !!(state && state.combat) },
     { text: "Tap Declare attackers.", at: () => $("go"), done: () => !!(state && state.combat) },
-    { text: "No blockers. Here comes the damage…", at: () => null, done: () => false }
+    { text: "There are no blockers. Here comes the damage…", at: () => null, done: () => false }
   ];
   function startTutorial() {
     tut = { i: 0, seen: {}, loads: 0 };
