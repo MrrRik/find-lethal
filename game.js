@@ -2045,7 +2045,9 @@
     if (created) $("sheet-body").append(Object.assign(document.createElement("div"), { className: "sheet-note",
       textContent: "Your winning line is saved as this puzzle's solution. You can submit it from the creator now." }));
     const set = setOf(current.difficulty);
-    const next = set[set.indexOf(current) + 1];
+    // (daily puzzles: the next day not solved yet — older days first, then newer ones; none left: back to the grid)
+    const at = set.indexOf(current);
+    const next = current.date ? [...set.slice(at + 1), ...set.slice(0, at)].find((p) => progress[p.id] !== "solved") : set[at + 1];
     const btn = $("sheet-btn"), alt = $("sheet-alt");
     const toLevels = () => showLevels(current.difficulty);
     alt.hidden = false;
