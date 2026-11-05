@@ -1334,6 +1334,13 @@
       if (canWarp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Warp it for ${card.warp} (exiled at the next end step)`]], again("warp"));
       casting.warp = canWarp && !canCast;
     }
+    // impending (a card in your hand): cast it normally, or for its impending cost
+    if (card.impending && casting.impending === undefined && state.player.hand.includes(card)) {
+      const canImp = !E.check(state, { type: "cast", id: card.id, impending: true });
+      const canCast = !E.check(state, { type: "cast", id: card.id });
+      if (canImp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Impending ${card.impending.n}: ${card.impending.cost} (not a creature until its time counters are gone)`]], again("impending"));
+      casting.impending = canImp && !canCast;
+    }
     // sneak (in your declare blockers step): return an unblocked attacker of yours and pay the sneak cost
     if (card.sneak && casting.sneak === undefined && state.player.hand.includes(card)) {
       const ids = (state.combat && state.combat.blocks ? state.combat.attackers : []).filter((id) => !E.check(state, { type: "cast", id: card.id, sneak: id }));
@@ -1394,7 +1401,7 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
-    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined });
+    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, impending: casting.impending || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined });
     if (why) { cancelCast(); return rulesNote(why); }
     // teamwork N (optional): tap your untapped creatures with total power N or more
     if (f.teamwork && casting.teamwork === undefined) {
@@ -1412,7 +1419,7 @@
       // spree: one or more modes, each adding its cost (only the combinations you can pay for and target are offered)
       const ids = f.modes.map((_, i) => i);
       // (checked with the way it's being cast: sneak, warp or web-slinging change what it costs)
-      const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined,
+      const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, impending: casting.impending || undefined,
         webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined };
       const opts = f.spree
         ? E.subsets(ids).filter((l) => l.length && !E.check(state, { type: "cast", id: card.id, mode: l, ...how }))
@@ -1595,7 +1602,7 @@
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);
