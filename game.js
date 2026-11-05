@@ -794,7 +794,8 @@
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
     const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted || c.airbent);
     // (and graveyard cards with harmonize, cast from there, or renew, an ability used from there)
-    const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn));
+    // (also anything else castable or playable from there: an Adventure, a creature card, a land)
+    const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn) || E.castable(p, c.id) || (E.isLand(c) && E.landsFromGraveyard(p)));
     // a prepared creature's prepare spell: a copy you may cast (shown with your hand)
     const prepared = p.player.battlefield.filter((c) => c.prepared && c.prepare)
       // (shown as its creature's card: the prepare spell is printed on it)
@@ -807,7 +808,7 @@
     adventures.forEach((c) => mark(c, c.plotted ? (c.plottedNow ? "Plotted (cast it free on a later turn)" : "Plotted: cast it free (main phase)")
       : c.playable ? "Exiled: you may play it this turn" : c.airbent ? "Airbent: cast it for {2}" : "On an adventure (exile)"));
     prepared.forEach((c) => mark(c, `Prepared (${c.preparedFrom}): cast a copy`));
-    flashbacks.forEach((c) => mark(c, c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)`
+    flashbacks.forEach((c) => mark(c, E.isLand(c) && !c.flashback ? "Play it from your graveyard" : c.graveAdventure ? "Cast its Adventure (graveyard)" : !c.flashback && !c.harmonize && !c.renew && !c.mayhem ? "Cast it from your graveyard" : c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)`
       : c.renew ? `Renew ${c.renew.cost} (graveyard)` : `Mayhem ${c.mayhem} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
       (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} usable from the graveyard` : "") +
@@ -1147,7 +1148,8 @@
     if (!el) return;
     if (casting && casting.pick) { if (el.classList.contains("targetable")) togglePick(el.dataset.id); return; }   // (behold: reveal it)
     const from = E.castable(state, el.dataset.id) ||            // your hand, or an Adventure card waiting in exile
-      ((g) => (g && g.renew ? { card: g, zone: "graveyard", renew: true } : null))(state.player.graveyard.find((c) => c.id === el.dataset.id));
+      ((g) => (g && g.renew ? { card: g, zone: "graveyard", renew: true }
+        : g && E.isLand(g) && E.landsFromGraveyard(state) ? { card: g, zone: "graveyard" } : null))(state.player.graveyard.find((c) => c.id === el.dataset.id));
     if (!from) return;
     const card = from.card;
     if (casting && casting.card && casting.card.id === card.id) {
