@@ -74,50 +74,31 @@
   })();
   const saveStats = () => { try { localStorage.setItem(STATS, JSON.stringify(stats)); } catch (_) { /* fine */ } };
 
-  /* ---------- debug menu: tap the "Find Lethal" title 5 times in a row ---------- */
-  // Unlock every puzzle (also ?unlock) and show the Solution button in puzzles (also ?debug). Kept per browser.
+  /* ---------- cheats (moderators only: switched on in the mod view, and only work while logged in there) ---------- */
+  // Unlock every puzzle; show the Solution button in puzzles. Kept per browser.
   const CHEAT = "find-lethal:unlock-all", SOLUTION = "find-lethal:show-solution";
   let unlockAll = false, showSolution = false;
   try {
-    if (/[?&]unlock\b/.test(location.search)) localStorage.setItem(CHEAT, "1");
-    if (/[?&]debug\b/.test(location.search)) localStorage.setItem(SOLUTION, "1");
     unlockAll = localStorage.getItem(CHEAT) === "1";
     showSolution = localStorage.getItem(SOLUTION) === "1";
-  } catch (_) { /* storage unavailable: no debug options */ }
+  } catch (_) { /* storage unavailable: no cheats */ }
   const keep = (key, on) => { try { if (on) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch (_) { /* fine */ } };
-  document.body.classList.toggle("show-solution", showSolution);
-  let titleTaps = 0, tapTimer = null;
-  document.querySelector(".menu-title").addEventListener("click", () => {
-    clearTimeout(tapTimer);
-    tapTimer = setTimeout(() => { titleTaps = 0; }, 1500);
-    if (++titleTaps < 5) return;
-    titleTaps = 0;
-    debugMenu();
-  });
-  function debugMenu() {
-    $("sheet").classList.remove("fail");
-    $("sheet").classList.add("long");
-    $("sheet-title").textContent = "Debug";
+  // the cheat switches in the mod view
+  function renderCheats() {
     const toggle = (label, get, set) => {
-      const b = Object.assign(document.createElement("button"), { type: "button", className: "ghost debug-opt" });
-      const paint = () => { b.textContent = `${label}: ${get() ? "on" : "off"}`; };
-      b.onclick = () => { set(!get()); paint(); };
+      const b = Object.assign(document.createElement("button"), { type: "button", className: "ghost small-btn cheat" });
+      const paint = () => { b.textContent = `${label}: ${get() ? "on" : "off"}`; b.classList.toggle("on", get()); };
+      b.onclick = () => { set(!get()); paint(); paintMod(); };
       paint();
       return b;
     };
-    $("sheet-body").replaceChildren(
+    $("mod-cheats").replaceChildren(
       toggle("Unlock every puzzle", () => unlockAll, (v) => { unlockAll = v; keep(CHEAT, v); }),
-      toggle("Solution button in puzzles", () => showSolution, (v) => { showSolution = v; keep(SOLUTION, v); document.body.classList.toggle("show-solution", v); }),
-      Object.assign(document.createElement("button"), { type: "button", className: "ghost debug-opt", textContent: "Mod view: review submitted puzzles",
-        onclick: () => { $("sheet").hidden = true; showMod(); } }));
-    const btn = $("sheet-btn");
-    btn.textContent = "Close"; btn.onclick = () => { $("sheet").hidden = true; showMenu(); };
-    $("sheet-alt").hidden = true;
-    $("sheet").hidden = false;
+      toggle("Solution button in puzzles", () => showSolution, (v) => { showSolution = v; keep(SOLUTION, v); }));
   }
 
-  // (user submissions can be played in any order)
-  const unlocked = (set, i) => unlockAll || i === 0 || ["user", "daily"].includes(set[i].difficulty) || progress[set[i - 1].id] === "solved";
+  // (user submissions and dailies can be played in any order; the unlock cheat only for a logged-in moderator)
+  const unlocked = (set, i) => (unlockAll && isMod()) || i === 0 || ["user", "daily"].includes(set[i].difficulty) || progress[set[i - 1].id] === "solved";
 
   $("clear-progress").addEventListener("click", () => {
     if (!confirm("Clear all puzzle progress and achievements? Every puzzle goes back to untried and locked.")) return;
@@ -366,13 +347,14 @@
   }
   $("open-creator").addEventListener("click", () => showCreator(false));
 
-  /* ---------- mod view: review submitted puzzles (debug menu, or ?mod) ---------- */
+  /* ---------- mod view (?mod): review submitted puzzles, the mod creator, cheats ---------- */
   // Only a logged-in moderator gets submissions from the server (the database checks it, not this page).
   let modTab = "pending";
   const TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>`;
   function showMod() {
     show("mod");
     paintMod();                                                // (just logged in or out: the Edit button follows)
+    renderCheats();
     const on = window.Online && window.Online.ready;
     $("mod-setup").hidden = on;
     $("mod-login").hidden = !on || window.Online.loggedIn();
@@ -485,7 +467,10 @@
   });
   // logged in as a moderator (this browser): the Edit button shows in puzzles
   function isMod() { return !!(window.Online && window.Online.ready && window.Online.loggedIn()); }
-  function paintMod() { document.body.classList.toggle("is-mod", isMod()); }
+  function paintMod() {
+    document.body.classList.toggle("is-mod", isMod());
+    document.body.classList.toggle("show-solution", isMod() && showSolution);   // (the Solution button: a moderator's cheat)
+  }
 
   $("show-rules").addEventListener("click", () => {
     $("sheet").classList.remove("fail");

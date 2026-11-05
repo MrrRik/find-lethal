@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap">
-<link rel="stylesheet" href="style.css?v=9320e14149">
+<link rel="stylesheet" href="style.css?v=e24d5664e1">
 <script>
   // apply saved (or system) theme before first paint to avoid a flash
   (function () {
@@ -148,7 +148,8 @@
 <!-- Creator: options for one card -->
 <div class="cr-menu" id="cr-menu" hidden></div>
 
-<!-- Mod view: review submitted puzzles (debug menu, or ?mod) -->
+<!-- Mod view (open with ?mod): review submitted puzzles, the mod creator, cheats -->
+
 <section class="screen mod" id="mod">
   <h2 class="levels-title">Submitted puzzles</h2>
   <p class="mod-note" id="mod-setup" hidden>Online submissions aren't set up yet (online.js has no Supabase project).</p>
@@ -167,6 +168,7 @@
       <button type="button" class="ghost small-btn" id="mod-logout">Log out</button>
     </div>
     <button type="button" class="primary mod-creator" id="mod-creator">Puzzle creator · new and edit puzzles</button>
+    <div class="mod-cheats" id="mod-cheats" aria-label="Cheats"></div>
     <p class="cr-status" id="mod-msg"></p>
     <div class="mod-list" id="mod-list"></div>
   </div>
@@ -319,7 +321,7 @@
 <script src="dailies.js?v=417681c574"></script>
 <script src="tokenart.js?v=d95e424dce"></script>
 <script src="online.js?v=4abce9f805"></script>
-<script src="game.js?v=1699f22ebd"></script>
+<script src="game.js?v=b401683f9e"></script>
 <script src="cardtext.js?v=54893ea046"></script>
 <script src="creator.js?v=42096e3cc5"></script><script>
   document.getElementById("theme-toggle").addEventListener("click", function () {
