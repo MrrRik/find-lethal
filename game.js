@@ -239,7 +239,7 @@
     if (screen !== "game") $("stackview").hidden = $("stack-show").hidden = true;   // (the stack popup belongs to a game)
     const back = $("back");
     back.hidden = screen === "menu";
-    back.textContent = screen !== "game" ? "← Menu" : current && current.reviewing ? "← Mod view" : current && current.custom ? "← Creator" : "← Puzzles";
+    back.textContent = screen !== "game" ? "← Menu" : current && current.tutorial ? "← Menu" : current && current.reviewing ? "← Mod view" : current && current.custom ? "← Creator" : "← Puzzles";
     $("sheet").hidden = true;
     window.scrollTo(0, 0);
   }
@@ -352,7 +352,7 @@
   }
 
   // From a puzzle, back goes to its grid, or to the creator when play-testing a created puzzle
-  const leaveGame = () => (current.reviewing ? showMod() : current.custom ? showCreator() : showLevels(current.difficulty));
+  const leaveGame = () => (current.tutorial ? finishTutorial() : current.reviewing ? showMod() : current.custom ? showCreator() : showLevels(current.difficulty));
 
   /* ---------- puzzle creator (creator.js) ---------- */
   function showCreator() {
@@ -746,6 +746,7 @@
     $("zoneview").hidden = true;
     state = E.init(current);
     moves = [];
+    if (current.tutorial) tutorialLoaded();
     mark(current.id, "started");
     selected = new Set();
     locked = false;
@@ -1008,6 +1009,7 @@
   }
 
   function showZoom(card) {
+    tutorialSaw("zoom");
     const z = $("zoom");
     // a double-faced card shows both faces next to each other, front first (the face that's up keeps its counters etc.)
     const dfc = !card.faceDown && card.faces && card.faces.length === 2 && ["transform", "modal_dfc"].includes(card.layout);
@@ -1093,6 +1095,7 @@
   });
 
   function openZone(id) {
+    tutorialSaw("zone");
     const [side, zone, title] = ZONES[id];
     const cards = state[side][zone];
     // a library: the cards known to be on top (top first), then however many unknown cards
@@ -2022,6 +2025,7 @@
 
   function victory() {
     // a play-tested creator puzzle: the creator keeps the winning line (it unlocks submitting)
+    if (current.tutorial) return tutorialWon();
     const created = current.custom && !current.reviewing;
     if (created && window.FindLethal.onCustomWin) window.FindLethal.onCustomWin(current, moves.slice());
     mark(current.id, "solved");
@@ -2100,11 +2104,104 @@
     }, 30);
   });
 
+  /* ---------- tutorial: the controls, one action at a time (first visit, or "Tutorial" in the menu) ---------- */
+  // A tiny real puzzle: each step says what to do in a few words, lights up where, and moves on once it's done.
+  const TUTORIAL = "find-lethal:tutorial-done";
+  let tut = null;                                            // { i: step, seen: { zoom, zone, reset } }
+  const tutBoard = () => {
+    const { c, puzzle } = window.CARD_CATALOG;
+    return Object.assign(puzzle({ id: "tutorial", title: "Tutorial", difficulty: "easy",
+      opp: { life: 4 }, you: { hand: [c("Mountain"), c("Shock")], battlefield: [c("Furnace Gremlin"), c("Mountain"), c("Mountain")] } }),
+    { custom: true, tutorial: true });
+  };
+  const inPlay = (id) => state && state.player.battlefield.some((x) => x.id === id);
+  const gremlin = () => state && state.player.battlefield.find((x) => x.id === "furnace-gremlin");
+  const shockGone = () => state && (state.stack.some((x) => x.id === "shock") || state.player.graveyard.some((x) => x.id === "shock"));
+  const shockDone = () => state && !state.stack.length && state.player.graveyard.some((x) => x.id === "shock");
+  const pumped = () => gremlin() && E.power(gremlin()) >= 2;
+  const resolveButton = () => (!$("stackview").hidden ? $("stack-resolve") : $("go"));
+  const handCard = (id) => document.querySelector(`#hand .card[data-id="${id}"]`);
+  const myCard = (id) => document.querySelector(`#you-lane .card[data-id="${id}"]`);
+  const TUT_STEPS = [
+    { text: "Tap the Mountain in your hand to play it.", at: () => handCard("mountain-3"), done: () => inPlay("mountain-3") },
+    { text: "Messed up? ↺ starts over. Tap it.", at: () => $("reset"), done: () => tut.seen.reset },
+    { text: "Play the Mountain again.", at: () => handCard("mountain-3"), done: () => inPlay("mountain-3") },
+    { text: "Press and hold a card to see it big.", at: () => myCard("furnace-gremlin"), done: () => tut.seen.zoom },
+    { text: "Tap Shock to cast it.", at: () => handCard("shock"), done: () => (casting && casting.card && casting.card.id === "shock") || shockGone() },
+    { text: "Now tap their life to aim at them.", at: () => $("opp-life"), done: shockGone },
+    { text: "Spells wait on the stack. Tap Resolve.", at: resolveButton, done: shockDone },
+    { text: "Cards can have buttons. Tap {1}{R}: +1/+0.", at: () => myCard("furnace-gremlin") && myCard("furnace-gremlin").querySelector(".abil"),
+      done: () => pumped() || (state && state.stack.length > 0) },
+    { text: "Resolve it.", at: resolveButton, done: () => pumped() && !state.stack.length },
+    { text: "Hold your graveyard to look inside.", at: () => $("you-gy"), done: () => tut.seen.zone },
+    { text: "Tap Close.", at: () => $("zone-close"), done: () => tut.seen.zone && $("zoneview").hidden },
+    { text: "Tap Next phase.", at: () => $("next-phase"), done: () => state && state.phase !== "main1" },
+    { text: "Tap your Gremlin to attack with it.", at: () => myCard("furnace-gremlin"), done: () => selected.has("furnace-gremlin") || !!(state && state.combat) },
+    { text: "Tap Declare attackers.", at: () => $("go"), done: () => !!(state && state.combat) },
+    { text: "No blockers. Here comes the damage…", at: () => null, done: () => false }
+  ];
+  function startTutorial() {
+    tut = { i: 0, seen: {}, loads: 0 };
+    $("coach").hidden = false;
+    play(tutBoard());
+    tutTick();
+  }
+  // a fresh board: the reset step is done; any other restart (a failed try) goes back to "play the Mountain again"
+  function tutorialLoaded() {
+    if (!tut) return;
+    if (tut.loads++ === 0) return;
+    if (tut.i === 1) tut.seen.reset = true;
+    else if (tut.i > 2) { tut.i = 2; tut.seen.zone = false; }
+  }
+  const tutorialSaw = (what) => { if (tut && current && current.tutorial) tut.seen[what] = true; };
+  function tutTick() {
+    if (!tut) return;
+    while (tut.i < TUT_STEPS.length - 1 && TUT_STEPS[tut.i].done()) tut.i++;
+    const step = TUT_STEPS[tut.i];
+    $("coach-text").textContent = step.text;
+    $("coach-step").textContent = `${Math.min(tut.i + 1, TUT_STEPS.length - 1)} / ${TUT_STEPS.length - 1}`;
+    document.querySelectorAll(".coach-target").forEach((el) => el.classList.remove("coach-target"));
+    const target = step.at();
+    if (target) target.classList.add("coach-target");
+    // the bubble sits away from what it points at (top half → bubble low, and the other way round)
+    const r = target && target.getBoundingClientRect();
+    const low = !!r && r.top + r.height / 2 < innerHeight * 0.45;
+    $("coach").classList.toggle("low", low);
+    // (low: just above the bottom bar, so the bar's own text stays readable)
+    $("coach").style.bottom = low ? `${Math.max(8, innerHeight - document.querySelector(".bar").getBoundingClientRect().top + 10)}px` : "";
+    setTimeout(tutTick, 250);
+  }
+  function tutorialWon() {
+    confetti();
+    tut = null;
+    $("coach").hidden = true;
+    document.querySelectorAll(".coach-target").forEach((el) => el.classList.remove("coach-target"));
+    $("sheet").classList.remove("fail", "long");
+    $("sheet-title").textContent = "Lethal!";
+    $("sheet-body").textContent = "That's every control. Now find lethal for real.";
+    const btn = $("sheet-btn");
+    btn.textContent = "Let's play"; btn.onclick = finishTutorial;
+    $("sheet-alt").hidden = true;
+    $("sheet").hidden = false;
+  }
+  function finishTutorial() {
+    tut = null;
+    $("coach").hidden = true;
+    document.querySelectorAll(".coach-target").forEach((el) => el.classList.remove("coach-target"));
+    try { localStorage.setItem(TUTORIAL, "1"); } catch (_) { /* fine */ }
+    showMenu();
+  }
+  $("coach-skip").addEventListener("click", finishTutorial);
+  $("show-tutorial").addEventListener("click", startTutorial);
+  let tutorialSeen = false;
+  try { tutorialSeen = localStorage.getItem(TUTORIAL) === "1"; } catch (_) { tutorialSeen = true; }
+
   checkAchievements();                                     // (earlier progress may already have reached some)
 
   // ?p=<id> jumps straight into a puzzle; otherwise start at the menu
   // (a daily puzzle only from its day on)
   const deep = window.PUZZLES.find((p) => p.id === new URLSearchParams(location.search).get("p") && !(p.date && p.date > today()));
-  if (deep) play(deep); else if (/[?&]mod\b/.test(location.search)) showMod(); else showMenu();
+  // (the first visit starts with the tutorial)
+  if (deep) play(deep); else if (/[?&]mod\b/.test(location.search)) showMod(); else if (!tutorialSeen || /[?&]tutorial\b/.test(location.search)) startTutorial(); else showMenu();
   loadUserPuzzles();
 })();

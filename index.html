@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap">
-<link rel="stylesheet" href="style.css?v=3ba700c2ad">
+<link rel="stylesheet" href="style.css?v=ef964590c5">
 <script>
   // apply saved (or system) theme before first paint to avoid a flash
   (function () {
@@ -49,6 +49,7 @@
   <div class="diff-list home-list" id="home-list"></div>
   <button id="open-creator" class="ghost make-btn" type="button">Puzzle creator</button>
   <button id="show-rules" class="ghost make-btn" type="button">Puzzle rules</button>
+  <button id="show-tutorial" class="ghost make-btn" type="button">Tutorial</button>
   <button id="clear-progress" class="ghost small-btn" type="button">Clear progress</button>
 </section>
 
@@ -288,6 +289,13 @@
   </div>
 </div>
 
+<!-- Tutorial: one short instruction at a time (the thing to use glows) -->
+<div class="coach" id="coach" hidden aria-live="polite">
+  <small id="coach-step"></small>
+  <p id="coach-text"></p>
+  <button id="coach-skip" type="button">Skip</button>
+</div>
+
 <!-- Press-and-hold zoom -->
 <div class="zoom" id="zoom" aria-hidden="true"></div>
 
@@ -310,7 +318,7 @@
 <script src="dailies.js?v=417681c574"></script>
 <script src="tokenart.js?v=d95e424dce"></script>
 <script src="online.js?v=4abce9f805"></script>
-<script src="game.js?v=a2bf71e65e"></script>
+<script src="game.js?v=eece60db4c"></script>
 <script src="cardtext.js?v=54893ea046"></script>
 <script src="creator.js?v=2cf86192c4"></script><script>
   document.getElementById("theme-toggle").addEventListener("click", function () {
