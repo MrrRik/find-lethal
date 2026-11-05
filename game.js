@@ -2130,7 +2130,7 @@
     { text: "Tap Shock to cast it.", at: () => handCard("shock"), done: () => (casting && casting.card && casting.card.id === "shock") || shockGone() },
     { text: "Now tap their life to aim at them.", at: () => $("opp-life"), done: shockGone },
     { text: "Spells wait on the stack. Tap Resolve.", at: resolveButton, done: shockDone },
-    { text: "Cards can have buttons. Tap {1}{R}: +1/+0.", at: () => myCard("furnace-gremlin") && myCard("furnace-gremlin").querySelector(".abil"),
+    { text: "Cards can have abilities. Tap {1}{R}: +1/+0.", at: () => myCard("furnace-gremlin") && myCard("furnace-gremlin").querySelector(".abil"),
       done: () => pumped() || (state && state.stack.length > 0) },
     { text: "Resolve it.", at: resolveButton, done: () => pumped() && !state.stack.length },
     { text: "Hold your graveyard to look inside.", at: () => $("you-gy"), done: () => tut.seen.zone },
