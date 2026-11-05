@@ -2134,7 +2134,7 @@
       done: () => pumped() || (state && state.stack.length > 0) },
     { text: "Resolve it.", at: resolveButton, done: () => pumped() && !state.stack.length },
     { text: "Hold your graveyard to look inside.", at: () => $("you-gy"), done: () => tut.seen.zone },
-    { text: "Tap Close.", at: () => $("zone-close"), done: () => tut.seen.zone && $("zoneview").hidden },
+    { text: "Your library and exile work the same way. Tap Close.", at: () => $("zone-close"), done: () => tut.seen.zone && $("zoneview").hidden },
     { text: "The game waits while you can still act. Tap Next phase to move on.", at: () => $("next-phase"), done: () => state && state.phase !== "main1" },
     { text: "Tap your Gremlin to attack with it.", at: () => myCard("furnace-gremlin"), done: () => selected.has("furnace-gremlin") || !!(state && state.combat) },
     { text: "Tap Declare attackers.", at: () => $("go"), done: () => !!(state && state.combat) },
