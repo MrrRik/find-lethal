@@ -786,8 +786,9 @@
     $("opp-exile").querySelector("b").textContent = p.opponent.exile.length;
     $("you-exile").querySelector("b").textContent = p.player.exile.length;
 
-    fillLane($("opp-lane"), p.opponent.battlefield);
-    fillLane($("you-lane"), p.player.battlefield);
+    // (emblems — CR 114, in the command zone — are shown at the end of their owner's lane)
+    fillLane($("opp-lane"), [...p.opponent.battlefield, ...(p.opponent.command || [])]);
+    fillLane($("you-lane"), [...p.player.battlefield, ...(p.player.command || [])]);
     // your hand, plus Adventure cards waiting in exile (their creature can still be cast)
     const hand = p.player.hand;
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
@@ -1225,10 +1226,28 @@
         return pickCards({ ids: E.blightOptions(state), confirm: `Blight ${ab.blight}`,
           prompt: `Choose a creature you control to blight ${ab.blight} for ${card.name}'s ability.`, then: (picked) => again("blight")(Array.isArray(picked) ? picked[0] : picked) });
       }
-      // "Discard a card: …": which card
+      // "Discard a card: …" / "Discard two cards: …": which cards
       if (ab.discardCost && casting.discard === undefined) {
-        return pickCards({ ids: state.player.hand.map((c) => c.id), confirm: "Discard",
-          prompt: `Discard a card from your hand for ${card.name}'s ability.`, then: (picked) => again("discard")(Array.isArray(picked) ? picked[0] : picked) });
+        const n = ab.discardCost === true ? 1 : ab.discardCost;
+        return pickCards({ ids: state.player.hand.map((c) => c.id), min: n, max: n, confirm: "Discard",
+          prompt: n > 1 ? `Discard ${n} cards from your hand for ${card.name}'s ability.` : `Discard a card from your hand for ${card.name}'s ability.`,
+          then: (picked) => again("discard")(n > 1 ? [].concat(picked) : Array.isArray(picked) ? picked[0] : picked) });
+      }
+      // "Sacrifice two other artifacts and/or creatures: …": which ones
+      if (ab.sacCost && casting.sacs === undefined) {
+        const n = ab.sacCost.n;
+        return pickCards({ ids: E.sacCostOptions(state, card, ab), min: n, max: n, confirm: "Sacrifice",
+          prompt: `Choose ${n} to sacrifice for ${card.name}'s ability.`, then: (l) => again("sacs")([].concat(l)) });
+      }
+      // "Exile three creature cards from your graveyard: …": one card at a time (the graveyard isn't on the board)
+      if (ab.exileCost && casting.exiles === undefined) {
+        const so = casting.exilePicks = casting.exilePicks || [];
+        if (so.length < ab.exileCost.n) {
+          const opts = E.exileCostOptions(state, ab).filter((id) => !so.includes(id))
+            .map((id) => { const c = state.player.graveyard.find((x) => x.id === id); return [id, c.name, c]; });
+          return askChoice(`${card.name}: exile a card from your graveyard (${so.length + 1} of ${ab.exileCost.n})`, opts, (v) => { so.push(v); nextChoice(); });
+        }
+        casting.exiles = so;
       }
       // station: tap one other untapped creature; it puts charge counters equal to its power on this permanent
       if (ab.stationAb && casting.crew === undefined) {
@@ -1559,7 +1578,7 @@
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
     : casting.renew ? { type: "renew", id: casting.card.id, target }
     : casting.channel ? { type: "channel", id: casting.card.id, target }
-    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined }
+    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
@@ -1594,7 +1613,9 @@
     return true;
   }
   function donePhase() {
-    casting.results[casting.k++] = [...casting.picks];
+    // ("up to one target" with none chosen: no target at all)
+    const ph = casting.phases[casting.k];
+    casting.results[casting.k++] = ph && ph.count.max === 1 ? casting.picks[0] : [...casting.picks];
     document.querySelectorAll(".picked").forEach((c) => c.classList.remove("picked"));
     $("done-targets").hidden = true;
     markChoices([]);
@@ -1603,8 +1624,9 @@
 
   function updateDone(ph) {
     const btn = $("done-targets");
-    btn.hidden = !(ph && ph.count.max > 1 && casting.picks.length >= ph.count.min);
-    btn.textContent = `Done (${casting.picks.length})`;
+    const none = ph && ph.count.max === 1 && ph.count.min === 0;           // "up to one target": you may choose none
+    btn.hidden = !(ph && ((ph.count.max > 1 && casting.picks.length >= ph.count.min) || none));
+    btn.textContent = none ? "No target" : `Done (${casting.picks.length})`;
   }
   $("done-targets").addEventListener("click", () => { if (casting && casting.phases) donePhase(); });
 
