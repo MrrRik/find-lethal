@@ -2178,7 +2178,7 @@
     document.querySelectorAll(".coach-target").forEach((el) => el.classList.remove("coach-target"));
     $("sheet").classList.remove("fail", "long");
     $("sheet-title").textContent = "Lethal!";
-    $("sheet-body").textContent = "You now learned the basics. Now it's time to find lethal for real.";
+    $("sheet-body").textContent = "You've learned the basics. Now it's time to find lethal for real.";
     const btn = $("sheet-btn");
     btn.textContent = "Let's play"; btn.onclick = finishTutorial;
     $("sheet-alt").hidden = true;
