@@ -999,7 +999,8 @@
   function findCard(target) {
     const el = target.closest && target.closest(".card");
     if (!el || el.closest("#zoom") || !state) return null;
-    const id = el.dataset.id;
+    // (a prepared spell's copy in your hand, "<id>#prep": its creature's card, where the spell is printed)
+    const id = el.dataset.id.replace(/#prep$/, "");
     const all = [].concat(
       state.opponent.battlefield, state.player.battlefield, state.player.hand,
       state.opponent.graveyard, state.player.graveyard, state.opponent.exile, state.player.exile,
