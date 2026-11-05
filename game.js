@@ -2126,7 +2126,7 @@
     { text: "Tap the Mountain in your hand to play it.", at: () => handCard("mountain-3"), done: () => inPlay("mountain-3") },
     { text: "Did you mess up? ↺ starts it over. Tap it.", at: () => $("reset"), done: () => tut.seen.reset },
     { text: "Play the Mountain again.", at: () => handCard("mountain-3"), done: () => inPlay("mountain-3") },
-    { text: "Press and hold a card to see it big.", at: () => myCard("furnace-gremlin"), done: () => tut.seen.zoom },
+    { text: "Press and hold a card to enlarge it.", at: () => myCard("furnace-gremlin"), done: () => tut.seen.zoom },
     { text: "Tap Shock to cast it.", at: () => handCard("shock"), done: () => (casting && casting.card && casting.card.id === "shock") || shockGone() },
     { text: "Now tap their life to aim at them.", at: () => $("opp-life"), done: shockGone },
     { text: "Spells wait on the stack. Tap Resolve.", at: resolveButton, done: shockDone },
