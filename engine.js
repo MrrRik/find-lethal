@@ -155,7 +155,7 @@
     }
     if (c.st && c.st.lost) return [];                          // it lost all its abilities (CR 613.1f)
     const list = [...(c.abilities || []), ...((c.st && c.st.abilities) || [])];   // (its own, then gained ones)
-    if (c.equip) list.push({ cost: c.equip.cost, targets: "creature", filter: { controller: "you" }, sorcery: true, effect: { attach: true },
+    if (c.equip && !c.equip.none) list.push({ cost: c.equip.cost, targets: "creature", filter: { controller: "you" }, sorcery: true, effect: { attach: true },
       text: `Equip ${c.equip.cost}` });
     // CR 702.122a: "Crew N" — tap any number of other untapped creatures you control with total power N or more:
     // this Vehicle becomes an artifact creature until end of turn (the crew is chosen as a.crew)
@@ -298,6 +298,8 @@
       // ("The second spell you cast each turn costs {1} less to cast"; "Permanent spells you cast that have an Adventure cost {1} less")
       s.player.battlefield.filter((c) => c.secondSpellLess && !(c.st && c.st.lost)).length * ((s.spellsCast || 0) === 1 ? 1 : 0) +
       (isPermanent(f) && f.layout === "adventure" && !(a.face > 0) ? s.player.battlefield.filter((c) => c.adventurePermanentsLess && !(c.st && c.st.lost)).length : 0) +
+      // ("The first instant or sorcery spell you cast each turn costs {3} less to cast")
+      (typeHas(f, /instant|sorcery/i) && !(s.instSorcCast > 0) ? s.player.battlefield.filter((c) => c.firstInstSorcLess && !(c.st && c.st.lost)).reduce((t, c) => t + c.firstInstSorcLess, 0) : 0) +
       // ("Spells you cast cost {1} less to cast for each card your opponents have drawn this turn")
       s.player.battlefield.filter((c) => c.lessPerOppDraw && !(c.st && c.st.lost)).length * ((s.drawn || {}).opponent || 0) +
       s.player.battlefield.filter((c) => c.spellsCostLess && !(c.st && c.st.lost)).reduce((t, c) => {
@@ -523,6 +525,8 @@
     if (sacrificed) emit(s, { type: "sacrificed", obj: last, side }, ev, before);
     emit(s, { type: "leaves", obj: last, side, to: zone }, ev, before);
     // CR 700.4: "dies" means put into a graveyard from the battlefield (a token dies too, then ceases to exist)
+    if (zone === "graveyard" && isCreature(card)) s.creatureDied = true;
+    if (zone === "graveyard" && isArtifact(card)) s.artifactsDied = (s.artifactsDied || 0) + 1;
     if (zone === "graveyard" && isCreature(card)) emit(s, { type: "dies", obj: last, side, equipped: isEquipped(s, card) }, ev, before);
     // CR 610.3: cards exiled "until this leaves the battlefield" return right away (a one-shot effect, not a trigger)
     ["player", "opponent"].forEach((sd) => s[sd].exile.filter((x) => x.exiledUntil === card.id).forEach((x) => returnExiledCard(s, x, sd, ev)));
@@ -895,7 +899,7 @@
   // { filter } over your permanents) or "the number of creature cards in all graveyards" ({ graveyardCreatures })
   function cdaPT(s, c) {
     const side = s.opponent.battlefield.includes(c) ? "opponent" : c.owner === "opponent" && !s.player.battlefield.includes(c) ? "opponent" : "player";
-    const n = c.ptCount.graveyardCreatures ? [...s.player.graveyard, ...s.opponent.graveyard].filter((x) => isCreature(faceOf(x, {}))).length
+    const n = c.ptCount.graveyardInstSorc ? c.ptCount.graveyardInstSorc * s[side].graveyard.filter((x) => typeHas(faceOf(x, {}), /instant|sorcery/i)).length : c.ptCount.graveyardCreatures ? [...s.player.graveyard, ...s.opponent.graveyard].filter((x) => isCreature(faceOf(x, {}))).length
       : s[side].battlefield.filter((x) => objectIs(x, c.ptCount.filter || {})).length;
     return [n, n];
   }
@@ -994,6 +998,7 @@
     const side = s[who === "opp" ? "opponent" : "player"];
     // (gaining life counts even when your life total doesn't matter: infusion, "whenever you gain life")
     if (n > 0 && who === "you") { s.gainedLife = true; s.lifeGainedTotal = (s.lifeGainedTotal || 0) + n; emit(s, { type: "gainLife", side: "player" }, ev); }
+    if (n < 0 && who === "opp") s.oppLostLife = true;
     if (n < 0 && who === "opp") n *= 2 ** s.player.battlefield.filter((c) => c.doublesOppLifeLoss && !(c.st && c.st.lost)).length;
     if (!n || side.life == null) return;
     side.life += n;
@@ -1335,6 +1340,9 @@
     if (f.equipped && !e.equipped) return false;                                             // "an equipped creature you control"
     if (f.basicLand && !/\bbasic\b/i.test(e.obj.type || "")) return false;
     if (f.drawNumber && e.count !== f.drawNumber) return false;
+    if (f.lastToughnessBelow1 && !((e.obj.lastToughness ?? toughness(e.obj)) < 1)) return false;   // "if its toughness was less than 1"
+    if (f.minCount && !(e.count >= f.minCount)) return false;                               // "attacks with three or more creatures"
+    if (f.hasCounterKind && !((e.obj.counters || {})[f.hasCounterKind] > 0)) return false;   // "with an impostor counter on it"
     if (f.attackerType && !(e.attackers || []).some((c) => hasType(c, f.attackerType))) return false;
     if (f.attackerNonType && !(e.attackers || []).some((c) => !hasType(c, f.attackerNonType))) return false;   // "one or more non-Gnome creatures"   // "attack with one or more Faeries"                              // "their second card each turn"
     if (f.exactlyColors != null && colorsOf(e.obj).length !== f.exactlyColors) return false; // "a spell that's exactly two colors"
@@ -1414,6 +1422,11 @@
     if (cond.notToken && !(self && !self.token)) return false;
     if (cond.redNoncombat != null && !((s.redNoncombat || 0) >= cond.redNoncombat)) return false;            // "red sources you controlled dealt 4 or more noncombat damage this turn"
     if (cond.attackedWith != null && !((s.attackedIds || []).length >= cond.attackedWith)) return false;   // "if you attacked with three or more creatures this turn"
+    if (cond.instSorcCast != null && !((s.instSorcCast || 0) >= cond.instSorcCast)) return false;   // "four or more instant and sorcery spells this turn"
+    if (cond.drawnMin != null && !(((s.drawn || {})[side] || 0) >= cond.drawnMin)) return false;
+    if (cond.creatureDied && !s.creatureDied) return false;                    // "if a creature died this turn"
+    if (cond.oppLostLife && !s.oppLostLife) return false;
+    if (cond.selfAttacking && !(self && s.combat && s.combat.attackers.includes(self.id))) return false;   // "if Tolsimir attacked this combat"
     if (cond.anyHandMax1 && !(s.player.hand.length <= 1 || (s.opponent.handCount || 0) <= 1)) return false;   // "if a player has one or fewer cards in hand"
     if (cond.permanentsMin != null && !(s[side].battlefield.length >= cond.permanentsMin)) return false;                     // "if it isn't a token"
     if (cond.lifeGainedMin != null && !(side === "player" && (s.lifeGainedTotal || 0) >= cond.lifeGainedMin)) return false;   // "if you gained 5 or more life this turn"
@@ -1448,7 +1461,7 @@
     (!f.anyOfKinds || isCreature(c) || isLand(c) || typeHas(c, /enchantment/i)) &&            // "a creature, enchantment, or land card"
     (!f.creatureOrBasicLand || isCreature(c) || (isLand(c) && /\bbasic\b/i.test(c.type || ""))) &&
     (!f.adventureCard || c.layout === "adventure") && (!f.notName || c.name !== f.notName) &&
-    (!f.artifactOrEnchantmentCard || isArtifact(c) || (typeHas(c, /enchantment/i) && !c.aura));   // "artifact or non-Aura enchantment card"
+    (!f.artifactOrEnchantmentCard || isArtifact(c) || (typeHas(c, /enchantment/i) && !c.aura)) && (!f.suspected || !!c.suspected) && (!f.planeswalker || isPlaneswalker(c));   // "artifact or non-Aura enchantment card"
 
   // The one place game events go: logged for the UI, and checked against every triggered ability that can
   // function (CR 603.2). Each matching ability triggers once per event (CR 603.2c) and waits in s.triggered
@@ -1460,6 +1473,7 @@
     if (e.type === "cast" && e.obj) {
       e.mv = manaValue(withX(e.obj.printedCost != null ? e.obj.printedCost : e.obj.cost, e.x));
       if (e.side === "player" && colorsOf(e.obj).length > 1) e.multiNumber = s.multiCast = (s.multiCast || 0) + 1;
+      if (e.side === "player" && typeHas(e.obj, /instant|sorcery/i)) s.instSorcCast = (s.instSorcCast || 0) + 1;
     }
     if (e.type === "enters") refresh(s);                       // (its power as it is on the battlefield, for "power 2 or less")
     // Elesh Norn, Mother of Machines / Drivnod, Carnage Dominus: "If a permanent entering (a creature dying) causes a
@@ -1471,7 +1485,8 @@
     for (const { card, side, zone } of triggerSources(s, lookBack)) {
       const onField = (zone || "battlefield") === "battlefield";
       if (e.type === "enters" && onField && live(side === "player" ? "opponent" : "player", "enterTriggersTwice")) continue;
-      const times = 1 + (doubling && onField ? live(side, doubling) : 0);
+      if (e.type === "enters" && e.obj && (isArtifact(e.obj) || isCreature(e.obj)) && battlefieldNow(s).some(({ card: x }) => x.thrull && !(x.st && x.st.lost))) continue;   // (Doorkeeper Thrull)
+      const times = 1 + (doubling && onField ? live(side, doubling) : 0) + (onField && isCreature(card) && power(card) <= 2 ? live(side, "delney") : 0);
       for (const t of triggersOf(card)) {
         // CR 113.6: an ability works only in the zones it says (the battlefield unless it says otherwise)
         if (!(t.zones || ["battlefield"]).includes(zone || "battlefield")) continue;
@@ -1550,6 +1565,7 @@
     if (f.notExactlyColors != null && colorsOf(c).length === f.notExactlyColors) return false;  // "that isn't exactly two colors"
     if (f.nonbattle && isBattle(c)) return false;
     if (f.land && !isLand(c)) return false;                                                       // "lands you control"
+    if (f.colorless && colorsOf(c).length) return false;                                        // "each colorless creature you control"
     if (f.aura && !c.aura) return false;                                                         // "the number of Auras you control"
     if (f.creatureEnchantmentOrWalker && !isCreature(c) && !typeHas(c, /enchantment/i) && !isPlaneswalker(c)) return false;
     if (f.notTokenName && s[viewer].battlefield.some((x) => x.token && x.name === c.name)) return false;   // "doesn't have the same name as a token you control"
@@ -1843,6 +1859,9 @@
     const amount = (d) => (d === "srcDamage" ? (ctx.src && ctx.src.dmg) || 0 : d === "lifeGained" ? s.lifeGainedTotal || 0
       : d === "halfXUp" ? Math.ceil((me0().xPaid || 0) / 2) : d === "sacrificedCount" ? ctx.sacCount || 0
       : d === "descendedCount" ? s[ctx.side].descended || 0
+      : d === "drawnMinus1" ? Math.max(0, ((s.drawn || {})[ctx.side] || 0) - 1)
+      : d === "eventPower" ? Math.max(0, power(find(s, ctx.event && ctx.event.id) || { pt: "0/0" }))
+      : d === "distinctTokenNames" ? new Set(s[ctx.side].battlefield.filter((c) => c.token && isCreature(c)).map((c) => c.name)).size
       : d === "creaturesLeftYours" ? (ctx.side === "player" ? s.creaturesLeftYours || 0 : 0)   // ("each creature that left the battlefield under your control this turn")
       : d && typeof d === "object" && d.oneIfOppArtifact ? 1 + (s[ctx.side === "player" ? "opponent" : "player"].battlefield.some(isArtifact) ? 1 : 0)                       // ("the number of times you descended this turn")
       : d && typeof d === "object" && d.attackersOfType ? ((s.combat && s.combat.attackers) || []).map((id) => find(s, id)).filter((c) => c && hasType(c, d.attackersOfType)).length
@@ -1885,6 +1904,7 @@
     if (eff.damageSlow) ["player", "opponent"].forEach((side) => { if (!maxSpeed(s, side)) dealDamage(s, ctx.src, ctx.side, side === "player" ? "you" : "opp", eff.damageSlow, ev); });
     if (eff.controllerLoses && tgt) changeLife(s, sideOf(s, tgt) === "player" ? "you" : "opp", -eff.controllerLoses, ev);   // before it leaves
     if (eff.controllerMaps && tgt) ctx.mapsFor = sideOf(s, tgt);
+    if (eff.ifYours && tgt) ctx.wasYours = sideOf(s, tgt) === ctx.side;       // ("If you controlled that permanent, …")
     if (eff.destroy && tgt && !indestructible(tgt)) leave(s, tgt, "graveyard", ev);
     if (eff.exile && tgt) {
       const owner = tgt.owner || sideOf(s, tgt), card = tgt.token ? null : tgt;
@@ -2363,7 +2383,8 @@
       if (eff.search.graveyardToo) known.push(...z.graveyard.filter((c) => objectIs(faceOf(c, {}), eff.search.filter || {})));
       const pick = known.length ? choose(s, "Search: which card?", [...known.map((c) => `Find ${c.name}`), "Find nothing"], ctx.side, [...known.map((c) => c.id), null]) : 0;
       const found = known[pick];
-      if (found) { z.library = z.library.filter((c) => c !== found); z.libraryBottom = z.libraryBottom.filter((c) => c !== found); z.graveyard = z.graveyard.filter((c) => c !== found); z.hand.push(found); }
+      if (found) { z.library = z.library.filter((c) => c !== found); z.libraryBottom = z.libraryBottom.filter((c) => c !== found); z.graveyard = z.graveyard.filter((c) => c !== found);
+        if (eff.search.landToBattlefield && isLand(faceOf(found, {}))) { found.tapped = true; enter(s, asFace(found, 0), { side: ctx.side }, ev); } else z.hand.push(found); }
       z.libraryCount = (z.libraryCount || 0) + z.library.length + z.libraryBottom.length;
       z.library = []; z.libraryBottom = [];
       ev.push({ type: "search", side: ctx.side, id: found && found.id });
@@ -2598,6 +2619,145 @@
     if (eff.exilePlayerGraveyard && (to === "opp" || to === "you")) { const z = s[to === "opp" ? "opponent" : "player"]; z.exile.push(...z.graveyard); z.graveyard = []; }
     // Dire Blunderbuss: "this creature deals damage equal to its power to target creature" (the creature it's attached to)
     if (eff.damageFromEquipped && tgt) { const host = ctx.src && find(s, ctx.src.attachedTo); if (host) dealDamage(s, host, sideOf(s, host), tgt.id, Math.max(power(host), 0), ev); }
+    // ---- Murders at Karlov Manor ----
+    if (eff.ifYours && ctx.wasYours) applyEffect(s, eff.ifYours, undefined, ctx, ev);
+    // Illicit Masquerade: "exile it" (the creature that just died, from its owner's graveyard)
+    if (eff.exileDead) ["player", "opponent"].forEach((sd) => { const c = s[sd].graveyard.find((x) => x.id === (ctx.event && ctx.event.id)); if (c) { s[sd].graveyard = s[sd].graveyard.filter((x) => x !== c); s[sd].exile.push(c); } });
+    // "if its power is greater than this creature's power or its toughness is greater than this creature's toughness, …"
+    if (eff.ifEventBigger) { const o = find(s, ctx.event && ctx.event.id), me = find(s, ctx.selfId); if (o && me && (power(o) > power(me) || toughness(o) > toughness(me))) applyEffect(s, eff.ifEventBigger, undefined, ctx, ev); }
+    // "Creature cards in your graveyard gain 'You may cast this card from your graveyard' until end of turn"
+    if (eff.castCreaturesFromGraveyard && ctx.side === "player") s.creaturesFromGraveyard = true;
+    // No Witnesses: "Each player who controls the most creatures investigates. Then destroy all creatures."
+    if (eff.mostCreaturesInvestigate) {
+      const n = (sd) => s[sd].battlefield.filter(isCreature).length, most = Math.max(n("player"), n("opponent"));
+      ["player", "opponent"].forEach((sd) => { if (n(sd) === most) createToken(s, CLUE, sd, ev); });
+    }
+    // Unyielding Gatekeeper: "exile another target nonland permanent. If you controlled it, return it to the battlefield
+    // tapped. Otherwise, its controller creates a 2/2 white and blue Detective creature token."
+    if (eff.gatekeeper && tgt) {
+      const mine = sideOf(s, tgt) === ctx.side, theirs = sideOf(s, tgt), card = tgt.token ? null : tgt, owner = tgt.owner || theirs;
+      leave(s, tgt, "exile", ev);
+      const ex = card && s[owner].exile.find((x) => x.id === card.id);
+      if (mine && ex) { s[owner].exile = s[owner].exile.filter((x) => x !== ex); ex.tapped = true; enter(s, ex, { side: owner }, ev); }
+      if (!mine) createToken(s, { name: "Detective", type: "Token Creature — Detective", pt: "2/2", colors: ["W", "U"] }, theirs, ev);
+    }
+    // CR 701.58a: cloak — put a card onto the battlefield face down as a 2/2 creature with ward {2} (from the top of your
+    // library, or a chosen card from your hand); it can be turned face up for its mana cost if it's a creature card
+    if (eff.cloak) {
+      const z = s[ctx.side];
+      for (let i = 0; i < (eff.cloak.n || 1); i++) {
+        let card;
+        if (eff.cloak.fromHand) {
+          const hand = z.hand.filter((c) => !c.unknown);
+          if (!hand.length) break;
+          card = hand[choose(s, "Cloak which card?", hand.map((c) => c.name), ctx.side, hand.map((c) => c.id))];
+          z.hand = z.hand.filter((c) => c !== card);
+        } else {
+          card = z.library.shift() || (!(z.libraryCount > 0) ? z.libraryBottom.shift() : null);
+          if (!card && z.libraryCount > 0) { z.libraryCount--; card = { id: `unknown-${s.nextId++}`, name: "Unknown card", type: "Card", unknown: true }; }
+          if (!card) break;
+        }
+        const perm = faceDownOf({ ...card, owner: ctx.side }, { manifest: true });
+        perm.kw = ["ward 2"];
+        perm.sick = true;
+        ev.push({ type: "cloaked", id: perm.id });
+        enter(s, perm, { side: ctx.side }, ev);
+        if (eff.cloak.attachSelf) { const me = find(s, ctx.selfId); if (me && find(s, perm.id)) { me.attachedTo = perm.id; me.ts = stamp(s); changed(s); } }
+      }
+    }
+    // Steamcore Scholar: "Then discard two cards unless you discard an instant or sorcery card or a creature card with flying."
+    if (eff.steamcore && ctx.side === "player") {
+      const z = s.player, pick = () => z.hand[choose(s, "Discard which card?", z.hand.map((c) => c.name), "player", z.hand.map((c) => c.id))];
+      if (z.hand.length) {
+        const first = pick();
+        const f0 = faceOf(first, {});
+        discardCard(s, first, ev);
+        if (!(typeHas(f0, /instant|sorcery/i) || (isCreature(f0) && (f0.kw || []).includes("flying"))) && z.hand.length) discardCard(s, pick(), ev);
+      }
+    }
+    // "Exile a card from an opponent's graveyard. Then search its owner's graveyard, hand, and library for any number of
+    // cards with that name and exile them." (the known ones: in that graveyard)
+    if (eff.exileNamedFromOppGraveyard) {
+      const z = s[ctx.side === "player" ? "opponent" : "player"];
+      if (z.graveyard.length) {
+        const name = z.graveyard[choose(s, "Exile which card from the opponent's graveyard?", z.graveyard.map((c) => c.name), ctx.side, z.graveyard.map((c) => c.id))].name;
+        const gone = z.graveyard.filter((c) => c.name === name);
+        z.graveyard = z.graveyard.filter((c) => c.name !== name);
+        z.exile.push(...gone);
+      }
+    }
+    // "collect evidence X" by choice (you may; X is what you chose: total mana value of the exiled cards), then …
+    // (mayEvidence: { min, then } — "you may collect evidence 4. If you do, …"; amounts "evidenceX" use the total)
+    if (eff.mayEvidence) {
+      const z = s[ctx.side], min = eff.mayEvidence.min || 0;
+      const opts = evidenceSets(z.graveyard, min);
+      const k = opts.length ? choose(s, `Collect evidence${min ? " " + min : ""}?`, [...opts.map((l) => `Exile ${l.map((c) => c.name).join(", ")} (${l.reduce((t, c) => t + manaValue(faceOf(c, {}).cost), 0)})`), "Don't"], ctx.side) : 0;
+      if (k < opts.length) {
+        const l = opts[k], x = l.reduce((t, c) => t + manaValue(faceOf(c, {}).cost), 0);
+        z.graveyard = z.graveyard.filter((c) => !l.includes(c)); z.exile.push(...l);
+        emit(s, { type: "collectsEvidence", side: ctx.side }, ev);
+        applyEffect(s, JSON.parse(JSON.stringify(eff.mayEvidence.then).replace(/"evidenceX"/g, String(x))), target, ctx, ev);
+      }
+    }
+    // "it gains your choice of vigilance, lifelink, or hexproof until end of turn"
+    if (eff.chooseGrant && tgt) grant(tgt, [eff.chooseGrant[choose(s, `${tgt.name} gains which?`, eff.chooseGrant, ctx.side, tgt.id)]], s);
+    // Agrus Kos: "If it's suspected, exile it. Otherwise, suspect it."
+    if (eff.suspectOrExile && tgt) { if (tgt.suspected) leave(s, tgt, "exile", ev); else { tgt.suspected = true; changed(s); ev.push({ type: "suspected", id: tgt.id }); } }
+    // Ill-Timed Explosion: "Then you may discard two cards. When you do, … X damage to each creature, where X is the greatest
+    // mana value among cards discarded this way."
+    if (eff.mayDiscardTwoBlast && ctx.side === "player" && s.player.hand.length >= 2 && choose(s, "Discard two cards?", ["Discard two", "Don't"], "player") === 0) {
+      let x = 0;
+      for (let i = 0; i < 2; i++) { const c = s.player.hand[choose(s, "Discard which card?", s.player.hand.map((h) => h.name), "player", s.player.hand.map((h) => h.id))]; x = Math.max(x, c.unknown ? 0 : manaValue(faceOf(c, {}).cost)); discardCard(s, c, ev); }
+      applyGlobal(s, { damageAll: { n: x, creatures: "all" } }, ctx, ev, null);
+    }
+    // Judith: "That spell gains deathtouch and lifelink" (the spell that triggered this, on the stack)
+    if (eff.spellGains) { const item = s.stack.find((x) => x.kind === "spell" && x.id === (ctx.event && ctx.event.id)); if (item) item.gain = [...(item.gain || []), ...eff.spellGains]; }
+    // Rakdos, Patron of Chaos: "target opponent may sacrifice two nonland, nontoken permanents of their choice. If they
+    // don't, you draw two cards." (the opponent's choice: whichever is worse for you)
+    if (eff.rakdos) {
+      const theirs = s.opponent.battlefield.filter((c) => !isLand(c) && !c.token);
+      if (theirs.length >= 2 && choose(s, "Sacrifice two nonland, nontoken permanents?", ["Sacrifice two", "Let them draw"], "opponent") === 0) {
+        for (let i = 0; i < 2; i++) { const l = s.opponent.battlefield.filter((c) => !isLand(c) && !c.token); leave(s, l[choose(s, "Sacrifice which?", l.map((c) => c.name), "opponent", l.map((c) => c.id))], "graveyard", ev, { sacrificed: true }); }
+      } else draw(s, ctx.side, 2, ev);
+    }
+    // Tolsimir: "target creature an opponent controls blocks that Wolf this combat if able"
+    if (eff.mustBlockEvent && tgt && ctx.event) s.mustBlock = { ...(s.mustBlock || {}), [tgt.id]: ctx.event.id };
+    // Worldsoul's Rage: "Put up to X land cards from your hand and/or graveyard onto the battlefield tapped."
+    if (eff.putLandsX && ctx.side === "player") {
+      for (let i = 0; i < (ctx.x || 0); i++) {
+        const opts = [...s.player.hand.filter((c) => !c.unknown && isLand(faceOf(c, {}))).map((c) => [c, "hand"]), ...s.player.graveyard.filter((c) => isLand(faceOf(c, {}))).map((c) => [c, "graveyard"])];
+        if (!opts.length) break;
+        const k = choose(s, `Put a land onto the battlefield tapped (${i + 1} of up to ${ctx.x})?`, [...opts.map(([c, z]) => `${c.name} (${z})`), "Stop"], "player", [...opts.map(([c]) => c.id), null]);
+        if (k >= opts.length) break;
+        const [c, z] = opts[k];
+        s.player[z] = s.player[z].filter((x) => x !== c);
+        c.tapped = true;
+        enter(s, asFace(c, 0), { side: "player" }, ev);
+      }
+    }
+    // Lamplight Phoenix: "you may exile it and collect evidence 4. If you do, return this card to the battlefield tapped."
+    if (eff.phoenixEvidence) {
+      const z = s[ctx.side], me = z.graveyard.find((c) => c.id === ctx.selfId);
+      const opts = me ? evidenceSets(z.graveyard.filter((c) => c !== me), eff.phoenixEvidence) : [];
+      const k = opts.length ? choose(s, `Exile it and collect evidence ${eff.phoenixEvidence}?`, [...opts.map((l) => `Exile ${l.map((c) => c.name).join(", ")}`), "Don't"], ctx.side) : 0;
+      if (k < opts.length) {
+        z.graveyard = z.graveyard.filter((c) => c !== me && !opts[k].includes(c)); z.exile.push(...opts[k]);
+        me.tapped = true; me.sick = true;
+        enter(s, me, { side: ctx.side }, ev);
+      }
+    }
+    // Incinerator of the Guilty: "you may collect evidence X. When you do, this creature deals X damage to each creature
+    // and planeswalker that player controls."
+    if (eff.incinerate) {
+      const z = s[ctx.side], all = evidenceSets(z.graveyard, 1);
+      const k = all.length ? choose(s, "Collect evidence X?", [...all.map((l) => `Exile ${l.map((c) => c.name).join(", ")} (X=${l.reduce((t, c) => t + manaValue(faceOf(c, {}).cost), 0)})`), "Don't"], ctx.side) : 0;
+      if (k < all.length) {
+        const x = all[k].reduce((t, c) => t + manaValue(faceOf(c, {}).cost), 0);
+        z.graveyard = z.graveyard.filter((c) => !all[k].includes(c)); z.exile.push(...all[k]);
+        const src = find(s, ctx.selfId) || ctx.src;
+        s[ctx.side === "player" ? "opponent" : "player"].battlefield.filter((c) => isCreature(c) || isPlaneswalker(c)).forEach((c) => dealDamage(s, src, ctx.side, c.id, x, ev));
+      }
+    }
     // Mosswood Dreadknight: "When this creature dies, you may cast it from your graveyard as an Adventure until the end of your next turn"
     if (eff.graveAdventure) { const c = s[ctx.side].graveyard.find((x) => x.id === ctx.selfId); if (c) c.graveAdventure = true; }
     // Virtue of Courage: "you may exile that many cards from the top of your library. You may play those cards this turn."
@@ -2747,6 +2907,12 @@
         applyEffect(s, eff.mayExileGraveyard.then, target, ctx, ev);
       }
     }
+  }
+  // The ways to collect evidence N from these graveyard cards: sets with total mana value N or more where every card is
+  // needed (any total for N = 1: each nonempty set where every card is needed is a different X)
+  function evidenceSets(cards, n) {
+    const mv = (c) => manaValue(faceOf(c, {}).cost);
+    return subsets(cards.filter((c) => mv(c) > 0)).filter((l) => { const t = l.reduce((a, c) => a + mv(c), 0); return l.length && t >= n && (n <= 1 || l.every((c) => t - mv(c) < n)); });
   }
   function returnExiledCard(s, x, side, ev) {
     s[side].exile = s[side].exile.filter((c) => c !== x);
@@ -3091,6 +3257,12 @@
       const t = id !== "opp" && id !== "you" ? find(s, id) : null;
       const n = t && sideOf(s, t) === "opponent" ? wardOf(t) : 0;
       const life = t && sideOf(s, t) === "opponent" ? wardLifeOf(t) : 0;   // ("Ward—Pay 2 life": "ward 0 life 2")
+      // ("Ward—Sacrifice a creature.": the keyword "ward sacrifice": you sacrifice one of your creatures, if you have one)
+      if (t && sideOf(s, t) === "opponent" && has(t, "ward sacrifice")) {
+        const mine = s.player.battlefield.filter(isCreature);
+        if (!mine.length) { ev.push({ type: "countered", by: "ward", id: t.id }); return false; }
+        leave(s, mine[choose(s, "Ward: sacrifice a creature", mine.map((c) => c.name), "player", mine.map((c) => c.id))], "graveyard", ev, { sacrificed: true });
+      }
       if (!n && !life) continue;
       if (s.player.battlefield.some((c) => c.uncounterableSpells && !(c.st && c.st.lost)) && spellWard) continue;   // (Chimil)
       const pay = n ? bestPayment(s, `{${n}}`) : [];
@@ -3252,6 +3424,7 @@
   function canBlock(s, b, a) {
     if (!isCreature(b) || b.tapped || has(b, "can't block")) return false;
     if (has(b, "blocks only flyers") && !has(a, "flying")) return false;          // "can block only creatures with flying"
+    if (power(a) <= 2 && power(b) >= 3 && s[sideOf(s, a)].battlefield.some((c) => c.delney && !(c.st && c.st.lost))) return false;   // (Delney)
     if (has(a, "unblockable")) return false;
     if (has(a, "flying") && !has(b, "flying") && !has(b, "reach")) return false;
     if (has(a, "shadow") !== has(b, "shadow")) return false;
@@ -3278,6 +3451,11 @@
         const blocks = {};
         attackers.forEach((a, k) => { blocks[a.id] = blockers.filter((_, j) => assign[j] === k).map((b) => b.id); });
         if (attackers.some((a) => has(a, "menace") && blocks[a.id].length === 1)) return;
+        // ("target creature … blocks that Wolf this combat if able": s.mustBlock — blocker → attacker)
+        for (const [bid, aid] of Object.entries(s.mustBlock || {})) {
+          const b = blockers.find((x) => x.id === bid), a = attackers.find((x) => x.id === aid);
+          if (b && a && canBlock(s, b, a) && !blocks[aid].includes(bid)) return;
+        }
         out.push(blocks);
         return;
       }
@@ -3411,6 +3589,8 @@
       const agatha = isCreature(card) && sideOf(s, card) === "player" ? live("creatureAbilitiesLess").reduce((t, c) => t + Math.max(power(c), 0), 0) : 0;
       let generic = Math.max(0, p.generic - less);
       if (agatha) generic = Math.max(p.pips.length ? 0 : Math.min(1, generic), generic - agatha);
+      const gadget = isArtifact(card) && sideOf(s, card) === "player" ? live("artifactAbilitiesLess").length : 0;
+      if (gadget) generic = Math.max(p.pips.length ? 0 : Math.min(1, generic), generic - gadget);
       if (generic !== p.generic) cost = (generic ? `{${generic}}` : "") + p.pips.map((y) => `{${y}}`).join("");
     }
     // CR 702.193a-b: power-up — reduced by the permanent's mana cost if it entered this turn (a colored pip reduces the same
@@ -3507,7 +3687,7 @@
     if (e) return { card: e, zone: "exile" };
     // (or harmonize, CR 702.180a)
     // (or mayhem, if you discarded it this turn, CR 702.187b)
-    const g = s.player.graveyard.find((c) => c.id === id && (c.flashback || c.harmonize || c.graveAdventure || (c.mayhem && c.discardedThisTurn)));
+    const g = s.player.graveyard.find((c) => c.id === id && (c.flashback || c.harmonize || c.graveAdventure || (c.mayhem && c.discardedThisTurn) || (s.creaturesFromGraveyard && isCreature(faceOf(c, {})))));
     return g ? { card: g, zone: "graveyard" } : null;
   }
   // The spell as it's cast from where it is: from the graveyard by flashback, its flashback cost is paid rather than
@@ -3544,7 +3724,8 @@
     if (a.webSling != null && from.zone === "hand" && from.card.webSlinging) return { ...f, cost: from.card.webSlinging, webSlung: true, printedCost: f.cost };
     if (from.zone !== "graveyard") return f;
     // harmonize (CR 702.180a): its harmonize cost instead of its mana cost; a creature may be tapped to reduce it (a.tapFor)
-    if (from.card.graveAdventure && !from.card.flashback) return f;    // (Mosswood Dreadknight: its Adventure, from your graveyard)
+    if (from.card.graveAdventure && !from.card.flashback) return f;
+    if (!from.card.flashback && !from.card.harmonize && !from.card.mayhem) return f;   // (permission to cast it from there: its mana cost)    // (Mosswood Dreadknight: its Adventure, from your graveyard)
     if (!from.card.flashback && from.card.harmonize) return { ...f, cost: from.card.harmonize, harmonizing: true, printedCost: f.cost };
     // mayhem (CR 702.187b): its mayhem cost, from your graveyard, if you discarded it this turn
     if (!from.card.flashback) return { ...f, cost: from.card.mayhem, mayhemCast: true, printedCost: f.cost };
@@ -4311,7 +4492,7 @@
     const range = (n) => Array.from({ length: Math.max(n, 0) }, (_, i) => i + 1);
     const sources = [...s.player.hand.map((card) => ({ card, zone: "hand" })),
       ...s.player.exile.filter((c) => castable(s, c.id)).map((card) => ({ card, zone: "exile" })),
-      ...s.player.graveyard.filter((c) => c.flashback || c.harmonize || c.graveAdventure || (c.mayhem && c.discardedThisTurn)).map((card) => ({ card, zone: "graveyard" })),
+      ...s.player.graveyard.filter((c) => c.flashback || c.harmonize || c.graveAdventure || (c.mayhem && c.discardedThisTurn) || (s.creaturesFromGraveyard && isCreature(faceOf(c, {})))).map((card) => ({ card, zone: "graveyard" })),
       // a prepared permanent's prepare spell (a copy you may cast, CR 722.3c)
       ...s.player.battlefield.filter((c) => c.prepared && c.prepare).map((p) => ({ card: preparedSpell(p), zone: "prepared" }))];
     // abilities of cards in your hand that discard them ("{1}{R}, Discard this card: …")
