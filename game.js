@@ -2172,12 +2172,12 @@
     setTimeout(tutTick, 250);
   }
   function tutorialWon() {
-    confetti();
     tut = null;
     // (the last line — the game moving on by itself — stays up a moment before the win screen)
     setTimeout(tutorialSheet, 1800);
   }
   function tutorialSheet() {
+    confetti();                                              // (together with "Lethal!")
     $("coach").hidden = true;
     document.querySelectorAll(".coach-target").forEach((el) => el.classList.remove("coach-target"));
     $("sheet").classList.remove("fail", "long");
