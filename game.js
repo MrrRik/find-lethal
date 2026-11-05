@@ -1245,6 +1245,12 @@
         return pickCards({ ids: E.sacCostOptions(state, card, ab), min: n, max: n, confirm: "Sacrifice",
           prompt: `Choose ${n} to sacrifice for ${card.name}'s ability.`, then: (l) => again("sacs")([].concat(l)) });
       }
+      // "Tap three untapped artifacts and/or creatures you control: …": which ones
+      if (ab.tapCost && casting.taps === undefined) {
+        const n = ab.tapCost.n;
+        return pickCards({ ids: E.tapCostOptions(state, card, ab), min: n, max: n, confirm: "Tap",
+          prompt: `Choose ${n} untapped artifacts and/or creatures to tap for ${card.name}'s ability.`, then: (l) => again("taps")([].concat(l)) });
+      }
       // "Exile three creature cards from your graveyard: …": one card at a time (the graveyard isn't on the board)
       if (ab.exileCost && casting.exiles === undefined) {
         const so = casting.exilePicks = casting.exilePicks || [];
@@ -1584,7 +1590,7 @@
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
     : casting.renew ? { type: "renew", id: casting.card.id, target }
     : casting.channel ? { type: "channel", id: casting.card.id, target }
-    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined }
+    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined, taps: casting.taps ?? undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
