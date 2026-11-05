@@ -1062,12 +1062,13 @@
       if (!combat && to === "opp") s.oppNoncombat = true;       // ("an opponent was dealt noncombat damage this turn")
       if (!combat && to === (srcSide === "player" ? "opp" : "you")) emit(s, { type: "noncombatToOpp", obj: src, side: srcSide, count: n }, ev);
       if (has(src, "infect")) {
+        n *= counterMult(s, srcSide);
         side.poison = (side.poison || 0) + n;
         ev.push({ type: "poison", who: to, amount: n });
       } else changeLife(s, to, -n, ev);
       // CR 702.164c: combat damage to a player from a creature with toxic also gives that many poison counters (its
       // total toxic value, CR 702.164b), in addition to the damage
-      const toxic = combat ? toxicOf(src) : 0;
+      const toxic = combat ? toxicOf(src) * counterMult(s, srcSide) : 0;
       if (toxic) { side.poison = (side.poison || 0) + toxic; ev.push({ type: "poison", who: to, amount: toxic }); }
       // "whenever this creature deals combat damage to a player" (CR 510.3a: triggers after the damage is dealt)
       if (combat) emit(s, { type: "combatDamage", obj: src, side: srcSide, to, count: n }, ev);
@@ -1922,8 +1923,9 @@
     // "each opponent gets a poison counter" (CR 122.1f)
     if (eff.poison && isPlayer) {
       const z = s[to === "opp" ? "opponent" : "player"];
-      z.poison = (z.poison || 0) + eff.poison;
-      ev.push({ type: "poison", who: to, amount: eff.poison });
+      const pn = eff.poison * counterMult(s, ctx.side);
+      z.poison = (z.poison || 0) + pn;
+      ev.push({ type: "poison", who: to, amount: pn });
     }
     // discarding: the opponent's hand is cards you don't know; yours isn't targeted by these effects
     if (eff.discard && to === "opp") {
@@ -3155,8 +3157,9 @@
       players.forEach(([who, z]) => {
         const label = who === "opp" ? "the opponent" : "you";
         if (choose(s, `Proliferate: ${label} (${z.poison} poison)?`, ["Add one", "Skip"], ctx.side) !== 0) return;
-        z.poison += 1;
-        ev.push({ type: "poison", who, amount: 1 });
+        const pn = counterMult(s, ctx.side);
+        z.poison += pn;
+        ev.push({ type: "poison", who, amount: pn });
       });
       perms.forEach((c) => {
         const kinds = Object.keys(c.counters).filter((k) => c.counters[k] > 0);
@@ -3344,6 +3347,8 @@
   // would be put on an artifact or creature you control, that many plus one … are put on it instead" (each one adds
   // one). "Whenever one or more +1/+1 counters are put on this creature" triggers on countersPut. side: whose it is (a
   // permanent still entering isn't on the battlefield yet). Returns how many were put on.
+  // Innkeeper's Talent level 3 doubles counters put on a player too (poison counters): by whom they're put (putter)
+  const counterMult = (s, putter) => 2 ** s[putter].battlefield.filter((o) => o.doublesCounters && levelOf(o) >= 3 && !(o.st && o.st.lost)).length;
   const ozolithBonus = (s, side, c) => (isArtifact(c) || isCreature(c) ? s[side].battlefield.filter((o) => o.plusOneMore && !(o.st && o.st.lost)).length : 0);
   function addCounters(s, c, kind, n, ev, side) {
     if (!(n > 0) || !c) return 0;
