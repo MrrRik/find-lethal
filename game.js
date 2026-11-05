@@ -2124,7 +2124,7 @@
   const myCard = (id) => document.querySelector(`#you-lane .card[data-id="${id}"]`);
   const TUT_STEPS = [
     { text: "Tap the Mountain in your hand to play it.", at: () => handCard("mountain-3"), done: () => inPlay("mountain-3") },
-    { text: "Messed up? ↺ starts over. Tap it.", at: () => $("reset"), done: () => tut.seen.reset },
+    { text: "Did you mess up? ↺ starts it over. Tap it.", at: () => $("reset"), done: () => tut.seen.reset },
     { text: "Play the Mountain again.", at: () => handCard("mountain-3"), done: () => inPlay("mountain-3") },
     { text: "Press and hold a card to see it big.", at: () => myCard("furnace-gremlin"), done: () => tut.seen.zoom },
     { text: "Tap Shock to cast it.", at: () => handCard("shock"), done: () => (casting && casting.card && casting.card.id === "shock") || shockGone() },
