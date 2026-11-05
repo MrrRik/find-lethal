@@ -291,6 +291,8 @@
       (f.harmonizing && a.tapFor != null && find(s, a.tapFor) ? Math.max(power(find(s, a.tapFor)), 0) : 0) +
       // "Instant and sorcery spells you cast cost {1} less to cast for each oil counter on this artifact" (a permanent's
       // spellsCostLess: { instantOrSorcery, perCounter | n })
+      // ("Spells you cast cost {1} less to cast for each card your opponents have drawn this turn")
+      s.player.battlefield.filter((c) => c.lessPerOppDraw && !(c.st && c.st.lost)).length * ((s.drawn || {}).opponent || 0) +
       s.player.battlefield.filter((c) => c.spellsCostLess && !(c.st && c.st.lost)).reduce((t, c) => {
         const r = c.spellsCostLess;
         if (r.instantOrSorcery && !typeHas(f, /instant|sorcery/i)) return t;
@@ -458,9 +460,17 @@
   }
 
   const sideOf = (s, card) => (s.player.battlefield.includes(card) ? "player" : "opponent");
+  // "You may cast spells as though they had flash" (castsAsFlash, Heliod, the Warped Eclipse); "You may cast sorcery
+  // spells this turn as though they had flash" (s.sorceryFlash, Complete the Circuit)
+  const asFlash = (s, f) => s.player.battlefield.some((c) => c.castsAsFlash && !(c.st && c.st.lost)) || (!!s.sorceryFlash && typeHas(f, /sorcery/i));
+  // CR 305.2: one land a turn, plus "you may play an additional land this turn" effects and "on each of your turns" statics
+  const landsPlayed = (s) => s.landsPlayed != null ? s.landsPlayed : s.landPlayed ? 1 : 0;
+  const landsAllowed = (s) => 1 + (s.extraLands || 0) + s.player.battlefield.filter((c) => c.extraLandEachTurn && !(c.st && c.st.lost)).length;
   // your creatures that "attack each combat if able" and could attack now (untapped, no summoning sickness or haste)
   const mustAttackers = (s) => s.player.battlefield.filter((c) => isCreature(c) && has(c, "attacks each combat if able") && !c.tapped &&
     !(c.sick && !has(c, "haste")) && !has(c, "defender") && !has(c, "can't attack"));
+  // convoke: its own keyword, or "Noncreature spells you cast have convoke" (Caetus, Sea Tyrant of Segovia)
+  const spellConvoke = (s, f) => has(f, "convoke") || (!typeHas(f, /creature/i) && s.player.battlefield.some((c) => c.noncreatureConvoke && !(c.st && c.st.lost)));
   const isEquipped = (s, c) => [...s.player.battlefield, ...s.opponent.battlefield].some((e) => e.equip && e.attachedTo === c.id);
   const find = (s, id) => s.player.battlefield.find((c) => c.id === id) || s.opponent.battlefield.find((c) => c.id === id);
   const inMain = (s) => s.phase === "main1" || s.phase === "main2";
@@ -503,7 +513,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared", "enteredThisTurn", "poweredUp"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared", "enteredThisTurn", "poweredUp", "xPaid", "convokedBy"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -512,7 +522,7 @@
   // counters, damage, tapped state or effects; CR 707.9a: what an "except" adds becomes part of them
   const NOT_COPIED = ["id", "owner", "tapped", "counters", "dmg", "sick", "attachedTo", "ts", "deathtouched", "loyaltyUsed",
     "token", "chosenColor", "transformed", "faces", "layout", "onAdventure", "tk", "entersAsCopy",
-    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn", "sneaked", "prepared", "enteredThisTurn", "poweredUp",
+    "hidden", "faceDown", "suspected", "solved", "evidenced", "playable", "plotted", "plottedNow", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "discardedThisTurn", "sneaked", "prepared", "enteredThisTurn", "poweredUp", "xPaid", "convokedBy",
     "st", "lastPower", "lastToughness"];   // (designations aren't copiable: CR 701.60b, 719.3b)
   function copyValues(c, except = {}) {
     const v = {};
@@ -973,6 +983,11 @@
       const theirs = to === (srcSide === "player" ? "opp" : "you") || (to !== "opp" && to !== "you" && find(s, to) && sideOf(s, find(s, to)) !== srcSide);
       if (doublers && theirs) n *= 2 ** doublers;
     }
+    // City on Fire: "If a source you control would deal damage to a permanent or player, it deals triple that damage instead"
+    const triplers = s[srcSide].battlefield.filter((c) => c.triplesDamage && !(c.st && c.st.lost)).length;
+    if (triplers) n *= 3 ** triplers;
+    // Rankle and Torbran: "If a source would deal damage to a player or battle this turn, it deals that much damage plus 2 instead"
+    if (s.damagePlus2 && (to === "opp" || to === "you" || (find(s, to) && isBattle(find(s, to))))) n += 2 * s.damagePlus2;
     // CR 615: prevention effects ("prevent all combat damage that would be dealt this turn": Fog), unless an effect
     // says damage can't be prevented (CR 615.12)
     if (combat && s.preventCombat && !s.noPrevention) { ev.push({ type: "prevented", id: to }); return; }
@@ -991,7 +1006,7 @@
       const toxic = combat ? toxicOf(src) : 0;
       if (toxic) { side.poison = (side.poison || 0) + toxic; ev.push({ type: "poison", who: to, amount: toxic }); }
       // "whenever this creature deals combat damage to a player" (CR 510.3a: triggers after the damage is dealt)
-      if (combat) emit(s, { type: "combatDamage", obj: src, side: srcSide, to }, ev);
+      if (combat) emit(s, { type: "combatDamage", obj: src, side: srcSide, to, count: n }, ev);
     } else {
       const t = find(s, to);
       if (!t) return;
@@ -1142,7 +1157,20 @@
   const defId = (t) => { if (!DEF_IDS.has(t)) { DEF_IDS.set(t, TRIGGER_DEFS.length); TRIGGER_DEFS.push(t); } return DEF_IDS.get(t); };
   function trig(p) {
     const d = TRIGGER_DEFS[p.td];
+    // a modal triggered ability ("choose one —", CR 700.2b): its modes were chosen as it was put on the stack (p.modes);
+    // the chosen modes happen in order, and the one with a target gives the ability its target
+    if (d.modes && p.modes) {
+      const chosen = p.modes.map((i) => d.modes[i]), aimed = chosen.find((m) => m.targets);
+      return { effect: { seq: chosen.map((m) => m.effect) }, targets: aimed && aimed.targets, filter: aimed && aimed.targetFilter, count: aimed && aimed.count, if: d.if };
+    }
     return { effect: d.effect, targets: d.targets, filter: d.targetFilter, count: d.count, if: d.if };
+  }
+  // The ways to choose a modal trigger's modes: one (or chooseCount), "one or both", "any number" (none too)
+  function modeCombos(d) {
+    const all = d.modes.map((_, i) => i);
+    if (d.anyNumber) return subsets(all);
+    if (d.oneOrBoth) return subsets(all).filter((l) => l.length);
+    return combinations(all, d.chooseCount || 1);
   }
   function srcOf(s, p) {
     const zone = p.zone || "battlefield";
@@ -1263,6 +1291,10 @@
     if (f.subtypeIs && !hasType(e.obj, f.subtypeIs)) return false;                           // "Kemba or another Cat you control"
     if (f.equipped && !e.equipped) return false;                                             // "an equipped creature you control"
     if (f.basicLand && !/\bbasic\b/i.test(e.obj.type || "")) return false;
+    if (f.drawNumber && e.count !== f.drawNumber) return false;                              // "their second card each turn"
+    if (f.exactlyColors != null && colorsOf(e.obj).length !== f.exactlyColors) return false; // "a spell that's exactly two colors"
+    if (f.counterKind && e.kind !== f.counterKind) return false;                             // "+1/+1 counters are put on this creature"
+    if (f.fromHand && !e.fromHand) return false;                                             // "an instant or sorcery spell from your hand"
     if (f.targetsCreature && !e.targetsCreature) return false;   // repartee: "an instant or sorcery spell that targets a creature"
     if (t.on === "unlock" && t.door != null && e.door !== t.door) return false;   // "when you unlock this door"
     if (f.level && e.level !== f.level) return false;                     // "when this Class becomes level 3"
@@ -1349,7 +1381,15 @@
   const objectIs = (c, f) => (!f.artifact || isArtifact(c)) && (!f.creature || isCreature(c)) && (!f.land || isLand(c)) &&
     (!f.treasure || isTreasure(c)) && (!f.type || hasType(c, f.type)) &&
     (!f.hasCounter || Object.values(c.counters || {}).some((n) => n > 0)) &&   // "a creature with a counter on it"
-    (f.minPower == null || power(c) >= f.minPower);                           // ferocious: "a creature with power 4 or greater"
+    (f.minPower == null || power(c) >= f.minPower) &&                         // ferocious: "a creature with power 4 or greater"
+    // (card filters, mostly for cards in graveyards and libraries: "target enchantment card that isn't a God", "a
+    // permanent card", "nonbattle", "an instant or sorcery card", "exactly two colors", "mana value 3 or less")
+    (!f.enchantment || typeHas(c, /enchantment/i)) && (!f.nonland || !isLand(c)) && (!f.permanentCard || isPermanent(c)) &&
+    (!f.notType || !hasType(c, f.notType)) && (!f.nonbattle || !isBattle(c)) && (!f.instantOrSorcery || typeHas(c, /instant|sorcery/i)) &&
+    (f.exactlyColors == null || colorsOf(c).length === f.exactlyColors) && (f.notExactlyColors == null || colorsOf(c).length !== f.notExactlyColors) &&
+    (f.maxMV == null || manaValue(c.cost) <= f.maxMV) && (!f.artifactOrCreature || isArtifact(c) || isCreature(c)) &&
+    (!f.creatureOrLand || isCreature(c) || isLand(c)) && (!f.anyOfTypes || f.anyOfTypes.some((t) => hasType(c, t))) &&
+    (!f.name || c.name === f.name);
 
   // The one place game events go: logged for the UI, and checked against every triggered ability that can
   // function (CR 603.2). Each matching ability triggers once per event (CR 603.2c) and waits in s.triggered
@@ -1448,6 +1488,10 @@
     if (f.hasCounter && !(((c.counters || {})[f.hasCounter === true ? "+1/+1" : f.hasCounter] || 0) > 0)) return false;   // "with +1/+1 counters on them"
     if (f.enteredThisTurn && !c.enteredThisTurn) return false;                                   // "target creature that entered this turn"
     if (f.token && !c.token) return false;                                                       // "creature tokens you control"
+    if (f.notExactlyColors != null && colorsOf(c).length === f.notExactlyColors) return false;  // "that isn't exactly two colors"
+    if (f.nonbattle && isBattle(c)) return false;
+    if (f.land && !isLand(c)) return false;                                                       // "lands you control"
+    if (f.attackedThisTurn && !(s.attackedIds || []).includes(c.id)) return false;               // "each creature that attacked this turn"
     if (f.nontoken && c.token) return false;
     if (f.anyCounter && !Object.values(c.counters || {}).some((n) => n > 0)) return false;     // "a counter on target permanent"
     if (f.maxManaValue != null && manaValue(c.cost) > f.maxManaValue) return false;   // "with mana value X or less"
@@ -1492,7 +1536,8 @@
     // a card in your graveyard: "target creature or Equipment card with mana value less than Nahiri's loyalty"
     if (kind === "graveyard-card") {
       const f = filter || {}, me = find(s, src.id) || src;
-      return s[side].graveyard.filter((c) => { const g = faceOf(c, {});
+      // ("target card from a graveyard": anyGraveyard — either player's)
+      return (f.anyGraveyard ? [...s.player.graveyard, ...s.opponent.graveyard] : s[side].graveyard).filter((c) => { const g = faceOf(c, {});
         return objectIs(g, f) && (!f.creatureOrEquipment || isCreature(g) || subtypes(g).includes("Equipment")) &&
           (!f.mvBelowLoyalty || manaValue(g.cost) < loyaltyOf(me)); }).map((c) => c.id);
     }
@@ -1520,6 +1565,8 @@
       .filter((c) => matches(s, c, filter, side) && canTarget(s, src, side, c.id) && c.id !== src.id).map((c) => c.id);
     if (kind === "creature-planeswalker-battle") return [...creatures, ...walkers, ...battles];
     if (kind === "battle-or-opponent") return [...battles, side === "player" ? "opp" : "you"];
+    // "target planeswalker that player controls or battle that player protects" (the opponent's walkers; your Sieges)
+    if (kind === "planeswalker-or-battle") return [...walkers.filter((id) => s[side === "player" ? "opponent" : "player"].battlefield.some((c) => c.id === id)), ...battles];
     return [...creatures, ...walkers, ...battles, "opp", "you"];
   }
 
@@ -1565,7 +1612,7 @@
     return (keep.length && castPaymentWith(s, f, a, except, keep)) || castPaymentWith(s, f, a, except, []);
   };
   const castPaymentWith = (s, f, a, except, keep) =>
-    bestPayment(s, reducedCost(s, f, costOf(f, a), a), { except, exclude: [...(a.bargain != null ? [a.bargain] : []), ...(a.tapFor != null ? [a.tapFor] : []), ...(a.teamwork != null ? [].concat(a.teamwork) : []), ...keep], lifePips: has(f, "compleated") ? a.lifePips || 0 : undefined, convoke: has(f, "convoke") ? (a.convoke == null ? "any" : a.convoke) : undefined });
+    bestPayment(s, reducedCost(s, f, costOf(f, a), a), { except, exclude: [...(a.bargain != null ? [a.bargain] : []), ...(a.tapFor != null ? [a.tapFor] : []), ...(a.teamwork != null ? [].concat(a.teamwork) : []), ...keep], lifePips: has(f, "compleated") ? a.lifePips || 0 : undefined, convoke: spellConvoke(s, f) ? (a.convoke == null ? "any" : a.convoke) : undefined });
 
   // Every choice of targets for a spec: one target, or "up to two" (any distinct combination)
   function targetChoices(list, count) {
@@ -1601,6 +1648,13 @@
   const GLOBAL = ["damageAll", "destroyAll", "untapAll", "proliferate", "scry", "surveil"];
   function applyEffect(s, eff, target, ctx, ev) {
     if (!eff) return;
+    // "incubate 3 X times" (repeat: a number, or "selfX": the X paid for this permanent)
+    if (eff.repeat != null) {
+      const { repeat, ...once } = eff;
+      const n = repeat === "selfX" ? ((find(s, ctx.selfId) || ctx.src || {}).xPaid || 0) : repeat;
+      for (let i = 0; i < n; i++) applyEffect(s, once, target, ctx, ev);
+      return;
+    }
     // "… instead if [condition]" (Void — Plasma Bolt deals 3 damage instead): the other effect when it holds as it resolves
     // (opus: "if five or more mana was spent to cast that spell" — spentAtLeast, read from the triggering cast)
     if (eff.insteadIf) {
@@ -1657,7 +1711,14 @@
         s.player.graveyard = s.player.graveyard.filter((c) => c !== card);
         // ("It gains 'If this creature would leave the battlefield, exile it instead of putting it anywhere else.'")
         if (eff.reanimate && eff.exileIfLeaves) { card.replacements = ["graveyard", "hand", "library"].map((z) => ({ to: z, instead: "exile", self: true })); s.replaces = true; }
-        if (eff.reanimate) { card.sick = true; card.owner = "player"; ev.push({ type: "reanimated", id }); enter(s, card, { side: "player" }, ev); }
+        if (eff.reanimate) {
+          card.sick = true; card.owner = "player";
+          if (eff.addSubtype) card.type = addTypes(card.type, { subtypes: [eff.addSubtype] });   // ("It's a Phyrexian in addition …")
+          ev.push({ type: "reanimated", id }); enter(s, card, { side: "player" }, ev);
+          // ("It gains haste. Exile it at the beginning of the next end step.")
+          if (eff.hasteNow && find(s, id)) grant(find(s, id), ["haste"], s);
+          if (eff.exileAtEnd) delay(s, "exileIt", ctx.side, card.name, id, id);
+        }
         else s.player.hand.push(card);
       });
       if ([].concat(target || []).length) emit(s, { type: "leavesGraveyard", side: "player", obj: { id: [].concat(target)[0] } }, ev);
@@ -1690,7 +1751,12 @@
     const to = eff.self ? ctx.selfId : eff.to ? relativeTo(eff.to, ctx) : target;
     const isPlayer = to === "opp" || to === "you";
     const tgt = to && !isPlayer ? find(s, to) : null;
-    if (to && !isPlayer && !tgt) return;                         // its target is gone: it does nothing
+    // its target is gone: it does nothing — unless the target is a card in a graveyard ("you may pay {3}{B}. When you do,
+    // return target creature card …"): those effects are in moreEffects
+    if (to && !isPlayer && !tgt) {
+      if ([...s.player.graveyard, ...s.opponent.graveyard].some((c) => c.id === to)) moreEffects(s, eff, null, to, ctx, ev, target);
+      return;
+    }
     // damage "equal to the sacrificed creature's power", or "equal to its power": the source as it is now, or as it
     // last existed if it has left (CR 608.2h)
     const srcPower = () => { const now = ctx.selfId && find(s, ctx.selfId); return Math.max(now ? power(now) : ctx.src.lastPower ?? power(ctx.src), 0); };
@@ -1698,14 +1764,16 @@
     // ("deals that much damage": how many cards the event was about — "whenever you discard one or more cards")
     // ("X is 2 plus the number of Mounts and Vehicles you control": { plus: 2, per: { mountOrVehicle: true } })
     // (vivid: the number of colors among permanents you control)
-    const amount = (d) => (d === "sacrificed" ? ctx.sacPower : d === "power" ? srcPower() : d === "eventCount" ? (ctx.event && ctx.event.count) || 0
+    const amount = (d) => (d === "sacrificed" ? ctx.sacPower : d === "sacrificedMV" ? ctx.sacMV || 0 : d === "power" ? srcPower() : d === "eventCount" ? (ctx.event && ctx.event.count) || 0
       : d === "vivid" ? vividCount(s, ctx.side)
       : typeof d === "object" && d.per ? (d.plus || 0) + s[ctx.side].battlefield.filter((c) => matches(s, c, d.per, ctx.side)).length
       // ("2 plus the number of Lesson cards in your graveyard": { plus: 2, perGraveyard: "Lesson" })
       : typeof d === "object" && d.perGraveyard ? (d.plus || 0) + s[ctx.side].graveyard.filter((c) => subtypes(c).includes(d.perGraveyard)).length
       : typeof d === "object" ? d.plusOtherSpells + Math.max((ctx.side === "player" ? s.spellsCast || 0 : 0) - 1, 0) : d);
     // ("this creature deals …" in an ability an Equipment or Aura gives: the creature it's attached to is the source)
-    const dmgSrc = (eff.byAttached && ctx.src && ctx.src.attachedTo && find(s, ctx.src.attachedTo)) || ctx.src;
+    // ("Whenever a Dragon you control attacks, it deals 2 damage …": byEvent — the event's creature is the source)
+    const dmgSrc = (eff.byAttached && ctx.src && ctx.src.attachedTo && find(s, ctx.src.attachedTo)) ||
+      (eff.byEvent && ctx.event && find(s, ctx.event.id)) || ctx.src;
     if (eff.damage != null) dealDamage(s, dmgSrc, ctx.side, to, amount(eff.damage), ev);
     if (eff.lifeLoss && isPlayer) changeLife(s, to, -amount(eff.lifeLoss), ev);
     // "each opponent gets a poison counter" (CR 122.1f)
@@ -1763,7 +1831,8 @@
       tgt.counters = { ...(tgt.counters || {}) };
       const lore0 = tgt.counters.lore || 0;
       // (a negative number removes counters: "remove a lore counter", never below 0)
-      Object.entries(eff.counters).forEach(([type, n]) => { tgt.counters[type] = Math.max(0, (tgt.counters[type] || 0) + amount(n)); });
+      Object.entries(eff.counters).forEach(([type, n]) => { const k = amount(n);
+        if (k > 0) addCounters(s, tgt, type, k, ev); else tgt.counters = { ...tgt.counters, [type]: Math.max(0, (tgt.counters[type] || 0) + k) }; });
       // CR 714.2b: lore counters put on a Saga trigger the chapter abilities they reach
       if (tgt.chapters && (tgt.counters.lore || 0) > lore0) emit(s, { type: "lore", obj: tgt, side: sideOf(s, tgt), before: lore0, after: tgt.counters.lore }, ev);
       // (a keyword counter changes its abilities; charge counters can make a Spacecraft a creature)
@@ -1806,7 +1875,11 @@
     if (eff.tap && tgt) tap(s, tgt, ev);
     if (eff.transform && tgt) transform(s, tgt, ev);            // "transform this creature" (CR 701.27)
     // "create a token that's a copy of target creature you control, except it has haste and …" (CR 707.2, 707.9a)
-    if (eff.createCopy && tgt) createToken(s, copyValues(tgt, eff.createCopy.except), ctx.side, ev);
+    // ("It gains haste. Sacrifice it at the beginning of the next end step."; count: "five tokens that are copies")
+    if (eff.createCopy && tgt) {
+      const c0 = eff.createCopy, spec = { ...copyValues(tgt, c0.except), ...(c0.sacrificeAtEnd ? { sacrificeAtEnd: true } : {}) };
+      for (let i = 0; i < (c0.count || 1); i++) createTokens(s, spec, ctx.side, ev).forEach((t) => { if (c0.hasteNow) grant(t, ["haste"], s); });
+    }
     // "you may copy it" (the spell that triggered this): a choice, then a copy on the stack (CR 707.10)
     if (eff.copyEventSpell) {
       const item = s.stack.find((x) => x.kind === "spell" && x.id === (ctx.event && ctx.event.id));
@@ -1842,9 +1915,13 @@
       // (ptFrom: "an X/1 token, where X is the number of oil counters on this artifact" / "X is Nissa's loyalty"; count
       // "eventMV": "X tokens, where X is that spell's mana value"; hasteNow: "They gain haste until end of turn")
       const { ptFrom, hasteNow, ...spec } = eff.create;
+      // (the other attacking creatures: "X is the greatest power among other attacking creatures" / "the number of …")
+      const otherAttackers = () => ((s.combat && s.combat.attackers) || []).filter((id) => id !== ctx.selfId).map((id) => find(s, id)).filter(Boolean);
+      if (spec.count === "otherAttackers") spec.count = otherAttackers().length;
       if (ptFrom) {
         const me = find(s, ctx.selfId) || ctx.src || {};
-        const n = ptFrom.selfCounters ? (me.counters || {})[ptFrom.selfCounters] || 0 : ptFrom.loyalty ? loyaltyOf(me) : 0;
+        const n = ptFrom.selfCounters ? (me.counters || {})[ptFrom.selfCounters] || 0 : ptFrom.loyalty ? loyaltyOf(me)
+          : ptFrom.greatestOtherAttacker ? Math.max(0, ...otherAttackers().map(power)) : 0;
         spec.pt = ptFrom.toughness != null ? `${n}/${ptFrom.toughness}` : `${n}/${n}`;
       }
       const count = spec.count === "eventMV" ? (ctx.event && ctx.event.mv) || 0 : spec.count == null ? 1 : spec.count;
@@ -1892,8 +1969,7 @@
     // CR 702.165a: backup N — N +1/+1 counters on the target; if that's another creature, it also gains this
     // creature's abilities printed below backup until end of turn (eff.backup.grant)
     if (eff.backup && tgt) {
-      tgt.counters = { ...(tgt.counters || {}), "+1/+1": ((tgt.counters || {})["+1/+1"] || 0) + eff.backup.n };
-      ev.push({ type: "counters", id: tgt.id, counters: { "+1/+1": eff.backup.n } });
+      addCounters(s, tgt, "+1/+1", eff.backup.n, ev);
       if (tgt.id !== ctx.selfId && (eff.backup.grant || []).length) grant(tgt, eff.backup.grant, s);
     }
     // "Create a Monster Role token attached to target creature" (CR 111.10j-r); roleSeq orders Roles for CR 704.5z
@@ -1968,7 +2044,7 @@
     if (eff.endure && tgt) {
       const n = amount(eff.endure);
       const pick = n > 0 ? choose(s, `${tgt.name} endures ${n}`, [`Put ${n} +1/+1 counter${n > 1 ? "s" : ""} on ${tgt.name}`, `Create a ${n}/${n} Spirit token`], ctx.side, tgt.id) : -1;
-      if (pick === 0) { tgt.counters = { ...(tgt.counters || {}), "+1/+1": ((tgt.counters || {})["+1/+1"] || 0) + n }; ev.push({ type: "counters", id: tgt.id, counters: { "+1/+1": n } }); }
+      if (pick === 0) addCounters(s, tgt, "+1/+1", n, ev);
       if (pick === 1) createToken(s, { name: "Spirit", type: "Token Creature — Spirit", pt: `${n}/${n}`, colors: ["W"] }, ctx.side, ev);
     }
     // "Discard a card. If you do, draw two cards." (you choose which; with an empty hand nothing happens)
@@ -2057,7 +2133,9 @@
     }
     // CR 701.53a: incubate N — an Incubator token with N +1/+1 counters ("X" is the source's power as it last existed)
     if (eff.incubate != null) {
-      const n = eff.incubate === "power" ? srcPower() : eff.incubate;
+      // (X: its power; how many were exiled; the spell's mana value; or a count of your permanents — "lands you control")
+      const n = eff.incubate === "power" ? srcPower() : eff.incubate === "exiled" ? ctx.exiled || 0
+        : eff.incubate === "eventMV" ? (ctx.event && ctx.event.mv) || 0 : amount(eff.incubate);
       createToken(s, { ...INCUBATOR, counters: n ? { "+1/+1": n } : undefined }, ctx.side, ev);
     }
     // For Mirrodin! (a 2/2 Rebel) and job select (CR 702.182a: a 1/1 colorless Hero): create it, then attach this to it
@@ -2079,7 +2157,7 @@
         if (eff.team.pump) addMod(s, c, eff.team.pump);
         if (eff.team.grant) grant(c, eff.team.grant, s);
         // "put a +1/+1 counter on each creature you control"
-        if (eff.team.counters) { c.counters = { ...(c.counters || {}) }; Object.entries(eff.team.counters).forEach(([k, n]) => { c.counters[k] = (c.counters[k] || 0) + n; }); }
+        if (eff.team.counters) Object.entries(eff.team.counters).forEach(([k, n]) => addCounters(s, c, k, n, ev));
         // "double the power and toughness of each creature you control" (CR 701.10d: +X/+Y, X and Y its power and toughness)
         if (eff.team.multiplyPT) addMod(s, c, [(eff.team.multiplyPT - 1) * power(c), (eff.team.multiplyPT - 1) * toughness(c)]);
         // "get +1/+1 for each Forest you control" (pumpPer: { per: a filter on your permanents, pump })
@@ -2141,11 +2219,18 @@
       const z = s[ctx.side], n = eff.lookTop.n;
       const seen = z.library.splice(0, n);
       const unknownSeen = Math.min(Math.max(n - seen.length, 0), z.libraryCount || 0);
-      seen.forEach((c) => {
-        const fits = objectIs(faceOf(c, {}), eff.lookTop.filter || {});
-        if (fits && choose(s, `Put ${c.name} into your hand?`, ["Into your hand", "To the bottom"], ctx.side, c.id) === 0) z.hand.push(c);
-        else z.libraryBottom.push(c);
-      });
+      // (pickOne: "Put one of them into your hand" — one of the known ones, if any; max: "you may reveal a card …" — at most that many)
+      if (eff.lookTop.pickOne && seen.length) {
+        const k = choose(s, "Put which card into your hand?", seen.map((c) => c.name), ctx.side, seen.map((c) => c.id));
+        seen.forEach((c, i) => (i === k ? z.hand : z.libraryBottom).push(c));
+      } else {
+        let taken = 0;
+        seen.forEach((c) => {
+          const fits = objectIs(faceOf(c, {}), eff.lookTop.filter || {}) && (eff.lookTop.max == null || taken < eff.lookTop.max);
+          if (fits && choose(s, `Put ${c.name} into your hand?`, ["Into your hand", "To the bottom"], ctx.side, c.id) === 0) { z.hand.push(c); taken++; }
+          else z.libraryBottom.push(c);
+        });
+      }
       ev.push({ type: "looked", side: ctx.side, n: seen.length + unknownSeen });
     }
     // "that source's controller sacrifices that many permanents of their choice" (to: whose; n: how many)
@@ -2165,9 +2250,11 @@
     if (eff.search) {
       const z = s[ctx.side];
       const known = [...z.library, ...z.libraryBottom].filter((c) => objectIs(faceOf(c, {}), eff.search.filter || {}) && (!eff.search.basic || /\bbasic\b/i.test(c.type || "")));
+      // ("search your library and/or graveyard": graveyard cards can be found too, without a shuffle making them unknown)
+      if (eff.search.graveyardToo) known.push(...z.graveyard.filter((c) => objectIs(faceOf(c, {}), eff.search.filter || {})));
       const pick = known.length ? choose(s, "Search: which card?", [...known.map((c) => `Find ${c.name}`), "Find nothing"], ctx.side, [...known.map((c) => c.id), null]) : 0;
       const found = known[pick];
-      if (found) { z.library = z.library.filter((c) => c !== found); z.libraryBottom = z.libraryBottom.filter((c) => c !== found); z.hand.push(found); }
+      if (found) { z.library = z.library.filter((c) => c !== found); z.libraryBottom = z.libraryBottom.filter((c) => c !== found); z.graveyard = z.graveyard.filter((c) => c !== found); z.hand.push(found); }
       z.libraryCount = (z.libraryCount || 0) + z.library.length + z.libraryBottom.length;
       z.library = []; z.libraryBottom = [];
       ev.push({ type: "search", side: ctx.side, id: found && found.id });
@@ -2193,7 +2280,10 @@
       applyEffect(s, eff.mayPayLife.then, target, ctx, ev);
     }
     // several effects one after another ("Draw a card, then scry 2"; "proliferate twice")
-    if (eff.seq) eff.seq.forEach((e) => applyEffect(s, e, target, ctx, ev));
+    // (a target that's gone after an earlier part — "Destroy target …, then draw a card" — doesn't stop the later parts)
+    const still = (t) => t == null || t === "opp" || t === "you" || Array.isArray(t) || !!find(s, t) ||
+      [...s.player.graveyard, ...s.opponent.graveyard].some((c) => c.id === t);
+    if (eff.seq) eff.seq.forEach((e) => applyEffect(s, e, still(target) ? target : undefined, ctx, ev));
     // "Exile target creature. If it wasn't an Aura, create a token that's a copy of it, except …" (from its last
     // known values, CR 707.2)
     if (eff.exileCopy && tgt) {
@@ -2216,13 +2306,22 @@
     if (eff.oppDraws) draw(s, "opponent", eff.oppDraws, ev);
     // "You may play an additional land this turn"
     if (eff.extraLand && ctx.side === "player") s.extraLands = (s.extraLands || 0) + eff.extraLand;
+    if (eff.sorceryFlash && ctx.side === "player") s.sorceryFlash = true;
+    // backup: "it gains the following abilities until end of turn" — activated ones (backup.abilities)
+    if (eff.backup && tgt && tgt.id !== ctx.selfId && eff.backup.abilities) addEffect(s, tgt, { addAbilities: eff.backup.abilities });
     // "exile the top two cards of your library. You may play those cards this turn." (the known ones become playable)
     if (eff.impulseAll && ctx.side === "player") {
       const z = s.player;
       for (let i = 0; i < eff.impulseAll; i++) {
         const c = z.library.shift() || (!(z.libraryCount > 0) ? z.libraryBottom.shift() : null);
-        if (c) { c.playable = true; z.exile.push(c); } else if (z.libraryCount > 0) z.libraryCount--;
+        // (impulseFilter: only those can be played — "you may cast an instant or sorcery spell from among them";
+        // oneOf: only one of them — casting one ends the others' permission)
+        if (c) {
+          if (!eff.impulseFilter || objectIs(faceOf(c, {}), eff.impulseFilter)) { c.playable = true; if (eff.oneOf) c.oneOf = `${ctx.selfId}-${s.nextId}`; }
+          z.exile.push(c);
+        } else if (z.libraryCount > 0) z.libraryCount--;
       }
+      if (eff.oneOf) s.nextId++;
       ev.push({ type: "impulse", n: eff.impulseAll });
     }
     // "attach up to one target Equipment you control to that creature" (the target: the Equipment)
@@ -2264,6 +2363,113 @@
     }
     // "… if X is 5 or more, …" (the rest of a spell that only happens with a big enough X)
     if (eff.ifX && (ctx.x || 0) >= eff.ifX.min) applyEffect(s, eff.ifX.effect, target, ctx, ev);
+    // "draw a card if its power is 3 or greater. Otherwise, put two +1/+1 counters on it" (the event's creature)
+    if (eff.ifEventPower) {
+      const o = find(s, ctx.event && ctx.event.id);
+      if (o) applyEffect(s, power(o) >= eff.ifEventPower.min ? eff.ifEventPower.yes : eff.ifEventPower.no, o.id, ctx, ev);
+    }
+    // "Exile all creatures" (how many: ctx.exiled, for "incubate X, where X is the number of creatures exiled this way")
+    if (eff.exileAllCreatures) {
+      const all = battlefieldNow(s).map(({ card }) => card).filter(isCreature);
+      const before = s.listens.length ? battlefieldNow(s) : null;
+      all.forEach((c) => leave(s, c, "exile", ev, { lookBack: before }));
+      ctx.exiled = all.length;
+    }
+    // Archangel Elspeth −6: "Return all nonland permanent cards with mana value 3 or less from your graveyard to the battlefield"
+    if (eff.massReturn) {
+      const z = s[ctx.side];
+      const back = z.graveyard.filter((c) => { const g = faceOf(c, {}); return isPermanent(g) && !isLand(g) && manaValue(g.cost) <= eff.massReturn.maxMV; });
+      z.graveyard = z.graveyard.filter((c) => !back.includes(c));
+      back.forEach((c) => { c.sick = true; ev.push({ type: "reanimated", id: c.id }); enter(s, c, { side: ctx.side }, ev); });
+      if (back.length) emit(s, { type: "leavesGraveyard", side: ctx.side, obj: { id: back[0].id } }, ev);
+    }
+    // "It becomes an Angel in addition to its other types" (for the rest of the game)
+    if (eff.addSubtype && tgt) { tgt.type = addTypes(tgt.type, { subtypes: [eff.addSubtype] }); changed(s); }
+    // "reveal any number of Dragon cards from your hand … X plus 2 damage, where X is the number revealed" (you choose
+    // how many: revealCount: { type, then } — the effect's amounts "revealed" use it)
+    if (eff.revealCount) {
+      const n = s[ctx.side].hand.filter((c) => hasType(c, eff.revealCount.type)).length;
+      const k = n ? choose(s, `Reveal how many ${eff.revealCount.type} cards?`, Array.from({ length: n + 1 }, (_, i) => `Reveal ${i}`), ctx.side) : 0;
+      applyEffect(s, JSON.parse(JSON.stringify(eff.revealCount.then).replace(/"revealedPlus(\d+)"/g, (m, p) => String(k + Number(p)))), target, ctx, ev);
+    }
+    // Into the Fire: "Put any number of cards from your hand on the bottom of your library, then draw that many cards plus one."
+    if (eff.bottomAndDraw && ctx.side === "player") {
+      const put = [...s.player.hand].filter((c) => choose(s, `Put ${c.name} on the bottom of your library?`, ["Keep it", "To the bottom"], "player", c.id) === 1);
+      s.player.hand = s.player.hand.filter((c) => !put.includes(c));
+      put.forEach((c) => { if (c.unknown) s.player.libraryCount = (s.player.libraryCount || 0) + 1; else s.player.libraryBottom.push(c); });
+      draw(s, "player", put.length + 1, ev);
+    }
+    // "Shuffle this card into your library from your graveyard" (after a shuffle no card of the library is known)
+    if (eff.shuffleSelf) {
+      const z = s[ctx.side], me = z.graveyard.find((c) => c.id === ctx.selfId);
+      if (me) {
+        z.graveyard = z.graveyard.filter((c) => c !== me);
+        z.libraryCount = (z.libraryCount || 0) + 1 + z.library.length + z.libraryBottom.length;
+        z.library = []; z.libraryBottom = [];
+      }
+    }
+    // "sacrifice a creature or land" (you choose one of yours that fits; none: nothing)
+    if (eff.sacrificeOne) {
+      const list = s[ctx.side].battlefield.filter((c) => objectIs(c, eff.sacrificeOne) && matches(s, c, eff.sacrificeOne, ctx.side));
+      if (list.length) leave(s, list[choose(s, "Sacrifice which?", list.map((c) => c.name), ctx.side, list.map((c) => c.id))], "graveyard", ev, { sacrificed: true });
+    }
+    // "You may put a land card from your hand onto the battlefield tapped"
+    if (eff.mayPutLand && ctx.side === "player") {
+      const lands = s.player.hand.filter((c) => !c.unknown && isLand(faceOf(c, {})));
+      const k = lands.length ? choose(s, "Put a land from your hand onto the battlefield tapped?", [...lands.map((c) => `Put ${c.name}`), "Don't"], "player", [...lands.map((c) => c.id), null]) : lands.length;
+      if (k < lands.length) { const l = lands[k]; s.player.hand = s.player.hand.filter((c) => c !== l); l.tapped = true; enter(s, asFace(l, 0), { side: "player" }, ev); }
+    }
+    // "Remove up to three counters from target permanent" (one at a time, any kinds; you may stop)
+    if (eff.removeUpTo && tgt) {
+      for (let i = 0; i < eff.removeUpTo; i++) {
+        const kinds = Object.keys(tgt.counters || {}).filter((k) => tgt.counters[k] > 0);
+        if (!kinds.length) break;
+        const k = choose(s, `Remove a counter from ${tgt.name} (${i + 1} of up to ${eff.removeUpTo})?`, [...kinds.map((x) => `Remove a ${x} counter`), "Stop"], ctx.side, tgt.id);
+        if (k >= kinds.length) break;
+        tgt.counters = { ...tgt.counters, [kinds[k]]: tgt.counters[kinds[k]] - 1 };
+        changed(s);
+      }
+    }
+    // "put a flying counter on each creature that convoked it"
+    if (eff.convokers) {
+      const me = find(s, ctx.selfId) || ctx.src || {};
+      (me.convokedBy || []).map((id) => find(s, id)).filter(Boolean).forEach((c) => Object.entries(eff.convokers.counters).forEach(([k, n]) => addCounters(s, c, k, n, ev)));
+    }
+    // "Exile target card from a graveyard. If it was a creature card, …"
+    if (eff.exileGraveyardCard) {
+      for (const side of ["player", "opponent"]) {
+        const card = s[side].graveyard.find((c) => c.id === target);
+        if (!card) continue;
+        s[side].graveyard = s[side].graveyard.filter((c) => c !== card);
+        s[side].exile.push(card);
+        if (eff.exileGraveyardCard.ifCreature && isCreature(faceOf(card, {}))) applyEffect(s, eff.exileGraveyardCard.ifCreature, undefined, ctx, ev);
+      }
+    }
+    // Rankle and Torbran: "If a source would deal damage to a player or battle this turn, it deals that much damage plus 2 instead."
+    if (eff.damagePlus2) s.damagePlus2 = (s.damagePlus2 || 0) + 1;
+    // "Each player creates a Treasure token"; "Each player sacrifices a creature of their choice"
+    if (eff.eachTreasure) ["player", "opponent"].forEach((side) => createToken(s, { name: "Treasure", type: "Token Artifact — Treasure", colors: [] }, side, ev));
+    if (eff.eachSacrifices) ["player", "opponent"].forEach((side) => {
+      const list = s[side].battlefield.filter(isCreature);
+      if (list.length) leave(s, list[choose(s, `Sacrifice a creature (${side === "player" ? "you" : "the opponent"})`, list.map((c) => c.name), side, list.map((c) => c.id))], "graveyard", ev, { sacrificed: true });
+    });
+    // "Transform all Incubator tokens you control"
+    if (eff.transformAll) s[ctx.side].battlefield.filter((c) => c.token && subtypes(c).includes(eff.transformAll) && !c.transformed).forEach((c) => transform(s, c, ev));
+    // "you may exile five other cards from your graveyard. When you do, return target creature card …" (the target was
+    // chosen first; the five are any others)
+    if (eff.mayExileGraveyard) {
+      const z = s[ctx.side], others = z.graveyard.filter((c) => c.id !== target);
+      if (others.length >= eff.mayExileGraveyard.n && choose(s, `Exile ${eff.mayExileGraveyard.n} cards from your graveyard?`, ["Exile them", "Don't"], ctx.side) === 0) {
+        const gone = [];                                              // (you choose them, one at a time)
+        for (let i = 0; i < eff.mayExileGraveyard.n; i++) {
+          const left = others.filter((c) => !gone.includes(c));
+          gone.push(left[choose(s, `Exile a card from your graveyard (${i + 1} of ${eff.mayExileGraveyard.n})`, left.map((c) => c.name), ctx.side, left.map((c) => c.id))]);
+        }
+        z.graveyard = z.graveyard.filter((c) => !gone.includes(c));
+        z.exile.push(...gone);
+        applyEffect(s, eff.mayExileGraveyard.then, target, ctx, ev);
+      }
+    }
   }
   // "… in addition to its other types": add card types / subtypes to a type line
   function addTypes(type, add) {
@@ -2282,6 +2488,9 @@
     if (eff.damageAll) {
       const d = eff.damageAll;
       if (d.creatures) pick(d.creatures).forEach((c) => dealDamage(s, ctx.src, ctx.side, c.id, d.n, ev));
+      // ("… and each planeswalker" / "each creature, planeswalker, and battle")
+      if (d.walkers || d.battles) battlefieldNow(s).map(({ card }) => card).filter((c) => !isCreature(c) && ((d.walkers && isPlaneswalker(c)) || (d.battles && isBattle(c))))
+        .forEach((c) => dealDamage(s, ctx.src, ctx.side, c.id, d.n, ev));
       if (d.players === "opp" || d.players === "each") dealDamage(s, ctx.src, ctx.side, "opp", d.n, ev);
       if (d.players === "each") dealDamage(s, ctx.src, ctx.side, "you", d.n, ev);
     }
@@ -2307,10 +2516,8 @@
       perms.forEach((c) => {
         const kinds = Object.keys(c.counters).filter((k) => c.counters[k] > 0);
         if (choose(s, `Proliferate: ${c.name} (${kinds.map((k) => `${c.counters[k]} ${k}`).join(", ")})?`, ["Add one", "Skip"], ctx.side, c.id) !== 0) return;
-        c.counters = { ...c.counters };
-        kinds.forEach((k) => { c.counters[k] += 1; });
+        kinds.forEach((k) => addCounters(s, c, k, 1, ev));
         changed(s);
-        ev.push({ type: "counters", id: c.id, counters: Object.fromEntries(kinds.map((k) => [k, 1])) });
       });
       emit(s, { type: "proliferate", side: ctx.side }, ev);            // "whenever you proliferate"
     }
@@ -2332,7 +2539,7 @@
       z.hand.push(top);
       ev.push({ type: "explore-land", id: top.id });
     } else {
-      if (me) { me.counters = { ...(me.counters || {}), "+1/+1": ((me.counters || {})["+1/+1"] || 0) + 1 }; ev.push({ type: "counters", id: me.id, counters: { "+1/+1": 1 } }); }
+      if (me) addCounters(s, me, "+1/+1", 1, ev);
       if (top && choose(s, `Explore: put ${top.name} into your graveyard?`, ["Leave it on top", "Into the graveyard"], side, top.id) === 1) {
         (z.library[0] === top ? z.library : z.libraryBottom).shift();
         putCard(s, top, side, "graveyard");
@@ -2415,6 +2622,9 @@
   function draw(s, side, n, ev) {
     const z = s[side];
     for (let i = 0; i < n; i++) {
+      // (cards drawn this turn, per player: "whenever an opponent draws their second card each turn", Heliod's cost reduction)
+      s.drawn = { ...(s.drawn || {}), [side]: ((s.drawn || {})[side] || 0) + 1 };
+      emit(s, { type: "draws", side, count: s.drawn[side] }, ev);
       const known = z.library.shift() || (!(z.libraryCount > 0) ? z.libraryBottom.shift() : null);
       if (known) {
         known.owner = side;
@@ -2484,6 +2694,21 @@
   }
   // (CR 614.1a: "If one or more tokens would be created under your control, twice that many of those tokens are created
   // instead" — doublesTokens, Mondrak; each such permanent doubles again. Returns the first token made.)
+  // Counters put on a permanent (CR 122.6). Ozolith, the Shattered Spire (plusOneMore): "If one or more +1/+1 counters
+  // would be put on an artifact or creature you control, that many plus one … are put on it instead" (each one adds
+  // one). "Whenever one or more +1/+1 counters are put on this creature" triggers on countersPut. side: whose it is (a
+  // permanent still entering isn't on the battlefield yet). Returns how many were put on.
+  const ozolithBonus = (s, side, c) => (isArtifact(c) || isCreature(c) ? s[side].battlefield.filter((o) => o.plusOneMore && !(o.st && o.st.lost)).length : 0);
+  function addCounters(s, c, kind, n, ev, side) {
+    if (!(n > 0) || !c) return 0;
+    const who = side || (find(s, c.id) ? sideOf(s, c) : null);
+    if (kind === "+1/+1" && who) n += ozolithBonus(s, who, c);
+    c.counters = { ...(c.counters || {}), [kind]: ((c.counters || {})[kind] || 0) + n };
+    if (KW_COUNTERS.includes(kind) || kind === "charge") changed(s);   // (a keyword counter changes its abilities)
+    ev.push({ type: "counters", id: c.id, counters: { [kind]: n } });
+    if (find(s, c.id)) emit(s, { type: "countersPut", obj: c, side: who, kind, count: n }, ev);
+    return n;
+  }
   const createToken = (s, spec, side, ev) => createTokens(s, spec, side, ev)[0];
   function createTokens(s, spec, side, ev) {
     const doublers = s[side].battlefield.filter((c) => c.doublesTokens && !(c.st && c.st.lost)).length;
@@ -2493,6 +2718,8 @@
     const t = { ...clone(spec), token: true, owner: side, id: `${slug(spec.name)}-t${s.nextId++}` };
     ["count", "attacking", "exileAtEnd", "sacrificeAtEnd"].forEach((k) => delete t[k]);
     if (!isLand(t)) t.sick = !has(t, "haste");
+    // (a token created with +1/+1 counters — an Incubator — enters with them: Ozolith adds one)
+    if (t.counters && t.counters["+1/+1"] > 0) t.counters = { ...t.counters, "+1/+1": t.counters["+1/+1"] + ozolithBonus(s, side, t) };
     ev.push({ type: "token", id: t.id });
     enter(s, t, { side }, ev);
     if (spec.attacking && s.combat && side === "player") {
@@ -2524,6 +2751,9 @@
     listen(s, perm);                                           // (a token is new to the puzzle)
     perm.owner = perm.owner || side;
     if (perm.entersTapped) perm.tapped = true;
+    // "Creatures and nonbasic lands your opponents control enter tapped" (Thalia and The Gitrog Monster)
+    const other = side === "player" ? "opponent" : "player";
+    if ((isCreature(perm) || (isLand(perm) && !/\bbasic\b/i.test(perm.type || ""))) && s[other].battlefield.some((c) => c.oppEntersTapped && !(c.st && c.st.lost))) perm.tapped = true;
     if (perm.payLifeOrTapped) {
       if (payLife && side === "player" && canPayLife(s, perm.payLifeOrTapped)) changeLife(s, "you", -perm.payLifeOrTapped, ev);
       else perm.tapped = true;
@@ -2544,9 +2774,13 @@
     if (perm.entersWithCounters) {
       const w = perm.entersWithCounters;
       const kinds = typeof w === "object" ? w : { "+1/+1": w === "X" ? x || 0 : w };
-      Object.entries(kinds).forEach(([k, n]) => { if (n) perm.counters = { ...(perm.counters || {}), [k]: ((perm.counters || {})[k] || 0) + n }; });
+      // (Ozolith applies to a permanent entering with counters too)
+      Object.entries(kinds).forEach(([k, n]) => { if (n) perm.counters = { ...(perm.counters || {}), [k]: ((perm.counters || {})[k] || 0) + n + (k === "+1/+1" ? ozolithBonus(s, side, perm) : 0) }; });
     }
     perm.enteredThisTurn = true;                               // (power-up: "if this permanent entered this turn")
+    if (x) perm.xPaid = x;                                     // ("incubate 3 X times": the X paid to cast it)
+    // "enters with two +1/+1 counters on it for each creature that convoked it"
+    if (perm.countersPerConvoker && (perm.convokedBy || []).length) perm.counters = { ...(perm.counters || {}), "+1/+1": ((perm.counters || {})["+1/+1"] || 0) + perm.countersPerConvoker * perm.convokedBy.length + ozolithBonus(s, side, perm) };
     // CR 722.3a: "This creature enters prepared."
     if (perm.entersPrepared && perm.prepare) perm.prepared = true;
     // CR 714.3a: a Saga enters with a lore counter (its chapter I ability triggers, 714.2b)
@@ -2569,9 +2803,9 @@
     for (const id of [].concat(target || [])) {
       const t = id !== "opp" && id !== "you" ? find(s, id) : null;
       const n = t && sideOf(s, t) === "opponent" ? wardOf(t) : 0;
-      if (!n) continue;
-      const life = wardLifeOf(t);
-      const pay = bestPayment(s, `{${n}}`);
+      const life = t && sideOf(s, t) === "opponent" ? wardLifeOf(t) : 0;   // ("Ward—Pay 2 life": "ward 0 life 2")
+      if (!n && !life) continue;
+      const pay = n ? bestPayment(s, `{${n}}`) : [];
       if (!pay || (life && !canPayLife(s, life))) { ev.push({ type: "countered", by: "ward", id: t.id }); return false; }
       spend(s, pay, ev);
       if (life) changeLife(s, "you", -life, ev);
@@ -2636,6 +2870,19 @@
           const d = trig(q); return !d.targets || targetChoices(targetsFor(s, srcOf(s, q), d.targets, d.filter, q.side), d.count).length > 0; });
         if (s.pending.length !== n0) continue;
         if (orderChoices(s).length) return;                                  // you choose which of yours goes first
+        // CR 603.3c: a modal triggered ability's modes are chosen as it's put on the stack (modes whose targets have
+        // no legal choice can't be chosen); the opponent's: the choice worst for you
+        const def = TRIGGER_DEFS[p.td];
+        if (def.modes && p.modes == null) {
+          const src = srcOf(s, p);
+          const combos = modeCombos(def).filter((l) => l.every((i) => { const m = def.modes[i];
+            return !m.targets || (m.count && m.count.min === 0) || targetsFor(s, src, m.targets, m.targetFilter, p.side).length; }));
+          if (!combos.length) { s.pending.shift(); continue; }
+          const pick = choose(s, `${p.name}: choose ${def.anyNumber ? "any number" : def.oneOrBoth ? "one or both" : "one"}`,
+            combos.map((l) => (l.length ? l.map((i) => def.modes[i].text).join(" + ") : "No mode")), p.side);
+          s.pending[0] = { ...p, modes: combos[pick] };
+          continue;
+        }
         const d = trig(p);
         const options = d.targets ? targetChoices(targetsFor(s, srcOf(s, p), d.targets, d.filter, p.side), d.count) : null;
         if (options && !options.length) { s.pending.shift(); continue; }       // CR 603.3d: removed
@@ -2666,7 +2913,7 @@
   // Could you do anything but pass right now? Instants, flash spells and activated abilities (not mana abilities
   // and not "only as a sorcery") can be cast or activated with something on the stack (CR 117.1a-b).
   function canRespond(s) {
-    const fast = (f) => f && f.cost != null && !isLand(f) && (isInstant(f) || has(f, "flash") || (f.behold && f.behold.flash));
+    const fast = (f) => f && f.cost != null && !isLand(f) && (isInstant(f) || has(f, "flash") || (f.behold && f.behold.flash) || asFlash(s, f));
     // (asked card by card — "could this be cast or activated right now?" — instead of listing every legal move)
     // (a spell with flash only if a Dragon is beheld: asked with a Dragon beheld)
     const castNow = (c, zone) => !c.unknown && (c.faces ? (zone === "exile" && c.onAdventure ? [0] : c.faces.map((_, i) => i)) : [undefined])
@@ -2898,6 +3145,7 @@
       if (!sorceryTime(s)) return "Loyalty abilities only in your main phase, with nothing on the stack.";
       if (card.loyaltyUsed) return `${card.name} has already used a loyalty ability this turn.`;
       if (ab.loyalty < 0 && loyaltyOf(card) < -ab.loyalty) return `${card.name} doesn't have ${-ab.loyalty} loyalty.`;
+      if (ab.loyaltyX && x != null && !(x >= 0 && x <= loyaltyOf(card))) return `${card.name} doesn't have ${x} loyalty.`;
     }
     if (ab.tap && card.tapped) return `${card.name} is tapped.`;
     // (Tyvar, Jubilant Brawler: "You may activate abilities of creatures you control as though those creatures had haste")
@@ -3050,7 +3298,7 @@
       const card = s.player.hand.find((c) => c.id === a.id) || s.player.exile.find((c) => c.id === a.id && c.playable);
       if (!card || !isLand(faceOf(card, a))) return "That isn't a land in your hand.";
       if (!sorceryTime(s)) return "You can only play a land during your main phase, with nothing on the stack.";
-      if (s.landPlayed && !(s.extraLands > 0)) return "You've already played a land this turn.";
+      if (s.landPlayed && landsPlayed(s) >= landsAllowed(s)) return "You've already played a land this turn.";
       const n = faceOf(card, a).payLifeOrTapped;
       if (n && a.payLife && !canPayLife(s, n)) return `You don't have ${n} life to pay.`;
       return null;
@@ -3066,7 +3314,8 @@
       if (!bestPayment(s, h.cost, { except: card.id })) return `Not enough mana for ${card.name}'s ability.`;
       if (!h.targets) return null;
       const legal = targetsFor(s, card, h.targets, h.filter);
-      if (!legal.length) return "There's no legal target.";
+      const upTo = h.targetCount && h.targetCount.min === 0;          // ("up to one target")
+      if (!legal.length && !upTo) return "There's no legal target.";
       return a.target == null ? null : validTargets(a.target, legal, ONE);
     }
     if (a.type === "renew") {
@@ -3116,7 +3365,7 @@
         if (!(s.phase === "blockers" && s.combat && s.combat.blocks)) return "Sneak: only during your declare blockers step.";
         if (!unblockedMine(s).includes(a.sneak)) return "Sneak: return an unblocked attacking creature you control.";
       }
-      if (!isInstant(f) && !has(f, "flash") && !flashByBehold && !f.sneakCast && !sorceryTime(s)) return `You can only cast ${f.name} during your main phase, with nothing on the stack.`;
+      if (!isInstant(f) && !has(f, "flash") && !flashByBehold && !f.sneakCast && !asFlash(s, f) && !sorceryTime(s)) return `You can only cast ${f.name} during your main phase, with nothing on the stack.`;
       // harmonize: tap up to one untapped creature you control (a.tapFor) to reduce the cost by its power
       if (a.tapFor != null && !(f.harmonizing && convokeHelpers(s).includes(a.tapFor))) return "Harmonize: tap one of your untapped creatures.";
       if (f.plottedCast && !sorceryTime(s)) return `A plotted card can only be cast during your main phase, with nothing on the stack.`;
@@ -3172,7 +3421,7 @@
         if (a.behold === "pay" && !f.behold.orPay) return `${f.name} needs a ${f.behold.type} to behold.`;
       }
       if (a.convoke != null) {
-        const ok = has(f, "convoke") && new Set(a.convoke).size === a.convoke.length && a.convoke.every((id) => convokeHelpers(s).includes(id));
+        const ok = spellConvoke(s, f) && new Set(a.convoke).size === a.convoke.length && a.convoke.every((id) => convokeHelpers(s).includes(id));
         if (!ok) return "Only your untapped creatures can help cast it (convoke).";
       }
       // (behold not chosen yet: the cheaper way, beholding, if there is something to behold)
@@ -3404,7 +3653,7 @@
       s.player.hand = s.player.hand.filter((c) => c !== card);
       s.player.exile = s.player.exile.filter((c) => c !== card);
       delete card.playable;
-      if (s.landPlayed) s.extraLands--;                       // (an additional land this turn, CR 305.2)
+      s.landsPlayed = landsPlayed(s) + 1;                     // (additional lands this turn, CR 305.2)
       s.landPlayed = true;
       ev.push({ type: "played", id: card.id });
       enter(s, asFace(card, a.face), { payLife: a.payLife }, ev);
@@ -3476,7 +3725,9 @@
       // a prepare spell's copy: casting it unprepares the permanent (CR 722.3c)
       if (zone === "prepared") { delete source.prepared; changed(s); }
       else s.player[zone] = s.player[zone].filter((c) => c !== card);
-      ["playable", "plotted", "plottedNow", "discardedThisTurn", "airbent"].forEach((k) => delete card[k]);
+      // ("you may cast an instant or sorcery spell from among them": casting one ends the others' permission)
+      if (zone === "exile" && card.oneOf) s.player.exile.filter((c) => c.oneOf === card.oneOf).forEach((c) => { delete c.playable; delete c.oneOf; });
+      ["playable", "plotted", "plottedNow", "discardedThisTurn", "airbent", "oneOf"].forEach((k) => delete card[k]);
       // collect evidence: the chosen cards go from your graveyard to exile (CR 701.59a); a permanent spell remembers it
       if (a.evidence != null) {
         const ids = [].concat(a.evidence);
@@ -3494,6 +3745,8 @@
       const manaPaid = pay.filter((id) => !id.startsWith("life:") && !(find(s, id.split("+")[0]) && (a.convoke || []).includes(id))).length;
       const spentBefore = s.manaSpent || 0;
       if (manaPaid) s.manaSpent = spentBefore + manaPaid;
+      // (the creatures that convoked it: "put a flying counter on each creature that convoked it")
+      if (spellConvoke(s, f)) { const helpers = convokeHelpers(s); const by = pay.filter((id) => helpers.includes(id)); if (by.length) card.convokedBy = by; else delete card.convokedBy; }
       spend(s, pay, ev);
       // harmonize: the chosen creature is tapped as the total cost is paid (CR 702.180b)
       if (a.tapFor != null) tap(s, find(s, a.tapFor), ev);
@@ -3531,7 +3784,7 @@
       // (with how much mana was spent — opus, increment — and whether it targets a creature — repartee)
       const castTargetsCreature = [a.target].flat(2).some((id) => id && find(s, id) && isCreature(find(s, id)));
       emit(s, { type: "cast", obj: f, side: "player", targetCount: new Set([a.target].flat(2).filter((x) => x != null)).size, spellNumber: countSpell(s, "player"),
-        spent: manaPaid, targetsCreature: castTargetsCreature, x: a.x }, ev);
+        spent: manaPaid, targetsCreature: castTargetsCreature, x: a.x, fromHand: zone === "hand" }, ev);
       // "when you next cast an instant or sorcery spell this turn, copy that spell" (Mercurial Spelldancer's delayed
       // trigger, CR 603.7c: it triggers once, on the next one)
       if (s.copyNext && typeHas(f, /instant|sorcery/i)) {
@@ -3591,7 +3844,8 @@
         card.loyaltyUsed = true;
         s.loyaltyActivated = true;                                 // ("if you've activated a loyalty ability this turn")
         if (ab.loyalty > 0) addLoyalty(s, card, ab.loyalty, "player", ev);
-        else card.counters = { ...(card.counters || {}), loyalty: loyaltyOf(card) + ab.loyalty };
+        // ("−X": X loyalty counters, X chosen as it's activated, CR 606.4, 107.3)
+        else card.counters = { ...(card.counters || {}), loyalty: loyaltyOf(card) + ab.loyalty - (ab.loyaltyX ? a.x || 0 : 0) };
       }
       if (ab.removeCounters) {
         const { kind, n = 1 } = ab.removeCounters;
@@ -3608,7 +3862,7 @@
       // sacrificed creature's power" reads the first one
       if (ab.sacCost) {
         const sacs = (a.sacs || sacCostOptions(s, card, ab).slice(0, ab.sacCost.n)).map((id) => find(s, id)).filter(Boolean);
-        if (sacs.length) ctx.sacPower = Math.max(power(sacs[0]), 0);
+        if (sacs.length) { ctx.sacPower = Math.max(power(sacs[0]), 0); ctx.sacMV = manaValue(sacs[0].cost); }
         const before = s.listens.length ? battlefieldNow(s) : null;
         sacs.forEach((c) => leave(s, c, "graveyard", ev, { sacrificed: true, lookBack: before }));
       }
@@ -3637,6 +3891,7 @@
       enterStep(s, "attackers", null, ev);
       s.combat = { attackers: [...a.ids], blocks: null, blocked: {}, fsHappened: false, dealtFirst: [], ...(a.at ? { at: { ...a.at } } : {}) };
       if (s.tracksSources) s.attackedCount = a.ids.length;     // ("three or more creatures attacked this turn")
+      s.attackedIds = [...a.ids];                              // ("each creature that attacked this turn")
       const attackers = a.ids.map((id) => find(s, id));
       attackers.forEach((c) => { if (!has(c, "vigilance")) tap(s, c, ev); });   // CR 508.1f
       ev.push({ type: "attack", ids: a.ids });
@@ -3756,7 +4011,7 @@
     // abilities of cards in your hand that discard them ("{1}{R}, Discard this card: …")
     s.player.hand.filter((c) => c.handAbility && !check(s, { type: "channel", id: c.id })).forEach((c) => {
       const h = c.handAbility;
-      (h.targets ? targetsFor(s, c, h.targets, h.filter) : [undefined]).forEach((target) => out.push({ type: "channel", id: c.id, target }));
+      (h.targets ? [...(h.targetCount && h.targetCount.min === 0 ? [undefined] : []), ...targetsFor(s, c, h.targets, h.filter)] : [undefined]).forEach((target) => out.push({ type: "channel", id: c.id, target }));
     });
     // renew: an ability of a card in your graveyard (one per target)
     s.player.graveyard.filter((c) => c.renew && !check(s, { type: "renew", id: c.id })).forEach((c) =>
@@ -3812,7 +4067,7 @@
         const webSlings = zone === "hand" && card.webSlinging ? [undefined, ...tappedMine(s)] : [undefined];
         // a discard cost: each other card in your hand (unknown cards are all alike: one of them), or pay
         const discards = f.discardCost ? [...discardChoices(s, card.id), ...(f.discardCost.orPay ? ["pay"] : [])] : [undefined];
-        const convokes = has(f, "convoke") ? subsets(convokeHelpers(s)).filter((l) => l.length <= manaValue(f.cost) + (f.behold && f.behold.orPay ? manaValue(f.behold.orPay) : 0)) : [undefined];
+        const convokes = spellConvoke(s, f) ? subsets(convokeHelpers(s)).filter((l) => l.length <= manaValue(f.cost) + (f.behold && f.behold.orPay ? manaValue(f.behold.orPay) : 0)) : [undefined];
         // compleated: how many Phyrexian pips are paid with life (each costs the walker two loyalty)
         const lifePipsList = has(f, "compleated") ? [0, ...range(parseCost(f.cost).pips.filter((p) => /\/P$/.test(p)).length)] : [undefined];
         // bargain: not bargained, or each permanent you could sacrifice for it
@@ -3856,7 +4111,8 @@
     }
     for (const card of s.player.battlefield) {
       abilitiesOf(card).forEach((ab, index) => {
-        const xs = parseCost(ab.cost).x ? range(manaAvailable(s, ab.tap ? [card.id] : []) - manaValue(ab.cost)) : [undefined];
+        const xs = ab.loyaltyX ? [...Array(loyaltyOf(card) + 1).keys()].slice(1)
+          : parseCost(ab.cost).x ? range(manaAvailable(s, ab.tap ? [card.id] : []) - manaValue(ab.cost)) : [undefined];
         xs.forEach((x) => {
           if (abilityProblem(s, card, ab, x)) return;
           // crewing a Vehicle that's already a creature does nothing more (solver: only crews that matter) — unless
@@ -4134,6 +4390,6 @@
     hasType, vividCount, colorsOf, subsets, textOf, pendingTrigger, currentPT, isPlaneswalker, loyaltyOf, isBattle, defenseOf, INCUBATOR, FOOD, ROLES, MAP, bargainOptions, legalActions, nextStep, solve, describe, opponentBlocks, blockOptions, nextStop,
     targetsFor, targetChoices, spellSpec, plan, faceOf, compositions, scryChoices, castable, abilitiesOf, sacrificeOptions, canAttackNow, inMain, parseCost, manaValue, manaAvailable,
     abilityProblem, abilityCost, isCreature, isLand, isInstant, isTreasure, has, power, toughness, slug, makeSearch, WORD_OF,
-    speedOf, maxSpeed, isVehicle, PILOT, crewPower, exhaustReady, sacCostOptions, exileCostOptions
+    speedOf, maxSpeed, isVehicle, PILOT, crewPower, exhaustReady, sacCostOptions, exileCostOptions, spellConvoke
   };
 })(typeof window !== "undefined" ? window : globalThis);

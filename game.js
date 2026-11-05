@@ -1189,7 +1189,7 @@
     }
     if (casting.channel) {
       const h = casting.card.handAbility;
-      casting.phases = casting.phases || (h.targets ? [{ kind: h.targets, filter: h.filter, count: ONE, src: casting.card, label: `${casting.card.name}'s ability` }] : []);
+      casting.phases = casting.phases || (h.targets ? [{ kind: h.targets, filter: h.filter, count: h.targetCount || ONE, src: casting.card, label: `${casting.card.name}'s ability` }] : []);
       return targetPhase();
     }
     // renew: an ability of a card in your graveyard (it's exiled as you activate it); its target
@@ -1204,6 +1204,12 @@
     const again = (key) => (v) => { casting[key] = v; nextChoice(); };
     if (casting.index != null) {
       const ab = E.abilitiesOf(card)[casting.index];
+      // a "−X" loyalty ability: X up to its loyalty
+      if (ab.loyaltyX && casting.x == null) {
+        const max = E.loyaltyOf(card);
+        if (max < 1) { cancelCast(); return rulesNote(`${card.name} has no loyalty to spend.`); }
+        return askChoice(`${card.name}: choose X`, Array.from({ length: max }, (_, i) => [i + 1, String(i + 1)]), again("x"));
+      }
       if (E.parseCost(ab.cost).x && casting.x == null) {
         const max = E.manaAvailable(state, ab.tap ? [card.id] : []) - E.manaValue(ab.cost);
         if (max < 1) { cancelCast(); return rulesNote("Not enough mana."); }
@@ -1479,7 +1485,7 @@
         then: (picked) => again("discard")(Array.isArray(picked) ? picked[0] : picked) });
     }
     // convoke: any set of your untapped creatures that, with your mana, pays the cost (only those can be picked)
-    if (E.has(f, "convoke") && casting.convoke === undefined) {
+    if (E.spellConvoke(state, f) && casting.convoke === undefined) {
       const costs = { ...base, behold: casting.behold ?? undefined };
       const sets = E.subsets(E.convokeHelpers(state)).filter((l) => !E.check(state, { ...costs, convoke: l }));
       if (sets.length === 1 && !sets[0].length) casting.convoke = [];            // (no creature can help: mana only)

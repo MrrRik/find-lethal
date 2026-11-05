@@ -288,6 +288,9 @@
   function fromScryfall(j) {
     const image = (j.image_uris || (j.card_faces && j.card_faces[0].image_uris) || {}).normal;
     if (CARDS[j.name]) return { ...c(j.name), image };
+    // (a double-faced card is "Front // Back" on Scryfall; the catalog knows it by its front face's name)
+    const front = j.card_faces && j.card_faces[0] && j.card_faces[0].name;
+    if (front && CARDS[front] && CARDS[front].faces) return { ...c(front), image };
     const multi = j.card_faces && ["modal_dfc", "split", "adventure", "transform"].includes(j.layout);
     if (!multi) {
       const face = j.card_faces ? j.card_faces[0] : j;
