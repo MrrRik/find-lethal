@@ -560,11 +560,12 @@
     ["player", "opponent"].forEach((sd) => s[sd].battlefield.filter((x) => x.controlledWhile === card.id).forEach((x) => { delete x.controlledWhile; const back = sd === "player" ? "opponent" : "player"; s[sd].battlefield = s[sd].battlefield.filter((y) => y !== x); s[back].battlefield.push(x); changed(s); }));
     // CR 610.3: cards exiled "until this leaves the battlefield" return right away (a one-shot effect, not a trigger)
     ["player", "opponent"].forEach((sd) => s[sd].exile.filter((x) => x.exiledUntil === card.id).forEach((x) => returnExiledCard(s, x, sd, ev)));
+    if (card.earthbent && !card.token && (zone === "graveyard" || zone === "exile")) s.triggered.push({ side, name: "Earthbend", srcId: card.id, td: defId(EARTH_RETURN), event: { id: card.id } });
     if (card.token) return;                                      // CR 111.7: tokens cease to exist
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared", "enteredThisTurn", "poweredUp", "xPaid", "convokedBy", "giftPromised", "usedOnce", "impendingNow", "zantetsuken", "sephResolved", "resolvedN"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared", "enteredThisTurn", "poweredUp", "xPaid", "convokedBy", "giftPromised", "usedOnce", "impendingNow", "zantetsuken", "sephResolved", "resolvedN", "earthbent"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -1367,6 +1368,8 @@
   const delay = (s, kind, side, name, srcId, id) => { s.delayed = [...(s.delayed || []), { kind, side, name, srcId, id }]; };
   const COPY_NEXT = { effect: { copyEventSpell: { always: true } } };
   const WALTZ = { effect: { impulseAll: 1 } };
+  // CR 701.66a: an earthbent land has "When this permanent dies or is exiled, return it to the battlefield tapped"
+  const EARTH_RETURN = { effect: { earthReturn: true } };
 
   // The objects whose abilities can trigger now: permanents on the battlefield, plus cards in other zones whose
   // triggers say they function there (CR 113.6b). `battlefield` replaces the battlefield part for look-back events.
@@ -2305,8 +2308,9 @@
       if (card) card.airbent = true;
     }
     // CR 701.66a: earthbend N — target land you control becomes a 0/0 creature with haste that's still a land, with N
-    // +1/+1 counters (its "when it dies or is exiled, return it" ability isn't modeled: puzzles end first)
+    // +1/+1 counters, and gains "When this permanent dies or is exiled, return it to the battlefield tapped" (EARTH_RETURN)
     if (eff.earthbend && tgt) {
+      tgt.earthbent = true;
       addEffect(s, tgt, { becomeCreature: true });
       addEffect(s, tgt, { setBase: [0, 0] });
       grant(tgt, ["haste"], s);
@@ -2953,6 +2957,18 @@
       if (mine > theirs) { s.youLostLife = true; draw(s, "player", mine - theirs, ev); }
     }
     // ---- Avatar: The Last Airbender ----
+    // an earthbent land that died or was exiled: "return it to the battlefield tapped" (from wherever it went)
+    if (eff.earthReturn) {
+      const id = ctx.event && ctx.event.id;
+      for (const side of ["player", "opponent"]) for (const zone of ["graveyard", "exile"]) {
+        const card = s[side][zone].find((c) => c.id === id);
+        if (!card) continue;
+        s[side][zone] = s[side][zone].filter((c) => c !== card);
+        const perm = asFace(card, 0); perm.tapped = true;
+        ev.push({ type: "returned", id: perm.id });
+        enter(s, perm, { side }, ev);
+      }
+    }
     // "If this is the second time this ability has resolved this turn, …" (counted on the permanent: a new object starts over)
     if (eff.onNthResolution) { const me = find(s, ctx.selfId); if (me) { const k = eff.onNthResolution.key; me.resolvedN = { ...(me.resolvedN || {}), [k]: ((me.resolvedN || {})[k] || 0) + 1 }; if (me.resolvedN[k] === eff.onNthResolution.n) applyEffect(s, eff.onNthResolution.then, target, ctx, ev); } }
     // Avatar's Wrath: "Choose up to one target creature, then airbend all other creatures."
