@@ -2135,10 +2135,10 @@
     { text: "Resolve it.", at: resolveButton, done: () => pumped() && !state.stack.length },
     { text: "Hold your graveyard to look inside.", at: () => $("you-gy"), done: () => tut.seen.zone },
     { text: "Tap Close.", at: () => $("zone-close"), done: () => tut.seen.zone && $("zoneview").hidden },
-    { text: "Tap Next phase.", at: () => $("next-phase"), done: () => state && state.phase !== "main1" },
+    { text: "The game waits while you can still act. Tap Next phase to move on.", at: () => $("next-phase"), done: () => state && state.phase !== "main1" },
     { text: "Tap your Gremlin to attack with it.", at: () => myCard("furnace-gremlin"), done: () => selected.has("furnace-gremlin") || !!(state && state.combat) },
     { text: "Tap Declare attackers.", at: () => $("go"), done: () => !!(state && state.combat) },
-    { text: "There are no blockers. Here comes the damage…", at: () => null, done: () => false }
+    { text: "There are no blockers and nothing left to do, so the game moves on by itself…", at: () => null, done: () => false }
   ];
   function startTutorial() {
     tut = { i: 0, seen: {}, loads: 0 };
@@ -2174,6 +2174,10 @@
   function tutorialWon() {
     confetti();
     tut = null;
+    // (the last line — the game moving on by itself — stays up a moment before the win screen)
+    setTimeout(tutorialSheet, 1800);
+  }
+  function tutorialSheet() {
     $("coach").hidden = true;
     document.querySelectorAll(".coach-target").forEach((el) => el.classList.remove("coach-target"));
     $("sheet").classList.remove("fail", "long");
