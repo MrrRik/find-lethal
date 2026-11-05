@@ -24,10 +24,13 @@
   const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch (_) { return fallback; } };
   const store = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch (_) { /* storage unavailable: fine */ } };
 
+  // (the mod view opens its own creator — "mod mode": it can also edit the game's puzzles, and keeps a separate draft)
+  let modMode = false;
+  const draftKey = () => (modMode ? DRAFT + ":mod" : DRAFT);
   let draft = load(DRAFT, null) || blank();
   const fill = () => ZONES.forEach((z) => { draft.zones[z] = draft.zones[z] || []; });
   fill();
-  const save = () => store(DRAFT, draft);
+  const save = () => store(draftKey(), draft);
 
   async function scry(path) {
     const r = await fetch("https://api.scryfall.com/" + path);
@@ -450,6 +453,7 @@ UNIQUENESS: check with tools/solver.html`}\`
   }
   const hasCards = () => ZONES.some((z) => draft.zones[z].length);
   function editPuzzle(p) {
+    if (!modMode) return false;                                 // (only the mod view's creator edits existing puzzles)
     if (hasCards() && !confirm(`Replace the board with "${p.title}"? (Save first if you want to keep this one.)`)) return false;
     draft = fromPuzzle(p);
     attaching = null;
@@ -476,6 +480,18 @@ UNIQUENESS: check with tools/solver.html`}\`
   });
   app.editPuzzle = editPuzzle;
 
-  app.onCreator = () => { closeMenu(); renderFrom(); render(); };
+  // opened from the menu (players: new puzzles only) or from the mod view (also edits the game's puzzles)
+  app.onCreator = ({ mod = false } = {}) => {
+    if (mod !== modMode) {                                      // (switching creators: each has its own draft)
+      modMode = mod;
+      draft = load(draftKey(), null) || blank();
+      fill();
+      attaching = null;
+    }
+    closeMenu();
+    $("cr-from").hidden = !modMode;
+    if (modMode) renderFrom();
+    render();
+  };
   app.fromScryfall = fromScryfall;                           // the card reader, for tests
 })();

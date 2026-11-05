@@ -598,7 +598,8 @@ body:not([data-screen="mod"]) #mod{display:none}
 .coach-target{outline:3px solid var(--gold) !important;outline-offset:3px;animation:coachpulse 1.1s ease-in-out infinite;position:relative;z-index:6}
 @keyframes coachpulse{50%{outline-offset:7px;outline-color:rgba(224,164,58,.45)}}
 /* the Solution button only with the debug option on (tap the title 5 times) */
-body:not(.show-solution) #solution,body:not(.show-solution) #edit-puzzle,body:not([data-screen="game"]) #edit-puzzle{display:none}
+body:not(.show-solution) #solution,body:not(.is-mod) #edit-puzzle,body:not([data-screen="game"]) #edit-puzzle{display:none}
+.mod-creator{display:block;width:100%;margin:.25rem 0 .75rem}
 .debug-opt{display:block;width:100%;margin:0 0 .6rem;text-align:left}
 
 /* achievements: the ribbon button (a dot for unseen unlocks) and the list */

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap">
-<link rel="stylesheet" href="style.css?v=ef964590c5">
+<link rel="stylesheet" href="style.css?v=9320e14149">
 <script>
   // apply saved (or system) theme before first paint to avoid a flash
   (function () {
@@ -71,7 +71,7 @@
     <button id="cr-submit-open" class="ghost" type="button">Submit</button>
     <button id="cr-save" class="ghost" type="button">Save</button>
     <select id="cr-load" aria-label="Saved puzzles"></select>
-    <select id="cr-from" aria-label="Edit an existing puzzle"></select>
+    <select id="cr-from" aria-label="Edit an existing puzzle" hidden></select>
     <button id="cr-copy" class="ghost" type="button">Copy as code</button>
     <button id="cr-clear" class="ghost" type="button">Clear board</button>
   </div>
@@ -166,6 +166,7 @@
       <button type="button" class="ghost small-btn" data-tab="declined">Declined</button>
       <button type="button" class="ghost small-btn" id="mod-logout">Log out</button>
     </div>
+    <button type="button" class="primary mod-creator" id="mod-creator">Puzzle creator · new and edit puzzles</button>
     <p class="cr-status" id="mod-msg"></p>
     <div class="mod-list" id="mod-list"></div>
   </div>
@@ -318,9 +319,9 @@
 <script src="dailies.js?v=417681c574"></script>
 <script src="tokenart.js?v=d95e424dce"></script>
 <script src="online.js?v=4abce9f805"></script>
-<script src="game.js?v=4df33dc06c"></script>
+<script src="game.js?v=1699f22ebd"></script>
 <script src="cardtext.js?v=54893ea046"></script>
-<script src="creator.js?v=2cf86192c4"></script><script>
+<script src="creator.js?v=42096e3cc5"></script><script>
   document.getElementById("theme-toggle").addEventListener("click", function () {
     var root = document.documentElement;
     var t = root.dataset.theme === "light" ? "dark" : "light";

@@ -235,6 +235,7 @@
 
   function show(screen) {
     document.body.dataset.screen = screen;
+    paintMod();                                              // (the Edit button only for a logged-in moderator)
     $("zoneview").hidden = true;
     if (screen !== "game") $("stackview").hidden = $("stack-show").hidden = true;   // (the stack popup belongs to a game)
     const back = $("back");
@@ -355,11 +356,15 @@
   const leaveGame = () => (current.tutorial ? finishTutorial() : current.reviewing ? showMod() : current.custom ? showCreator() : showLevels(current.difficulty));
 
   /* ---------- puzzle creator (creator.js) ---------- */
-  function showCreator() {
+  // (mod: the mod view's creator, which can also edit the game's puzzles; back from it goes to the mod view)
+  let creatorMod = false;
+  function showCreator(mod = creatorMod) {
+    creatorMod = mod === true;
     show("creator");
-    if (window.FindLethal.onCreator) window.FindLethal.onCreator();
+    $("back").textContent = creatorMod ? "← Mod view" : "← Menu";
+    if (window.FindLethal.onCreator) window.FindLethal.onCreator({ mod: creatorMod });
   }
-  $("open-creator").addEventListener("click", showCreator);
+  $("open-creator").addEventListener("click", () => showCreator(false));
 
   /* ---------- mod view: review submitted puzzles (debug menu, or ?mod) ---------- */
   // Only a logged-in moderator gets submissions from the server (the database checks it, not this page).
@@ -367,6 +372,7 @@
   const TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>`;
   function showMod() {
     show("mod");
+    paintMod();                                                // (just logged in or out: the Edit button follows)
     const on = window.Online && window.Online.ready;
     $("mod-setup").hidden = on;
     $("mod-login").hidden = !on || window.Online.loggedIn();
@@ -383,6 +389,8 @@
     } catch (err) { $("mod-login-msg").textContent = "Couldn't log in: " + err.message; }
   });
   $("mod-logout").addEventListener("click", () => { window.Online.logout(); showMod(); });
+  // the mod view's own puzzle creator: new puzzles, and editing any puzzle in the game
+  $("mod-creator").addEventListener("click", () => showCreator(true));
   document.querySelectorAll("#mod-tabs button").forEach((b) => b.addEventListener("click", () => { modTab = b.dataset.tab; loadMod(); }));
 
   async function loadMod() {
@@ -450,6 +458,7 @@
   $("back").addEventListener("click", () => {
     const screen = document.body.dataset.screen;
     if (screen === "game") leaveGame();
+    else if (screen === "creator" && creatorMod) showMod();
     else if (screen === "levels" && DIFFS.some((d) => d.id === levelsOf)) showSets();   // (a set's grid: back to the sets)
     else showMenu();
   });
@@ -467,13 +476,16 @@
   // What creator.js needs from the game
   window.FindLethal = { cardEl: (c) => cardEl(c, { detached: true }), play: (p) => play(p), menu: () => showMenu(),
     replayWins: (p, sol) => replayWins(p, sol), groupLabel: (id) => diffOf(id).label };
-  // (debug) open the puzzle being played in the creator, to tweak it
+  // (moderators only) open the puzzle being played in the mod view's creator, to tweak it
   $("edit-puzzle").addEventListener("click", () => {
-    if (!current || current.custom) return showCreator();
-    show("creator");
-    if (window.FindLethal.onCreator) window.FindLethal.onCreator();
+    if (!isMod()) return;
+    if (!current || current.custom) return showCreator(true);
+    showCreator(true);
     if (!window.FindLethal.editPuzzle(current)) play(current);   // (said no to replacing the board: back to the puzzle)
   });
+  // logged in as a moderator (this browser): the Edit button shows in puzzles
+  function isMod() { return !!(window.Online && window.Online.ready && window.Online.loggedIn()); }
+  function paintMod() { document.body.classList.toggle("is-mod", isMod()); }
 
   $("show-rules").addEventListener("click", () => {
     $("sheet").classList.remove("fail");
@@ -2055,7 +2067,7 @@
       btn.textContent = "Back to mod view"; btn.onclick = showMod;
       alt.textContent = "Play again"; alt.onclick = load;
     } else if (current.custom) {
-      btn.textContent = "Back to creator"; btn.onclick = showCreator;
+      btn.textContent = "Back to creator"; btn.onclick = () => showCreator();
       alt.textContent = "Play again"; alt.onclick = load;
     } else if (next) {
       btn.textContent = "Next puzzle"; btn.onclick = () => play(next);
