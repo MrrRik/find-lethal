@@ -586,7 +586,7 @@ body:not([data-screen="mod"]) #mod{display:none}
 .mod-actions .mod-delete:hover{background:var(--red);color:#fff}
 
 /* the Solution button only with the debug option on (tap the title 5 times) */
-body:not(.show-solution) #solution{display:none}
+body:not(.show-solution) #solution,body:not(.show-solution) #edit-puzzle,body:not([data-screen="game"]) #edit-puzzle{display:none}
 .debug-opt{display:block;width:100%;margin:0 0 .6rem;text-align:left}
 
 /* achievements: the ribbon button (a dot for unseen unlocks) and the list */

@@ -279,7 +279,12 @@
     if (draft.youLife != null) you.life = draft.youLife;
     const opp = side("opp");
     delete opp.hand;
-    const p = puzzle({ id: "custom", title: draft.title || "My puzzle", difficulty: draft.difficulty, opp: { life: draft.oppLife, ...opp }, you });
+    // (things the board editor doesn't show, kept from a loaded puzzle: poison, speed, a land already played)
+    const x = draft.extra || {};
+    if (x.oppPoison) opp.poison = x.oppPoison;
+    if (x.oppSpeed != null) opp.speed = x.oppSpeed;
+    if (x.youSpeed != null) you.speed = x.youSpeed;
+    const p = puzzle({ id: "custom", title: draft.title || "My puzzle", difficulty: draft.difficulty, opp: { life: draft.oppLife, ...opp }, you, landPlayed: !!x.landPlayed });
     p.custom = true;
     return p;
   }
@@ -312,7 +317,7 @@
     status(`Loaded "${draft.title}". Save again to keep changes.`, "ok");
   });
 
-  $("cr-clear").addEventListener("click", () => {
+  $("cr-clear").addEventListener("click", () => {   // (a cleared board is a new puzzle: no longer an edit of one)
     if (!confirm("Clear the board and start a new puzzle? (Saved puzzles are kept.)")) return;
     draft = blank();
     attaching = null;
@@ -333,17 +338,23 @@
     const list = (cards) => `[${cards.map(cardCode).join(", ")}]`;
     const slug = (draft.title || "my puzzle").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const youLife = draft.youLife != null ? `life: ${draft.youLife}, ` : "";
+    const x = draft.extra || {};
     const zones = (z) => `battlefield: ${list(z.battlefield)}, graveyard: ${list(z.graveyard)}, exile: ${list(z.exile)}, library: ${list(z.library)}`;
+    // (an edited puzzle keeps its id and set, so it can replace the original)
+    const src = draft.source;
+    const orig = src && window.PUZZLES.find((q) => q.id === src.id);   // (its explanation and notes come along)
+    const head = src ? `id: "${src.id}", title: ${JSON.stringify(draft.title || "My puzzle")}, set: "${src.set}", tier: "${draft.difficulty}",${src.date ? ` /* daily ${src.date} */` : ""}${x.landPlayed ? " landPlayed: true," : ""}`
+      : `id: "${draft.difficulty}-${slug}", title: ${JSON.stringify(draft.title || "My puzzle")}, difficulty: "${draft.difficulty}",`;
     const code = `puzzle({
-  id: "${draft.difficulty}-${slug}", title: ${JSON.stringify(draft.title || "My puzzle")}, difficulty: "${draft.difficulty}",
-  opp: { life: ${draft.oppLife}, ${zones(p.opponent)} },
-  you: { ${youLife}hand: ${list(p.player.hand)}, ${zones(p.player)} },
-  explanation: "",
-  notes: \`
+  ${head}
+  opp: { life: ${draft.oppLife}, ${x.oppPoison ? `poison: ${x.oppPoison}, ` : ""}${x.oppSpeed != null ? `speed: ${x.oppSpeed}, ` : ""}${zones(p.opponent)} },
+  you: { ${youLife}${x.youSpeed != null ? `speed: ${x.youSpeed}, ` : ""}hand: ${list(p.player.hand)}, ${zones(p.player)} },
+  explanation: ${JSON.stringify(orig ? orig.explanation || "" : "")},
+  notes: \`${orig && orig.notes ? orig.notes.replace(/`/g, "\\`") + "\n(EDITED in the creator: re-check LETHAL / UNIQUENESS)" : `
 LETHAL:
 RULES:
 WRONG LINES:
-UNIQUENESS: check with tools/solver.html\`
+UNIQUENESS: check with tools/solver.html`}\`
 }),`;
     const done = () => status("Copied. Paste it into puzzles.js (or send it to Claude) to add the puzzle.", "ok");
     if (navigator.clipboard) navigator.clipboard.writeText(code).then(done, () => prompt("Copy the puzzle code:", code));
@@ -415,6 +426,56 @@ UNIQUENESS: check with tools/solver.html\`
     }
   });
 
-  app.onCreator = () => { closeMenu(); render(); };
+  /* ---------- editing an existing puzzle (sets, dailies, user puzzles) ---------- */
+  // The puzzle's board as a creator draft: every card copied with a new creator id (attachments follow), its life
+  // totals, title and tier; poison, speed and "land already played" ride along; source: where it came from
+  function fromPuzzle(p) {
+    const d = blank();
+    d.title = p.title || "";
+    d.difficulty = ["easy", "medium", "hard"].includes(p.tier) ? p.tier : "easy";
+    d.oppLife = p.opponent.life ?? 20;
+    d.youLife = p.player.life ?? null;
+    d.extra = { oppPoison: p.opponent.poison || 0, oppSpeed: p.opponent.speed, youSpeed: p.player.speed, landPlayed: !!p.landPlayed };
+    d.source = { id: p.id, set: p.difficulty, tier: p.tier, date: p.date || null };
+    const ids = {};
+    const zones = { "opp.battlefield": p.opponent.battlefield, "opp.graveyard": p.opponent.graveyard, "opp.exile": p.opponent.exile, "opp.library": p.opponent.library,
+      "you.battlefield": p.player.battlefield, "you.hand": p.player.hand, "you.graveyard": p.player.graveyard, "you.exile": p.player.exile, "you.library": p.player.library };
+    Object.entries(zones).forEach(([z, cards]) => (cards || []).forEach((card) => {
+      const copy = JSON.parse(JSON.stringify(card));
+      ids[card.id] = copy.id = "cr" + d.nextId++;
+      d.zones[z].push(copy);
+    }));
+    ZONES.forEach((z) => d.zones[z].forEach((card) => { if (card.attachedTo) card.attachedTo = ids[card.attachedTo]; }));
+    return d;
+  }
+  const hasCards = () => ZONES.some((z) => draft.zones[z].length);
+  function editPuzzle(p) {
+    if (hasCards() && !confirm(`Replace the board with "${p.title}"? (Save first if you want to keep this one.)`)) return false;
+    draft = fromPuzzle(p);
+    attaching = null;
+    closeMenu(); save(); render();
+    status(`Editing "${p.title}" (${p.id}). Play test it, Save it here, or Copy as code to put the change in the game.`, "ok");
+    return true;
+  }
+  // the list of every puzzle, by group (sets in order, then the dailies and the user puzzles)
+  function renderFrom() {
+    const sel = $("cr-from");
+    const groups = new Map();
+    window.PUZZLES.filter((p) => !p.custom).forEach((p) => { if (!groups.has(p.difficulty)) groups.set(p.difficulty, []); groups.get(p.difficulty).push(p); });
+    sel.replaceChildren(new Option("Edit a puzzle…", ""), ...[...groups].map(([g, list]) => {
+      const og = document.createElement("optgroup");
+      og.label = app.groupLabel ? app.groupLabel(g) : g;
+      list.forEach((p, i) => og.append(new Option(p.date ? p.title : `#${i + 1} · ${p.title}`, p.id)));
+      return og;
+    }));
+  }
+  $("cr-from").addEventListener("change", (e) => {
+    const p = window.PUZZLES.find((x) => x.id === e.target.value);
+    e.target.value = "";
+    if (p) editPuzzle(p);
+  });
+  app.editPuzzle = editPuzzle;
+
+  app.onCreator = () => { closeMenu(); renderFrom(); render(); };
   app.fromScryfall = fromScryfall;                           // the card reader, for tests
 })();

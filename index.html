@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap">
-<link rel="stylesheet" href="style.css?v=aea50f64ad">
+<link rel="stylesheet" href="style.css?v=3ba700c2ad">
 <script>
   // apply saved (or system) theme before first paint to avoid a flash
   (function () {
@@ -30,6 +30,7 @@
     <span id="diff" class="badge"></span>
     <span id="puzzle-title" class="ptitle"></span>
     <button id="solution" class="ghost small-btn" type="button" title="Show the solution (for testing)">Solution</button>
+    <button id="edit-puzzle" class="ghost small-btn" type="button" title="Open this puzzle in the puzzle creator">Edit</button>
     <button id="ach-open" class="theme-toggle ach-btn" type="button" aria-label="Achievements" title="Achievements">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.6 13.9 7 22l5-3 5 3-1.6-8.1"/></svg>
       <i class="ach-dot" id="ach-dot" hidden></i>
@@ -69,6 +70,7 @@
     <button id="cr-submit-open" class="ghost" type="button">Submit</button>
     <button id="cr-save" class="ghost" type="button">Save</button>
     <select id="cr-load" aria-label="Saved puzzles"></select>
+    <select id="cr-from" aria-label="Edit an existing puzzle"></select>
     <button id="cr-copy" class="ghost" type="button">Copy as code</button>
     <button id="cr-clear" class="ghost" type="button">Clear board</button>
   </div>
@@ -308,9 +310,9 @@
 <script src="dailies.js?v=417681c574"></script>
 <script src="tokenart.js?v=d95e424dce"></script>
 <script src="online.js?v=4abce9f805"></script>
-<script src="game.js?v=944d58020e"></script>
+<script src="game.js?v=a2bf71e65e"></script>
 <script src="cardtext.js?v=54893ea046"></script>
-<script src="creator.js?v=da028d299d"></script><script>
+<script src="creator.js?v=2cf86192c4"></script><script>
   document.getElementById("theme-toggle").addEventListener("click", function () {
     var root = document.documentElement;
     var t = root.dataset.theme === "light" ? "dark" : "light";

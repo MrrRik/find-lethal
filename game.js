@@ -466,7 +466,14 @@
   ];
   // What creator.js needs from the game
   window.FindLethal = { cardEl: (c) => cardEl(c, { detached: true }), play: (p) => play(p), menu: () => showMenu(),
-    replayWins: (p, sol) => replayWins(p, sol) };
+    replayWins: (p, sol) => replayWins(p, sol), groupLabel: (id) => diffOf(id).label };
+  // (debug) open the puzzle being played in the creator, to tweak it
+  $("edit-puzzle").addEventListener("click", () => {
+    if (!current || current.custom) return showCreator();
+    show("creator");
+    if (window.FindLethal.onCreator) window.FindLethal.onCreator();
+    if (!window.FindLethal.editPuzzle(current)) play(current);   // (said no to replacing the board: back to the puzzle)
+  });
 
   $("show-rules").addEventListener("click", () => {
     $("sheet").classList.remove("fail");
