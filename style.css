@@ -181,6 +181,8 @@ body.targeting .targetable:hover{box-shadow:0 0 0 3px var(--red),0 0 18px 2px rg
 
 /* counters: dice sitting on the card's art */
 .card .dice{position:absolute;left:6%;top:16%;z-index:2;display:flex;flex-direction:column;gap:.25rem;pointer-events:none}
+/* a Saga: chapter text on the left, art on the right — its counters sit over the art */
+.card.saga .dice{left:auto;right:6%;align-items:flex-end}
 .card .die{width:calc(var(--cw) * .3);min-width:1.6rem;aspect-ratio:1;border-radius:22%;display:grid;place-items:center;align-content:center;
   background:linear-gradient(145deg,#f4f8ef,#cfdcc6);color:#173b19;border:2px solid #2f7a35;
   box-shadow:0 3px 8px rgba(0,0,0,.55),inset 0 -2px 0 rgba(0,0,0,.15)}
@@ -264,8 +266,10 @@ body.targeting .targetable:hover{box-shadow:0 0 0 3px var(--red),0 0 18px 2px rg
 .choice-options button::first-letter{text-transform:uppercase}   /* ("red" → "Red"; card text keeps its own case) */
 /* a choice between cards (which trigger goes on the stack first): the cards side by side, like the stack popup */
 .choice-box:has(.cardopts){width:min(100%, 34rem)}
-.choice-options.cardopts{--cw:clamp(84px, 26vw, 8.5rem);--ch:calc(var(--cw) * 1.395);--r:calc(var(--cw) * .05);
-  flex-wrap:nowrap;overflow-x:auto;justify-content:safe center;gap:.75rem;padding:.25rem .1rem .5rem}
+/* (never wider than the screen: many card answers wrap onto more rows, and the box scrolls if it gets too tall) */
+.choice-box{min-width:0;max-width:100%;max-height:calc(100dvh - 2rem);overflow-y:auto}
+.choice-options.cardopts{--cw:clamp(76px, 24vw, 8.5rem);--ch:calc(var(--cw) * 1.395);--r:calc(var(--cw) * .05);
+  flex-wrap:wrap;justify-content:center;gap:.6rem;padding:.25rem .1rem .5rem}
 .choice-options .cardopt{flex:none;display:flex;flex-direction:column;align-items:center;gap:.4rem;width:calc(var(--cw) + 1rem);
   padding:.5rem;border-radius:.75rem}
 .choice-options .cardopt .card{position:relative}

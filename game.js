@@ -496,7 +496,8 @@
 
   function cardEl(c, { zoom = false, detached = false } = {}) {
     const el = document.createElement("div");
-    el.className = "card" + (c.tapped && !zoom ? " tapped" : "") + (c.token ? " token" : "") + (c.faceDown ? " facedown" : "");
+    el.className = "card" + (c.tapped && !zoom ? " tapped" : "") + (c.token ? " token" : "") + (c.faceDown ? " facedown" : "") +
+      (!c.faceDown && /\bSaga\b/.test(c.type || "") ? " saga" : "");   // (a Saga's chapters are on the left: its counters go right)
     el.dataset.id = c.id || "";
     el.setAttribute("role", "button");
     el.setAttribute("aria-label", c.name);
@@ -597,6 +598,11 @@
         b.className = "abil";
         b.dataset.index = i;
         b.textContent = ab.text || "Ability";
+        // a power-up or exhaust cost that's lower right now (entered this turn, Hulk, Boom Scholar): say what it costs now
+        if ((ab.powerUp || ab.exhaust) && state && !detached && state.player.battlefield.includes(c)) {
+          const now = E.abilityCost(state, c, ab);
+          if (now !== ab.cost) b.textContent = `${now ? `Now ${now}` : "Free now"} · ${b.textContent}`;
+        }
         b.title = `Activate: ${ab.text || "ability"}`;
         box.appendChild(b);
       });
@@ -785,7 +791,8 @@
     const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn));
     // a prepared creature's prepare spell: a copy you may cast (shown with your hand)
     const prepared = p.player.battlefield.filter((c) => c.prepared && c.prepare)
-      .map((c) => ({ ...c.prepare, id: `${c.id}#prep`, token: true, text: c.prepare.text, preparedFrom: c.name }));
+      // (shown as its creature's card: the prepare spell is printed on it)
+      .map((c) => ({ ...c.prepare, id: `${c.id}#prep`, token: true, image: scry(c.name), text: c.prepare.text, preparedFrom: c.name }));
     fill($("hand"), [...hand, ...adventures, ...flashbacks, ...prepared]);
     const mark = (c, label) => {
       const el = document.querySelector(`#hand .card[data-id="${c.id}"]`);
@@ -797,8 +804,10 @@
     flashbacks.forEach((c) => mark(c, c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)`
       : c.renew ? `Renew ${c.renew.cost} (graveyard)` : `Mayhem ${c.mayhem} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
-      (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} usable from the graveyard` : "");
-    $("hand-wrap").classList.toggle("empty", !hand.length && !adventures.length && !flashbacks.length);
+      (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} usable from the graveyard` : "") +
+      (prepared.length ? ` · ${prepared.length} prepared spell${prepared.length === 1 ? "" : "s"}` : "");
+    // (shown whenever something can be cast from it: a prepared spell's copy too, even with an empty hand)
+    $("hand-wrap").classList.toggle("empty", !hand.length && !adventures.length && !flashbacks.length && !prepared.length);
     showPhase(p.phase);
     const floating = p.pool.length + (p.firePool || 0);              // (firebending {R}s last until end of combat)
     $("pool").textContent = floating ? `${floating} mana floating` : "";
@@ -1845,6 +1854,7 @@
     const label = (w) => E.isBattle(w) ? `${w.name} (${E.defenseOf(w)} defense)` : `${w.name} (${E.loyaltyOf(w)} loyalty)`;
     const ask = (i) => {
       if (i >= action.ids.length) { setPrompt(current.prompt); return perform(action); }
+      const id = action.ids[i];
       const attacker = state.player.battlefield.find((c) => c.id === id);
       // (the attacker above the choice; each planeswalker or battle shown as its card)
       askChoice(`${attacker.name} attacks:`, [["opp", "Your opponent"], ...walkers.map((w) => [w.id, label(w), w])], (to) => {
