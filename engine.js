@@ -1127,7 +1127,7 @@
       if (toxic) { side.poison = (side.poison || 0) + toxic; ev.push({ type: "poison", who: to, amount: toxic }); }
       emit(s, { type: "playerDamaged", side: to === "opp" ? "opponent" : "player", to, count: n }, ev);   // ("whenever enchanted player is dealt damage")
       // "whenever this creature deals combat damage to a player" (CR 510.3a: triggers after the damage is dealt)
-      if (combat) emit(s, { type: "combatDamage", obj: src, side: srcSide, to, count: n, batch: s.combatBatch }, ev);
+      if (combat) emit(s, { type: "combatDamage", obj: src, side: srcSide, to, count: n, batch: s.combatBatch, modified: modifiedIn(s, src, srcSide) }, ev);
     } else {
       const t = find(s, to);
       if (!t) return;
@@ -1135,6 +1135,8 @@
       if (protectedFrom(t, src) && !s.noPrevention && !battlefieldNow(s).some(({ card: x }) => x.noPrevention)) { ev.push({ type: "prevented", id: t.id }); return; }
       // Phyrexian Vindicator: "If damage would be dealt to this creature, prevent that damage. When damage is prevented
       // this way, …" (a reflexive trigger with the amount)
+      // Anti-Venom: "If damage would be dealt to Anti-Venom, prevent that damage and put that many +1/+1 counters on him."
+      if (t.antiVenom && !(t.st && t.st.lost) && !s.noPrevention) { ev.push({ type: "prevented", id: t.id }); addCounters(s, t, "+1/+1", n, ev); return; }
       if (t.preventsOwnDamage && !(t.st && t.st.lost) && !s.noPrevention) {
         ev.push({ type: "prevented", id: t.id });
         emit(s, { type: "damagePrevented", obj: t, side: sideOf(s, t), count: n }, ev);
@@ -1433,6 +1435,7 @@
     if (f.exactlyColors != null && colorsOf(e.obj).length !== f.exactlyColors) return false; // "a spell that's exactly two colors"
     if (f.counterKind && e.kind !== f.counterKind) return false;                             // "+1/+1 counters are put on this creature"
     if (f.fromHand && !e.fromHand) return false;
+    if (f.modified && !e.modified) return false;                                          // "a modified creature you control deals combat damage"
     if (f.notOwned && e.obj.owner !== "opponent") return false;
     if (f.wasCast && !e.obj.wasCast) return false;                                      // "if you cast it"                                             // "an instant or sorcery spell from your hand"
     if (f.targetsCreature && !e.targetsCreature) return false;
@@ -1575,7 +1578,7 @@
     (!f.creatureOrVehicle || isCreature(c) || isVehicle(c)) && (!f.mountOrVehicleCard || isMount(c) || isVehicle(c)) &&
     (!f.gearhulk || ((isArtifact(c) || isCreature(c) || typeHas(c, /enchantment/i)) && manaValue(c.cost) <= 1)) &&
     (!f.balemurk || (isCreature(c) && !hasType(c, "Avatar")) || isPlaneswalker(c)) && (!f.adventureCard || c.layout === "adventure") && (!f.notName || c.name !== f.notName) &&
-    (!f.creatureOrWalkerCard || isCreature(c) || isPlaneswalker(c)) && (!f.birdOrBasicLand || hasType(c, "Bird") || (isLand(c) && /\bbasic\b/i.test(c.type || ""))) && (!f.noncreatureCard || !isCreature(c)) && (!f.colorsAny || f.colorsAny.some((x) => colorsOf(c).includes(x))) && (!f.untapped || !c.tapped) && (!f.artifactOrEnchantmentCard || isArtifact(c) || (typeHas(c, /enchantment/i) && !c.aura)) && (!f.suspected || !!c.suspected) && (!f.planeswalker || isPlaneswalker(c));   // "artifact or non-Aura enchantment card"
+    (!f.allTypes || f.allTypes.every((t) => hasType(c, t))) && (!f.creatureOrWalkerCard || isCreature(c) || isPlaneswalker(c)) && (!f.birdOrBasicLand || hasType(c, "Bird") || (isLand(c) && /\bbasic\b/i.test(c.type || ""))) && (!f.noncreatureCard || !isCreature(c)) && (!f.colorsAny || f.colorsAny.some((x) => colorsOf(c).includes(x))) && (!f.untapped || !c.tapped) && (!f.artifactOrEnchantmentCard || isArtifact(c) || (typeHas(c, /enchantment/i) && !c.aura)) && (!f.suspected || !!c.suspected) && (!f.planeswalker || isPlaneswalker(c));   // "artifact or non-Aura enchantment card"
 
   // The one place game events go: logged for the UI, and checked against every triggered ability that can
   // function (CR 603.2). Each matching ability triggers once per event (CR 603.2c) and waits in s.triggered
@@ -1651,6 +1654,9 @@
   /* ---------- targets ---------- */
   // Does this creature fit a target restriction ("nonblack", "with flying", "attacking", "an opponent controls", …)?
   // "you" and "an opponent" are seen from `viewer`, the player controlling the spell or ability (CR 109.5)
+  // CR 700.9: a modified creature — Equipment attached to it, Auras its controller controls attached to it, or counters on it
+  const modifiedIn = (s, c, side) => Object.values(c.counters || {}).some((n) => n > 0) ||
+    [...s.player.battlefield.map((x) => [x, "player"]), ...s.opponent.battlefield.map((x) => [x, "opponent"])].some(([x, sd]) => x.attachedTo === c.id && (x.equip || (x.aura && sd === side)));
   function matches(s, c, f, viewer = "player") {
     if (!f) return true;
     const side = s.player.battlefield.includes(c) ? "player" : "opponent";
@@ -1682,7 +1688,9 @@
     if (f.mountOrVehicle && !isMount(c) && !isVehicle(c)) return false;   // "Mounts and Vehicles you control"
     if (f.spacecraftOrPlanet && !subtypes(c).some((t) => t === "Spacecraft" || t === "Planet")) return false;
     if (f.nonland && typeHas(c, /\bland\b/i)) return false;                                      // "target nonland permanent"
-    if (f.creatureOrWalker && !isCreature(c) && !isPlaneswalker(c)) return false;                 // "target creature or planeswalker"
+    if (f.creatureOrWalker && !isCreature(c) && !isPlaneswalker(c)) return false;
+    // "a modified creature" (CR 700.9: Equipment attached to it, Auras you control attached to it, or counters on it)
+    if (f.modified && !modifiedIn(s, c, side)) return false;                 // "target creature or planeswalker"
     if (f.creatureOrEnchantment && !isCreature(c) && !typeHas(c, /enchantment/i)) return false;   // "target creature or enchantment"
     if (f.hasCounter && !(((c.counters || {})[f.hasCounter === true ? "+1/+1" : f.hasCounter] || 0) > 0)) return false;   // "with +1/+1 counters on them"
     if (f.enteredThisTurn && !c.enteredThisTurn) return false;                                   // "target creature that entered this turn"
@@ -2017,6 +2025,12 @@
       : d === "eventLastPower" ? Math.max(0, ctx.event && ctx.event.obj ? (ctx.event.obj.lastPower ?? power(ctx.event.obj)) : 0)
       : d === "diedCount" ? s.diedCount || 0
       : d === "landsYouControl" ? s[ctx.side].battlefield.filter(isLand).length
+      // ("the number of creatures they control", "the greatest power among creature cards in your graveyard", "the
+      // difference" up to eight cards in hand, "X" of a permanent as it entered)
+      : d === "oppCreatures" ? s[ctx.side === "player" ? "opponent" : "player"].battlefield.filter(isCreature).length
+      : d === "greatestGraveyardPower" ? Math.max(0, ...s[ctx.side].graveyard.map((c) => faceOf(c, {})).filter(isCreature).map((c) => power(c)))
+      : d === "handTo8" ? Math.max(0, 8 - s[ctx.side].hand.length)
+      : d === "selfX" ? me0().xPaid || 0
       : typeof d === "object" && d.per ? (d.plus || 0) + s[ctx.side].battlefield.filter((c) => matches(s, c, d.per, ctx.side)).length
       // ("2 plus the number of Lesson cards in your graveyard": { plus: 2, perGraveyard: "Lesson" })
       : typeof d === "object" && d.perGraveyard ? (d.plus || 0) + s[ctx.side].graveyard.filter((c) => subtypes(c).includes(d.perGraveyard)).length
@@ -2920,6 +2934,16 @@
     // ---- Edge of Eternities ----
     // Alpharael: "defending player loses half their life, rounded up"
     if (eff.oppLosesHalf) { const o = s[ctx.side === "player" ? "opponent" : "player"]; if (o.life != null) changeLife(s, ctx.side === "player" ? "opp" : "you", -Math.ceil(Math.max(o.life, 0) / 2), ev); }
+    // Origin of Spider-Man: "It becomes a legendary Spider Hero in addition to its other types."
+    if (eff.makeLegendary && tgt && !/\blegendary\b/i.test(tgt.type || "")) { tgt.type = "Legendary " + tgt.type; changed(s); }
+    // Mister Negative: "you may exchange life totals with target opponent. If you lost life this way, draw that many cards." (CR 118.7)
+    if (eff.exchangeLife && ctx.side === "player" && s.player.life != null && s.opponent.life != null && choose(s, "Exchange life totals?", ["Exchange", "Don't"], "player") === 0) {
+      const mine = s.player.life, theirs = s.opponent.life;
+      s.player.life = theirs; s.opponent.life = mine;
+      ev.push({ type: "life", who: "you", amount: theirs - mine }, { type: "life", who: "opp", amount: mine - theirs });
+      if (theirs > mine) { s.oppLostLife = true; s.gainedLife = true; s.lifeGainedTotal = (s.lifeGainedTotal || 0) + theirs - mine; emit(s, { type: "gainLife", side: "player", count: theirs - mine }, ev); }
+      if (mine > theirs) { s.youLostLife = true; draw(s, "player", mine - theirs, ev); }
+    }
     // "gets +X/+X, where X is …"
     if (eff.pumpBy && tgt) { const n = amount(eff.pumpBy); addMod(s, tgt, [n, n]); }
     // Nibelheim Aflame: "It deals damage equal to its power to each other creature."
@@ -3822,6 +3846,8 @@
   // and "pay life or it enters tapped" change how it enters (you may pay life only if you have it, CR 119.4).
   // CR 603.6a: then every permanent on the battlefield, the newcomer included, is checked for enters triggers.
   function enter(s, perm, { x, payLife, lifePips, side = "player" } = {}, ev) {
+    // Spider-Woman: "Artifacts and creatures your opponents control enter tapped."
+    if (side === "opponent" && (isArtifact(perm) || isCreature(perm)) && s.player.battlefield.some((c) => c.oppEntersTapped && !(c.st && c.st.lost))) perm.tapped = true;
     // "You may have this creature enter as a copy of any creature on the battlefield, except …" (CR 614.1c, 707.5):
     // chosen as it enters; it enters as the copy, so the copied "enters" abilities and triggers apply
     if (perm.entersAsCopy) {

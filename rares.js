@@ -2264,4 +2264,85 @@
       etb: { seq: [{ destroy: true }, { damageAll: { n: 4, creatures: "all" }, untargeted: true }] }, targets: "permanent", targetFilter: { noncreature: true },
       text: `When this Spacecraft enters, destroy target noncreature permanent. Then this Spacecraft deals 4 damage to each creature. ${STATION(5)} 5+ | Flying, trample` }
   });
+
+  // ---- Marvel's Spider-Man (SPM) ----
+  // Not modeled yet: Arachne, Friendly Neighborhood, Peter Parker, Rent Is Due, With Great Power, The Clone Saga, Hide on the
+  // Ceiling, Hydro-Man, Impostor Syndrome, Lady Octopus, Mysterio, Norman Osborn, Spider-Sense, Behold the Sinister Six!,
+  // Black Cat, The Death of Gwen Stacy, Eddie Brock, Gwenom, Parker Luck, The Soul Stone, Electro, Gwen Stacy, Maximum
+  // Carnage, Shadow of the Goblin, Spider-Punk, Spider-Verse, Spinneret and Spiderling, Lizard, Miles Morales, Sandman,
+  // Strength of Will, Carnage, Jackal, Kraven the Hunter, Scarlet Spider, Spider-Man 2099, The Spot, Superior Spider-Man,
+  // Symbiote Spider-Man, Interdimensional Web Watch, Iron Spider, Peter Parker's Camera, Rocket-Powered Goblin Glider,
+  // Multiversal Passage, Oscorp Industries, Urban Retreat
+  const SPIDER = { name: "Spider", type: "Token Creature — Spider", pt: "2/1", colors: ["G"], kw: ["reach"] };
+  const CITIZEN = { name: "Human Citizen", type: "Token Creature — Human Citizen", pt: "1/1", colors: ["G", "W"] };
+  const WEB = (cost) => `Web-slinging ${cost} (You may cast this spell for ${cost} if you also return a tapped creature you control to its owner's hand.)`;
+  Object.assign(CARDS, {
+    "Anti-Venom, Horrifying Healer": { type: "Legendary Creature — Symbiote Hero", cost: "{W}{W}{W}{W}{W}", pt: "5/5", antiVenom: true,
+      triggers: [{ on: "enters", self: true, if: { wasCast: true }, targets: "graveyard-card", targetFilter: { creature: true }, effect: { reanimate: true } }],
+      text: "When Anti-Venom enters, if he was cast, return target creature card from your graveyard to the battlefield. If damage would be dealt to Anti-Venom, prevent that damage and put that many +1/+1 counters on him." },
+    "Origin of Spider-Man": { type: "Enchantment — Saga", cost: "{1}{W}", chapters: [
+      { n: [1], effect: { create: SPIDER } },
+      { n: [2], targets: "creature", targetFilter: { controller: "you" }, effect: { counters: { "+1/+1": 1 }, makeLegendary: true, addSubtype: "Spider Hero" } },
+      { n: [3], targets: "creature", targetFilter: { controller: "you" }, effect: { grant: ["double strike"] } }],
+      text: `${SAGA("III")} I — Create a 2/1 green Spider creature token with reach. II — Put a +1/+1 counter on target creature you control. It becomes a legendary Spider Hero in addition to its other types. III — Target creature you control gains double strike until end of turn.` },
+    "Agent Venom": { type: "Legendary Creature — Symbiote Soldier Hero", cost: "{2}{B}", pt: "2/3", kw: ["flash", "menace"],
+      triggers: [{ on: "dies", other: true, filter: { controller: "you", creature: true, nontoken: true }, effect: { draw: 1, lifeLoss: 1, to: "you" } }],
+      text: "Flash. Menace. Whenever another nontoken creature you control dies, you draw a card and lose 1 life." },
+    "Morlun, Devourer of Spiders": { type: "Legendary Creature — Vampire Villain", cost: "{X}{B}{B}", pt: "2/1", kw: ["lifelink"], entersWithCounters: "X",
+      etb: { damage: "selfX", to: "opp" },
+      text: "Lifelink. Morlun enters with X +1/+1 counters on him. When Morlun enters, he deals X damage to target opponent." },
+    "Villainous Wrath": { type: "Sorcery", cost: "{3}{B}{B}", effect: { seq: [{ lifeLoss: "oppCreatures", to: "opp" }, { destroyAll: { creatures: "all" } }] },
+      text: "Target opponent loses life equal to the number of creatures they control. Then destroy all creatures." },
+    "J. Jonah Jameson": { type: "Legendary Creature — Human Citizen", cost: "{2}{R}", pt: "2/2",
+      etb: { suspect: true }, targets: "creature", targetCount: { min: 0, max: 1 },
+      triggers: [{ on: "attacks", filter: { controller: "you", kw: "menace" }, effect: { create: TREASURE } }],
+      text: "When J. Jonah Jameson enters, suspect up to one target creature. (A suspected creature has menace and can't block.) Whenever a creature you control with menace attacks, create a Treasure token." },
+    "Kraven's Last Hunt": { type: "Enchantment — Saga", cost: "{3}{G}", chapters: [
+      { n: [1], targets: "creature", effect: { seq: [{ mill: 5, untargeted: true }, { damage: "greatestGraveyardPower" }] } },
+      { n: [2], targets: "creature", targetFilter: { controller: "you" }, effect: { pump: [2, 2] } },
+      { n: [3], targets: "graveyard-card", targetFilter: { creature: true }, effect: { regrow: true } }],
+      text: `${SAGA("III")} I — Mill five cards. When you do, this Saga deals damage equal to the greatest power among creature cards in your graveyard to target creature. II — Target creature you control gets +2/+2 until end of turn. III — Return target creature card from your graveyard to your hand.` },
+    "Radioactive Spider": { type: "Creature — Spider", cost: "{G}", pt: "1/1", kw: ["reach", "deathtouch"],
+      abilities: [{ cost: "{2}", sacSelf: true, sorcery: true, effect: { search: { filter: { allTypes: ["Spider", "Hero"] } } }, text: "{2}, Sacrifice: search for a Spider Hero card" }],
+      text: "Reach, deathtouch. Fateful Bite — {2}, Sacrifice this creature: Search your library for a Spider Hero card, reveal it, put it into your hand, then shuffle. Activate only as a sorcery." },
+    "Spider-Ham, Peter Porker": { type: "Legendary Creature — Spider Boar Hero", cost: "{1}{G}", pt: "2/2", etb: { create: FOOD_TOKEN },
+      static: { team: { pump: [1, 1] }, other: true, filter: { anyOfTypes: ["Spider", "Boar", "Bat", "Bear", "Bird", "Cat", "Dog", "Frog", "Jackal", "Lizard", "Mouse", "Otter", "Rabbit", "Raccoon", "Rat", "Squirrel", "Turtle", "Wolf"] } },
+      text: "When Spider-Ham enters, create a Food token. Animal May-Ham — Other Spiders, Boars, Bats, Bears, Birds, Cats, Dogs, Frogs, Jackals, Lizards, Mice, Otters, Rabbits, Raccoons, Rats, Squirrels, Turtles, and Wolves you control get +1/+1." },
+    "Web of Life and Destiny": { type: "Enchantment", cost: "{6}{G}{G}", kw: ["convoke"],
+      triggers: [{ on: "beginningOfCombat", filter: { controller: "you" }, effect: { lookTop: { n: 5, filter: { creature: true }, max: 1, to: "battlefield" } } }],
+      text: "Convoke. At the beginning of combat on your turn, look at the top five cards of your library. You may put a creature card from among them onto the battlefield. Put the rest on the bottom of your library in a random order." },
+    "Araña, Heart of the Spider": { type: "Legendary Creature — Spider Human Hero", cost: "{1}{R}{W}", pt: "3/3",
+      triggers: [{ on: "youAttack", filter: { controller: "you" }, targets: "creature", targetFilter: { attacking: true }, effect: { counters: { "+1/+1": 1 } } },
+        { on: "combatDamage", filter: { controller: "you", creature: true, modified: true }, effect: { impulseAll: 1 } }],
+      text: "Whenever you attack, put a +1/+1 counter on target attacking creature. Whenever a modified creature you control deals combat damage to a player, exile the top card of your library. You may play that card this turn." },
+    "Biorganic Carapace": { type: "Artifact — Equipment", cost: "{2}{W}{U}", equip: { cost: "{2}", static: { pump: [2, 2] } },
+      etb: { attach: true }, targets: "creature", targetFilter: { controller: "you" },
+      triggers: [{ on: "combatDamage", enchanted: true, effect: { draw: { per: { modified: true } } } }],
+      text: "When this Equipment enters, attach it to target creature you control. Equipped creature gets +2/+2 and has \"Whenever this creature deals combat damage to a player, draw a card for each modified creature you control.\" Equip {2}" },
+    "Cheering Crowd": { type: "Creature — Human Citizen", cost: "{1}{R/G}", pt: "2/2",
+      text: "At the beginning of each player's first main phase, that player may put a +1/+1 counter on this creature. If they do, they add {C} for each counter on it. (The puzzle starts in your first main phase.)" },
+    "Cosmic Spider-Man": { type: "Legendary Creature — Spider Human Hero", cost: "{W}{U}{B}{R}{G}", pt: "5/5", kw: ["flying", "first strike", "trample", "lifelink", "haste"],
+      triggers: [{ on: "beginningOfCombat", filter: { controller: "you" }, effect: { team: { grant: ["flying", "first strike", "trample", "lifelink", "haste"], other: true, filter: { subtypeIs: "Spider" } } } }],
+      text: "Flying, first strike, trample, lifelink, haste. At the beginning of combat on your turn, other Spiders you control gain flying, first strike, trample, lifelink, and haste until end of turn." },
+    "Doctor Octopus, Master Planner": { type: "Legendary Creature — Human Scientist Villain", cost: "{5}{U}{B}", pt: "4/8",
+      static: { team: { pump: [2, 2] }, other: true, filter: { subtypeIs: "Villain" } },
+      triggers: [{ on: "endStep", filter: { controller: "you" }, if: { handMax: 7 }, effect: { draw: "handTo8" } }],
+      text: "Other Villains you control get +2/+2. Your maximum hand size is eight. At the beginning of your end step, if you have fewer than eight cards in hand, draw cards equal to the difference." },
+    "Mary Jane Watson": { type: "Legendary Creature — Human Performer", cost: "{1}{G/W}", pt: "2/2",
+      triggers: [{ on: "enters", filter: { controller: "you", subtypeIs: "Spider" }, oncePerTurn: true, effect: { draw: 1 } }],
+      text: "Whenever a Spider you control enters, draw a card. This ability triggers only once each turn." },
+    "Mister Negative": { type: "Legendary Creature — Human Villain", cost: "{5}{W}{B}", pt: "5/5", kw: ["vigilance", "lifelink"], etb: { exchangeLife: true },
+      text: "Vigilance, lifelink. Darkforce Inversion — When Mister Negative enters, you may exchange life totals with target opponent. If you lost life this way, draw that many cards." },
+    "Silk, Web Weaver": { type: "Legendary Creature — Spider Human Hero", cost: "{2}{G}{W}", pt: "3/5", webSlinging: "{1}{G}{W}",
+      triggers: [{ on: "cast", filter: { controller: "you", creature: true }, effect: { create: CITIZEN } }],
+      abilities: [{ cost: "{3}{G}{W}", effect: { team: { pump: [2, 2], grant: ["vigilance"] } }, text: "{3}{G}{W}: Creatures you control get +2/+2 and gain vigilance" }],
+      text: `${WEB("{1}{G}{W}")} Whenever you cast a creature spell, create a 1/1 green and white Human Citizen creature token. {3}{G}{W}: Creatures you control get +2/+2 and gain vigilance until end of turn.` },
+    "Spider-Woman, Stunning Savior": { type: "Legendary Creature — Spider Human Hero", cost: "{1}{W/U}", pt: "2/2", kw: ["flying"], oppEntersTapped: true,
+      text: "Flying. Venom Blast — Artifacts and creatures your opponents control enter tapped." },
+    "Ultimate Green Goblin": { type: "Legendary Creature — Goblin Villain", cost: "{1}{B/R}{B/R}", pt: "5/4", mayhem: "{2}{B/R}",
+      text: "At the beginning of your upkeep, discard a card, then create a Treasure token. Mayhem {2}{B/R} (You may cast this card from your graveyard for {2}{B/R} if you discarded it this turn. Timing rules still apply.)" },
+    "Doc Ock's Tentacles": { type: "Artifact — Equipment", cost: "{1}", equip: { cost: "{5}", static: { pump: [4, 4] } },
+      triggers: [{ on: "enters", filter: { controller: "you", creature: true, minManaValue: 5 }, modes: [{ text: "Attach it", effect: { attachTo: "eventObject", self: true } }, { text: "Don't", effect: {} }] }],
+      text: "Whenever a creature you control with mana value 5 or greater enters, you may attach this Equipment to it. Equipped creature gets +4/+4. Equip {5}" }
+  });
 })();
