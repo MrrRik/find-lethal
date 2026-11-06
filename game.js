@@ -1454,7 +1454,8 @@
       // (checked with the way it's being cast: sneak, warp or web-slinging change what it costs)
       const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, impending: casting.impending || undefined,
         webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined };
-      const opts = f.spree || f.oneOrMoreIf
+      const opts = f.pawprints ? E.pawCombos(f).filter((l) => !E.check(state, { type: "cast", id: card.id, mode: l, ...how })).map((l) => [l, l.map((i) => f.modes[i].text).join(" + ")])
+        : f.spree || f.oneOrMoreIf
         ? E.subsets(ids).filter((l) => l.length && !E.check(state, { type: "cast", id: card.id, mode: l, ...how }))
           .map((l) => [l, l.map((i) => `${f.modes[i].plus ? f.modes[i].plus + " " : ""}${f.modes[i].text}`).join(" + ")])
         : f.repeatModes ? E.multisets(ids, n).map((c) => [c, c.map((i) => f.modes[i].text).join(" + ")])   // ("You may choose the same mode more than once.")
@@ -1463,7 +1464,7 @@
         : f.tiered ? f.modes.map((m, i) => [i, `${m.plus} — ${m.text}`]).filter(([i]) => !E.check(state, { type: "cast", id: card.id, mode: i, ...how }))
         : f.modes.map((m, i) => [i, m.text || `Mode ${i + 1}`]);
       if (!opts.length) { cancelCast(); return rulesNote(`Not enough mana for any mode of ${f.name}.`); }
-      const choose = f.oneOrMore || f.oneOrMoreIf ? "choose one or more" : f.repeatModes ? `choose ${n} (the same one more than once allowed)` : f.spree ? "choose one or more (spree)" : f.tiered ? "choose one (tiered)" : `choose ${n === 1 ? "one" : n}`;
+      const choose = f.pawprints ? `choose up to ${f.pawprints} {P} worth (a mode more than once allowed)` : f.oneOrMore || f.oneOrMoreIf ? "choose one or more" : f.repeatModes ? `choose ${n} (the same one more than once allowed)` : f.spree ? "choose one or more (spree)" : f.tiered ? "choose one (tiered)" : `choose ${n === 1 ? "one" : n}`;
       return askModes(card, f, opts, choose, again("mode"));
     }
     if (f.chooseColor && casting.color == null) {
