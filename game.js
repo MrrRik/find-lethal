@@ -1381,6 +1381,12 @@
       if (alts.length) return askChoice(`${card.name}: how do you pay for it?`, [[null, `Its mana cost (${card.cost || "{0}"})`], ...alts.map((k) => [k, k === "mutation" ? "Pay {W}{U}{B}{R}{G} instead (Leyline of Mutation)" : "Pay {0} instead (Warped Space)"])], again("altCost"));
       casting.altCost = null;
     }
+    // delve (Teval: "Spells you cast have delve."): how many cards from your graveyard pay {1} each
+    if (casting.delve === undefined && state.player.battlefield.some((c) => c.teval) && state.player.graveyard.some((c) => c.id !== card.id)) {
+      const n = Math.min(state.player.graveyard.filter((c) => c.id !== card.id).length, E.parseCost(card.cost || "").generic);
+      if (n > 0) return askChoice(`${card.name}: delve how many cards?`, Array.from({ length: n + 1 }, (_, i) => [i, i ? `Exile ${i} from your graveyard ({${i}} less)` : "None"]), again("delve"));
+      casting.delve = 0;
+    }
     // evoke (a card in your hand): cast it normally, or for its evoke cost (sacrificed when it enters)
     if (card.evoke && casting.evoke === undefined && state.player.hand.includes(card)) {
       const canEvoke = !E.check(state, { type: "cast", id: card.id, evoke: true });
@@ -1701,7 +1707,7 @@
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, altCost: casting.altCost || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined, altCost: casting.altCost || undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, altCost: casting.altCost || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined, altCost: casting.altCost || undefined, delve: casting.delve || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);
