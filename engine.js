@@ -301,6 +301,7 @@
       (!typeHas(f, /creature/i) ? s.player.battlefield.filter((c) => c.samut && !(c.st && c.st.lost)).length * speedOf(s, "player") : 0) +
       (typeHas(f, /creature/i) ? 2 * s.player.battlefield.filter((c) => c.sibsig && !(c.st && c.st.lost)).length : 0) +
       // Sunderflock: "This spell costs {X} less to cast, where X is the greatest mana value among Elementals you control."
+      (f.affinityArtifacts ? s.player.battlefield.filter(isArtifact).length : 0) +   // (affinity for artifacts, CR 702.41a)
       (f.lessGreatestMVType ? Math.max(0, ...s.player.battlefield.filter((c) => hasType(c, f.lessGreatestMVType)).map((c) => manaValue(c.cost))) : 0) +   // (The Sibsig Ceremony)
       s.player.battlefield.filter((c) => c.battlecrier && !(c.st && c.st.lost)).length * s.player.battlefield.filter((c) => isCreature(c) && power(c) >= 4).length +   // (Temur Battlecrier)
       // ("The first instant or sorcery spell you cast each turn costs {3} less to cast")
@@ -806,7 +807,8 @@
       const attached = src.aura || src.equip;
       if (attached && attached.static && src.attachedTo === target.id) {
         const ppc = attached.static.pumpPerOwnCounter;   // ("Equipped creature gets +X/+0, where X is the number of rev counters on this Equipment")
-        out.push({ ts: src.ts, ...attached.static, ...(ppc ? { pump: [ppc.pump[0] * ((src.counters || {})[ppc.kind] || 0), ppc.pump[1] * ((src.counters || {})[ppc.kind] || 0)] } : {}) });
+        const ppa = attached.static.pumpPerArtifact ? s[srcSide].battlefield.filter(isArtifact).length : 0;   // ("+1/+0 for each artifact you control")
+        out.push({ ts: src.ts, ...attached.static, ...(ppc ? { pump: [ppc.pump[0] * ((src.counters || {})[ppc.kind] || 0), ppc.pump[1] * ((src.counters || {})[ppc.kind] || 0)] } : {}), ...(attached.static.pumpPerArtifact ? { pump: [ppa, 0] } : {}) });
       }
       // layer 5: "Enchanted land is the chosen color" (Shimmerwilds Growth)
       if (src.aura && src.aura.setsColor && src.chosenColor && src.attachedTo === target.id) out.push({ ts: src.ts, setColor: [src.chosenColor] });
@@ -1448,6 +1450,7 @@
     if (f.exactlyColors != null && colorsOf(e.obj).length !== f.exactlyColors) return false; // "a spell that's exactly two colors"
     if (f.counterKind && e.kind !== f.counterKind) return false;                             // "+1/+1 counters are put on this creature"
     if (f.fromHand && !e.fromHand) return false;
+    if (f.underspent && !((e.spent || 0) < (e.mv || 0))) return false;                  // ("if the amount of mana spent to cast it was less than its mana value")
     if (f.chosenType && !(src.chosenType && hasType(e.obj, src.chosenType))) return false;   // ("a spell of the chosen type")
     if (f.nonland && isLand(e.obj)) return false;                                          // "a nonland creature you control"
     if (f.artifactOrLesson && !isArtifact(e.obj) && !hasType(e.obj, "Lesson")) return false;   // "an artifact or Lesson spell"
@@ -1624,6 +1627,7 @@
       if (e.type === "enters" && e.obj && (isArtifact(e.obj) || isCreature(e.obj)) && battlefieldNow(s).some(({ card: x }) => x.thrull && !(x.st && x.st.lost))) continue;   // (Doorkeeper Thrull)
       const times = 1 + (doubling && onField ? live(side, doubling) : 0) + (onField && isCreature(card) && power(card) <= 2 ? live(side, "delney") : 0) +
         (onField && isCreature(card) && /\blegendary\b/i.test(card.type || "") ? live(side, "legendaryTriggersTwice") : 0) +
+        (onField && isCreature(card) && hasType(card, "Ninja") ? live(side, "ninjaTriggersTwice") : 0) +   // (Splinter, Radical Rat)
         (onField && ["attacks", "attacksAlone", "youAttack"].includes(e.type) ? s[side].battlefield.filter((x) => x.siegeMode === 0 && x.windcrag && !(x.st && x.st.lost)).length : 0) +
         (onField ? (lookBack || battlefieldNow(s)).filter((x) => x.side === side && x.card.allTriggersTwiceDoor != null && x.card.unlocked && x.card.unlocked[x.card.allTriggersTwiceDoor]).length : 0);
       for (const t of triggersOf(card)) {
@@ -1734,6 +1738,7 @@
     if (f.maxManaValue != null && manaValue(c.cost) > f.maxManaValue) return false;   // "with mana value X or less"
     if (f.subtypeIs && !hasType(c, f.subtypeIs)) return false;                                    // "a Cat you control"
     if (f.basic && !/\bbasic\b/i.test(c.type || "")) return false;
+    if (f.type && !hasType(c, f.type)) return false;                                              // "other Ninjas you control"
     if (f.nonbasic && /\bbasic\b/i.test(c.type || "")) return false;                              // "target nonbasic land"
     if (f.minMV != null && manaValue(c.cost) < f.minMV) return false;                            // "with mana value 3 or greater"
     if (f.legendary && !/\blegendary\b/i.test(c.type || "")) return false;
@@ -2047,8 +2052,10 @@
       : d === "oppCreatures" ? s[ctx.side === "player" ? "opponent" : "player"].battlefield.filter(isCreature).length
       : d === "greatestGraveyardPower" ? Math.max(0, ...s[ctx.side].graveyard.map((c) => faceOf(c, {})).filter(isCreature).map((c) => power(c)))
       : d === "handTo8" ? Math.max(0, 8 - s[ctx.side].hand.length)
+      : d === "handTo4" ? Math.max(0, 4 - s[ctx.side].hand.length)
       : d === "selfX" ? me0().xPaid || 0
       : d === "halfSelfXDown" ? Math.floor((me0().xPaid || 0) / 2)
+      : d === "eventLastToughness" ? Math.max(0, ctx.event && ctx.event.obj ? (ctx.event.obj.lastToughness ?? toughness(ctx.event.obj)) : 0)
       : d === "attackingCount" ? ((s.combat && s.combat.attackers) || []).filter((id) => s[ctx.side].battlefield.some((c) => c.id === id)).length
       : typeof d === "object" && d.per ? (d.plus || 0) + s[ctx.side].battlefield.filter((c) => matches(s, c, d.per, ctx.side)).length
       // ("2 plus the number of Lesson cards in your graveyard": { plus: 2, perGraveyard: "Lesson" })
@@ -2603,9 +2610,11 @@
       if (pay && choose(s, `Pay ${eff.mayPay.cost}?`, [`Pay ${eff.mayPay.cost}`, "Don't pay"], "player") === 0) { spend(s, pay, ev); applyEffect(s, eff.mayPay.then, target, ctx, ev); }
     }
     // "you may pay 2 life. If you do, …"
-    if (eff.mayPayLife && ctx.side === "player" && canPayLife(s, eff.mayPayLife.n) &&
-      choose(s, `Pay ${eff.mayPayLife.n} life?`, [`Pay ${eff.mayPayLife.n} life`, "Don't pay"], "player") === 0) {
-      changeLife(s, "you", -eff.mayPayLife.n, ev);
+    // (n: a number or an amount, "pay life equal to its power")
+    const payN = eff.mayPayLife ? amount(eff.mayPayLife.n) : 0;
+    if (eff.mayPayLife && ctx.side === "player" && canPayLife(s, payN) &&
+      choose(s, `Pay ${payN} life?`, [`Pay ${payN} life`, "Don't pay"], "player") === 0) {
+      changeLife(s, "you", -payN, ev);
       applyEffect(s, eff.mayPayLife.then, target, ctx, ev);
     }
     // several effects one after another ("Draw a card, then scry 2"; "proliferate twice")
@@ -3016,6 +3025,20 @@
       }
       if (n) draw(s, "player", n, ev);
     }
+    // ---- Teenage Mutant Ninja Turtles ----
+    // Renet: "return each other nonland permanent that entered this turn to its owner's hand"
+    if (eff.bounceEnteredThisTurn) { const before = s.listens.length ? battlefieldNow(s) : null; battlefieldNow(s).map(({ card }) => card).filter((c) => c.enteredThisTurn && !isLand(c) && c.id !== ctx.selfId).forEach((c) => leave(s, c, "hand", ev, { lookBack: before })); }
+    // Broadcast Takeover: "Gain control of all artifacts your opponents control until end of turn. Untap them. They gain haste until end of turn."
+    if (eff.stealArtifacts && ctx.side === "player") s.opponent.battlefield.filter(isArtifact).forEach((c) => applyEffect(s, { steal: true }, c.id, ctx, ev));
+    // Bebop & Rocksteady: "sacrifice a permanent unless you discard a card"
+    if (eff.sacUnlessDiscard && ctx.side === "player") {
+      const hand = s.player.hand, perms = s.player.battlefield;
+      const k = hand.length ? choose(s, "Discard a card, or sacrifice a permanent?", [...hand.map((c) => `Discard ${c.name}`), "Sacrifice a permanent"], "player", [...hand.map((c) => c.id), null]) : hand.length;
+      if (k < hand.length) discardCard(s, hand[k], ev);
+      else if (perms.length) leave(s, perms[choose(s, "Sacrifice which permanent?", perms.map((c) => c.name), "player", perms.map((c) => c.id))], "graveyard", ev, { sacrificed: true });
+    }
+    // "Then if you control five or more Ninjas, …"
+    if (eff.ifCount && s[ctx.side].battlefield.filter((c) => objectIs(c, eff.ifCount.filter)).length >= eff.ifCount.min) applyEffect(s, eff.ifCount.then, target, ctx, ev);
     // ---- Lorwyn Eclipsed ----
     // Ashling's Command: "deals 2 damage to each creature target player controls"
     if (eff.damageAllOf && (target === "opp" || target === "you")) {
@@ -3911,7 +3934,8 @@
   // Innkeeper's Talent level 3 doubles counters put on a player too (poison counters): by whom they're put (putter)
   const counterMult = (s, putter) => 2 ** s[putter].battlefield.filter((o) => o.doublesCounters && levelOf(o) >= 3 && !(o.st && o.st.lost)).length;
   const ozolithBonus = (s, side, c) => (isArtifact(c) || isCreature(c) ? s[side].battlefield.filter((o) => o.plusOneMore && !(o.st && o.st.lost)).length : 0) +
-    (isCreature(c) || isVehicle(c) ? s[side].battlefield.filter((o) => o.caradora && !(o.st && o.st.lost)).length : 0);
+    (isCreature(c) || isVehicle(c) ? s[side].battlefield.filter((o) => o.caradora && !(o.st && o.st.lost)).length : 0) +
+    (isCreature(c) ? s[side].battlefield.filter((o) => o.plusOneMoreCreature && !(o.st && o.st.lost)).length : 0);   // (Michelangelo, Weirdness to 11)
   function addCounters(s, c, kind, n, ev, side) {
     if (!(n > 0) || !c) return 0;
     const who = side || (find(s, c.id) ? sideOf(s, c) : null);

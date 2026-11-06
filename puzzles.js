@@ -1320,7 +1320,7 @@
         { on: "attacks", self: true, targets: "creature", targetFilter: { controller: "you", other: true }, effect: { grant: ["deathtouch"] } }],
       text: `${sneakText("{3}{B}")} Deathtouch. Whenever Shredder enters or attacks, another target creature you control gains deathtouch until end of turn.` },
     "Oroku Saki, Shredder Rising": { type: "Legendary Creature — Human Ninja", cost: "{2}{B}", pt: "3/1", sneak: "{1}{B}",
-      triggers: [{ on: "combatDamage", self: true, effect: { draw: 1 } }],
+      triggers: [{ on: "combatDamage", self: true, effect: { draw: 1, lifeLoss: 1, to: "you" } }],
       text: `${sneakText("{1}{B}")} Whenever Oroku Saki deals combat damage to a player, you draw a card and lose 1 life.` },
     "Splinter, Hamato Yoshi": { type: "Legendary Creature — Mutant Ninja Rat", cost: "{1}{B}", pt: "1/3", kw: ["menace"], sneak: "{B}",
       static: { team: { pump: [1, 1] }, filter: { type: "Ninja" }, other: true },
