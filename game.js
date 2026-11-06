@@ -794,7 +794,7 @@
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
     const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted || c.airbent);
     // (the top card of your library, when you may cast it from there: Errant and Giada)
-    const libTop = p.player.library[0] && (E.castable(p, p.player.library[0].id) || (p.libraryTopPlay && E.isLand(p.player.library[0]))) ? [p.player.library[0]] : [];
+    const libTop = p.player.library[0] && (E.castable(p, p.player.library[0].id) || ((p.libraryTopPlay || p.player.battlefield.some((c) => c.hothouse && c.solved)) && E.isLand(p.player.library[0]))) ? [p.player.library[0]] : [];
     // (and graveyard cards with harmonize, cast from there, or renew, an ability used from there)
     // (also anything else castable or playable from there: an Adventure, a creature card, a land)
     const flashbacks = [...p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn) || E.castable(p, c.id) || (E.isLand(c) && E.landsFromGraveyard(p))),
@@ -1155,7 +1155,7 @@
     const from = E.castable(state, el.dataset.id) ||            // your hand, or an Adventure card waiting in exile
       ((g) => (g && g.renew ? { card: g, zone: "graveyard", renew: true }
         : g && E.isLand(g) && E.landsFromGraveyard(state) ? { card: g, zone: "graveyard" } : null))(state.player.graveyard.find((c) => c.id === el.dataset.id)) ||
-      ((t) => (t && t.id === el.dataset.id && state.libraryTopPlay && E.isLand(t) ? { card: t, zone: "library" } : null))(state.player.library[0]);
+      ((t) => (t && t.id === el.dataset.id && (state.libraryTopPlay || state.player.battlefield.some((c) => c.hothouse && c.solved)) && E.isLand(t) ? { card: t, zone: "library" } : null))(state.player.library[0]);
     if (!from) return;
     const card = from.card;
     if (casting && casting.card && casting.card.id === card.id) {
@@ -1247,6 +1247,13 @@
         return pickCards({ ids: E.discardable(state, ab), min: n, max: n, confirm: "Discard",
           prompt: n > 1 ? `Discard ${n} cards from your hand for ${card.name}'s ability.` : `Discard a card from your hand for ${card.name}'s ability.`,
           then: (picked) => again("discard")(n > 1 ? [].concat(picked) : Array.isArray(picked) ? picked[0] : picked) });
+      }
+      // "Collect evidence N:" an ability cost — which graveyard cards (each set that's just enough)
+      if (ab.evidenceCost && casting.evidence === undefined) {
+        const nm = (id) => (state.player.graveyard.find((c) => c.id === id) || {}).name || id;
+        const opts = E.evidenceSets(state.player.graveyard, ab.evidenceCost).map((l) => l.map((c) => c.id)).map((l) => [l, `Exile ${l.map(nm).join(" + ")}`]);
+        if (!opts.length) { cancelCast(); return rulesNote(`Collect evidence ${ab.evidenceCost}: not enough mana value in your graveyard.`); }
+        return askChoice(`${card.name}: collect evidence ${ab.evidenceCost}`, opts, again("evidence"));
       }
       // Fabrication Foundry: "Exile one or more other artifacts you control with total mana value X"
       if (ab.exileArtifactsX && casting.exiles === undefined) {
@@ -1402,15 +1409,17 @@
     }
     const f = faceNow();
     // collect evidence (an optional additional cost): which cards from your graveyard to exile, or none
-    if (f.evidence && casting.evidence === undefined) {
+    // (Conspiracy Unraveler: "You may collect evidence 10 rather than pay the mana cost for spells you cast.")
+    const unravel = !f.evidence && E.unravelerOn(state) && !E.isLand(f) ? 10 : 0;
+    if ((f.evidence || unravel) && casting.evidence === undefined) {
       const base0 = { type: "cast", id: card.id, face: casting.face ?? undefined };
       const name = (id) => (state.player.graveyard.find((c) => c.id === id) || {}).name || id;
-      const opts = E.evidenceOptions(state, f.evidence).filter((l) => !E.check(state, { ...base0, evidence: l }))
-        .map((l) => [l, `Collect evidence: exile ${l.map(name).join(" + ")}`]);
+      const opts = E.evidenceOptions(state, f.evidence || unravel).filter((l) => !E.check(state, { ...base0, evidence: l }))
+        .map((l) => [l, `${unravel ? "Collect evidence 10 instead of its mana cost" : "Collect evidence"}: exile ${l.map(name).join(" + ")}`]);
       if (!E.check(state, base0)) opts.push([null, "Don't collect evidence"]);
       if (!opts.length) { cancelCast(); return rulesNote(E.check(state, base0) || "You can't cast that."); }
       if (opts.length === 1) casting.evidence = opts[0][0];
-      else return askChoice(`${f.name}: collect evidence ${f.evidence}?`, opts, again("evidence"));
+      else return askChoice(`${f.name}: collect evidence ${f.evidence || unravel}?`, opts, again("evidence"));
     }
     if (E.isLand(f)) {
       const a = { type: "play", id: card.id, face: casting.face ?? undefined };
@@ -1563,7 +1572,7 @@
       if (p.slots) p.slots.forEach((sl, slot) => {
         // (what the slot takes: "your planeswalker", "a creature or planeswalker you don't control")
         const noun = sl.targets === "planeswalker" ? "planeswalker" : sl.targets === "creature-or-planeswalker" ? "creature or planeswalker" : "creature";
-        out.push({ kind: sl.targets, filter: sl.filter, count: ONE, src: f, part, slot,
+        out.push({ kind: sl.targets, filter: sl.filter, count: sl.optional ? { min: 0, max: 1 } : ONE, src: f, part, slot,
           label: f.name, which: sl.filter && sl.filter.controller === "you" ? `your ${noun}` : sl.filter && sl.filter.controller === "opponent" ? `a ${noun} you don't control` : null });
       });
       else if (p.targets) out.push({ kind: p.targets, filter: p.filter, count: p.count || ONE, src: f, part, label: f.name });
@@ -1657,7 +1666,7 @@
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
     : casting.renew ? { type: "renew", id: casting.card.id, target }
     : casting.channel ? { type: "channel", id: casting.card.id, target }
-    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined, taps: casting.taps ?? undefined, split: casting.split ?? undefined }
+    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined, taps: casting.taps ?? undefined, split: casting.split ?? undefined, evidence: casting.index != null && casting.evidence != null ? casting.evidence : undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
@@ -1666,6 +1675,18 @@
 
   function finishChoice(target) {
     const action = actionFor(target);
+    // Urgent Necropsy: "collect evidence X, where X is the total mana value of the permanents this spell targets" (asked once the targets are known)
+    const fN = action.type === "cast" && casting.card ? E.faceOf(casting.card, { face: casting.face ?? undefined }) : null;
+    if (fN && fN.evidenceTargets && action.evidence == null) {
+      const need = [].concat(action.target || []).flat().filter((x) => x != null).reduce((t, id) => { const c = [...state.player.battlefield, ...state.opponent.battlefield].find((x) => x.id === id); return t + (c ? E.manaValue(c.cost) : 0); }, 0);
+      if (need > 0) {
+        const nm = (id) => (state.player.graveyard.find((c) => c.id === id) || {}).name || id;
+        const opts = E.evidenceOptions(state, need).map((l) => [l, `Exile ${l.map(nm).join(" + ")}`]);
+        if (!opts.length) { cancelCast(); return rulesNote(`Collect evidence ${need}: not enough mana value in your graveyard.`); }
+        const keep = casting;
+        return askChoice(`${fN.name}: collect evidence ${need}`, opts, (l) => { casting = keep; casting.evidence = l; finishChoice(target); });
+      }
+    }
     const why = E.check(state, action);
     cancelCast();
     if (why) return rulesNote(why);
