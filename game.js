@@ -1254,6 +1254,16 @@
           prompt: n > 1 ? `Discard ${n} cards from your hand for ${card.name}'s ability.` : `Discard a card from your hand for ${card.name}'s ability.`,
           then: (picked) => again("discard")(n > 1 ? [].concat(picked) : Array.isArray(picked) ? picked[0] : picked) });
       }
+      // Winter, Cursed Rider: "Exile X artifact cards from your graveyard" (choose X)
+      if (ab.exileArtifactCardsX && casting.x == null) {
+        const n = state.player.graveyard.filter((c) => E.isArtifact(c)).length;
+        return askChoice(`${card.name}: exile how many artifact cards (X)?`, Array.from({ length: n + 1 }, (_, i) => [i, String(i)]), again("x"));
+      }
+      // Radiant Lotus: "Sacrifice one or more artifacts"
+      if (ab.sacArtifactsAny && casting.sacs === undefined) {
+        const ids = state.player.battlefield.filter((c) => E.isArtifact(c)).map((c) => c.id);
+        return pickCards({ ids, min: 1, max: ids.length, confirm: "Sacrifice", prompt: `Sacrifice one or more artifacts for ${card.name}.`, then: (l) => again("sacs")([].concat(l)) });
+      }
       // "Collect evidence N:" an ability cost — which graveyard cards (each set that's just enough)
       if (ab.evidenceCost && casting.evidence === undefined) {
         const nm = (id) => (state.player.graveyard.find((c) => c.id === id) || {}).name || id;
@@ -1403,8 +1413,14 @@
         prompt: `Web-slinging ${card.webSlinging}: return a tapped creature you control to its owner's hand.`,
         then: (picked) => again("webSling")(Array.isArray(picked) ? picked[0] : picked) });
     }
+    // cycling with {X} (Valor's Flagship, Webstrike Elite): choose X
+    if (casting.cycle && /\{X\}/.test(card.cycling) && casting.x == null) {
+      const max = E.manaAvailable(state) - E.manaValue(card.cycling);
+      if (max < 0) { cancelCast(); return rulesNote(`Not enough mana to cycle ${card.name}.`); }
+      return askChoice(`${card.name}: cycle with X =`, Array.from({ length: max + 1 }, (_, i) => [i, String(i)]), again("x"));
+    }
     if (casting.cycle) {
-      const a = { type: "cycle", id: card.id };
+      const a = { type: "cycle", id: card.id, ...(casting.x != null ? { x: casting.x } : {}) };
       const why = E.check(state, a);
       cancelCast();
       return why ? rulesNote(why) : perform(a);
