@@ -1156,6 +1156,12 @@
       ((g) => (g && g.renew ? { card: g, zone: "graveyard", renew: true }
         : g && E.isLand(g) && E.landsFromGraveyard(state) ? { card: g, zone: "graveyard" } : null))(state.player.graveyard.find((c) => c.id === el.dataset.id)) ||
       ((t) => (t && t.id === el.dataset.id && (state.libraryTopPlay || state.player.battlefield.some((c) => c.hothouse && c.solved)) && E.isLand(t) ? { card: t, zone: "library" } : null))(state.player.library[0]);
+    // ninjutsu: return an unblocked attacker, put this onto the battlefield tapped and attacking
+    const nin = !casting ? E.legalActions(state).filter((a) => a.type === "ninjutsu" && a.id === el.dataset.id) : [];
+    if (nin.length) {
+      const nm = (id) => (state.player.battlefield.find((c) => c.id === id) || {}).name || id;
+      return askChoice("Ninjutsu", nin.map((a) => [a, `Ninjutsu: return ${nm(a.ret)} to your hand`]), (a) => perform(a));
+    }
     if (!from) return;
     const card = from.card;
     if (casting && casting.card && casting.card.id === card.id) {
@@ -1358,6 +1364,13 @@
       if (canWarp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Warp it for ${card.warp} (exiled at the next end step)`]], again("warp"));
       casting.warp = canWarp && !canCast;
     }
+    // an alternative cost from a permanent: Leyline of Mutation ({W}{U}{B}{R}{G}), Warped Space ({0} from exile, once each turn)
+    if (casting.altCost === undefined) {
+      const fr = E.castable(state, card.id) || {};
+      const alts = [...(fr.mutation ? ["mutation"] : []), ...(fr.warped ? ["zero"] : [])].filter((k) => !E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, altCost: k }));
+      if (alts.length) return askChoice(`${card.name}: how do you pay for it?`, [[null, `Its mana cost (${card.cost || "{0}"})`], ...alts.map((k) => [k, k === "mutation" ? "Pay {W}{U}{B}{R}{G} instead (Leyline of Mutation)" : "Pay {0} instead (Warped Space)"])], again("altCost"));
+      casting.altCost = null;
+    }
     // evoke (a card in your hand): cast it normally, or for its evoke cost (sacrificed when it enters)
     if (card.evoke && casting.evoke === undefined && state.player.hand.includes(card)) {
       const canEvoke = !E.check(state, { type: "cast", id: card.id, evoke: true });
@@ -1434,7 +1447,7 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
-    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, impending: casting.impending || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined });
+    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, altCost: casting.altCost || undefined, impending: casting.impending || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined });
     if (why) { cancelCast(); return rulesNote(why); }
     // teamwork N (optional): tap your untapped creatures with total power N or more
     if (f.teamwork && casting.teamwork === undefined) {
@@ -1452,7 +1465,7 @@
       // spree: one or more modes, each adding its cost (only the combinations you can pay for and target are offered)
       const ids = f.modes.map((_, i) => i);
       // (checked with the way it's being cast: sneak, warp or web-slinging change what it costs)
-      const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, impending: casting.impending || undefined,
+      const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, altCost: casting.altCost || undefined, impending: casting.impending || undefined,
         webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined };
       const opts = f.pawprints ? E.pawCombos(f).filter((l) => !E.check(state, { type: "cast", id: card.id, mode: l, ...how })).map((l) => [l, l.map((i) => f.modes[i].text).join(" + ")])
         : f.spree || f.oneOrMoreIf
@@ -1672,7 +1685,7 @@
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, altCost: casting.altCost || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined, altCost: casting.altCost || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);
