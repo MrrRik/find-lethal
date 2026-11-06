@@ -817,7 +817,8 @@
     $("hand-wrap").classList.toggle("empty", !hand.length && !adventures.length && !flashbacks.length && !prepared.length);
     showPhase(p.phase);
     const floating = p.pool.length + (p.firePool || 0);              // (firebending {R}s last until end of combat)
-    $("pool").textContent = floating ? `${floating} mana floating` : "";
+    const limited = (p.rpool || []).length;                          // (mana that can only be spent on some things)
+    $("pool").textContent = [floating ? `${floating} mana floating` : "", limited ? `${limited} restricted mana` : ""].filter(Boolean).join(" · ");
     markCombat();
     popNewCounters();
     fitBoard();
@@ -1337,6 +1338,13 @@
       if (canWarp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Warp it for ${card.warp} (exiled at the next end step)`]], again("warp"));
       casting.warp = canWarp && !canCast;
     }
+    // evoke (a card in your hand): cast it normally, or for its evoke cost (sacrificed when it enters)
+    if (card.evoke && casting.evoke === undefined && state.player.hand.includes(card)) {
+      const canEvoke = !E.check(state, { type: "cast", id: card.id, evoke: true });
+      const canCast = !E.check(state, { type: "cast", id: card.id });
+      if (canEvoke && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Evoke it for ${card.evoke} (sacrificed when it enters)`]], again("evoke"));
+      casting.evoke = canEvoke && !canCast;
+    }
     // impending (a card in your hand): cast it normally, or for its impending cost
     if (card.impending && casting.impending === undefined && state.player.hand.includes(card)) {
       const canImp = !E.check(state, { type: "cast", id: card.id, impending: true });
@@ -1404,7 +1412,7 @@
       cancelCast();
       return why ? rulesNote(why) : perform(a);
     }
-    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, impending: casting.impending || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined });
+    const why = E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, impending: casting.impending || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined });
     if (why) { cancelCast(); return rulesNote(why); }
     // teamwork N (optional): tap your untapped creatures with total power N or more
     if (f.teamwork && casting.teamwork === undefined) {
@@ -1422,7 +1430,7 @@
       // spree: one or more modes, each adding its cost (only the combinations you can pay for and target are offered)
       const ids = f.modes.map((_, i) => i);
       // (checked with the way it's being cast: sneak, warp or web-slinging change what it costs)
-      const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, impending: casting.impending || undefined,
+      const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, impending: casting.impending || undefined,
         webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined };
       const opts = f.spree
         ? E.subsets(ids).filter((l) => l.length && !E.check(state, { type: "cast", id: card.id, mode: l, ...how }))
@@ -1605,7 +1613,7 @@
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);

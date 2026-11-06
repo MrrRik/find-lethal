@@ -125,9 +125,11 @@
   const counterKw = (c) => (c.counters ? KW_COUNTERS.filter((k) => c.counters[k] > 0) : []);
   // CR 721.2: a station card (Spacecraft) with enough charge counters is an artifact creature with the abilities of its
   // station symbol (c.station: { at, kw })
-  const stationed = (c) => !!(c.station && ((c.counters && c.counters.charge) || 0) >= c.station.at);
+  const stationed = (c) => !!(c.station && !c.station.noCreature && ((c.counters && c.counters.charge) || 0) >= c.station.at);
   const ownKw = (c) => {
-    const kws = [...counterKw(c), ...(stationed(c) ? c.station.kw || [] : [])];
+    // (more station symbols: c.station.levels [{ at, kw }] — "2+ | …", "12+ | Flying, lifelink"; a Planet never becomes a creature: noCreature)
+    const charge = (c.counters && c.counters.charge) || 0;
+    const kws = [...counterKw(c), ...(stationed(c) ? c.station.kw || [] : []), ...((c.station && c.station.levels) || []).filter((l) => charge >= l.at).flatMap((l) => l.kw || [])];
     const base = c.suspected ? [...(c.kw || []), "menace", "can't block"] : c.kw || [];
     return kws.length ? [...base, ...kws.filter((k) => !base.includes(k))] : base;
   };
@@ -171,7 +173,7 @@
     keywords(c).forEach((k) => { const m = /^saddle (\d+)$/.exec(k); if (m) list.push({ crew: Number(m[1]), saddle: true, sorcery: true, effect: { saddled: true, self: true }, text: `Saddle ${m[1]}` }); });
     // CR 702.184a: station — "Tap another untapped creature you control: Put a number of charge counters on this permanent
     // equal to the tapped creature's power. Activate only as a sorcery." (the creature: a.crew, one of them)
-    if (c.station) list.push({ stationAb: true, sorcery: true, effect: { charge: "tapped", self: true }, text: `Station (${c.station.at}+)` });
+    if (c.station) list.push({ stationAb: true, sorcery: true, effect: { charge: "tapped", self: true }, text: c.station.noCreature ? "Station" : `Station (${c.station.at}+)` });
     // CR 702.167a: craft: { cost, filter, text } — "[Cost], Exile this, Exile [a material] from among permanents you
     // control and/or cards in your graveyard: Return this card transformed. Activate only as a sorcery." (a.craft: the material)
     if (c.craft && !c.transformed) list.push({ cost: c.craft.cost, sorcery: true, craft: c.craft, effect: { craftReturn: true }, text: c.craft.text || `Craft ${c.craft.cost}` });
@@ -179,7 +181,8 @@
     (c.levels || []).forEach((lv) => { if (lv.level === levelOf(c) + 1) list.push({ cost: lv.cost, sorcery: true, effect: { levelUp: lv.level, self: true }, text: `Level ${lv.level} (${lv.cost})` }); });
     // CR 719.3c: a Case's "Solved — [ability]" can only be activated once it's solved; a station symbol's ability only at
     // its threshold (CR 721.2)
-    return list.filter((ab) => (!ab.ifSolved || c.solved) && (!ab.ifStationed || stationed(c)));
+    // (ifCharge: a station symbol's ability, there from that many charge counters on)
+    return list.filter((ab) => (!ab.ifSolved || c.solved) && (!ab.ifStationed || stationed(c)) && (!ab.ifCharge || ((c.counters && c.counters.charge) || 0) >= ab.ifCharge));
   }
 
   // A card with several faces (modal double-faced, split, Adventure, transforming) used as one of them:
@@ -406,15 +409,29 @@
 
   // Mana in the pool, then untapped lands, Treasures and other mana sources (minus any excluded,
   // e.g. a creature that is being tapped for the ability being paid for)
-  function manaSources(s, exclude = []) {
+  // Mana that can only be spent on some things (CR 106.6: "Spend this mana only to cast a Dragon spell"): only.spell /
+  // only.ability — a filter on the spell (castZone: where it's cast from) or on the source of the ability
+  const restrictionOk = (only, forWhat) => !!forWhat && (
+    (!!only.spell && !!forWhat.spell && objectIs(forWhat.spell, only.spell) && (!only.zone || forWhat.spell.castZone === only.zone) && (!only.notZone || forWhat.spell.castZone !== only.notZone)) ||
+    (!!only.ability && !!forWhat.ability && objectIs(forWhat.ability, only.ability)));
+  function manaSources(s, exclude = [], forWhat) {
     const pool = [...s.pool.map((sym, i) => ({ id: "pool:" + i, colors: sym === "*" ? "WUBRG" : sym, kind: "pool" })),
+      // restricted mana in your pool, usable only for what it's for
+      ...(s.rpool || []).map((m, i) => (restrictionOk(m.only, forWhat) ? { id: "rpool:" + i, colors: m.colors, kind: "pool" } : null)).filter(Boolean),
       // firebending mana (CR 702.189a): {R} that stays until end of combat
       ...Array.from({ length: s.firePool || 0 }, (_, i) => ({ id: "fire:" + i, colors: "R", kind: "pool" }))];
     // ("Max speed — {T}: Add {R}{R}": maxSpeedMana — a mana ability it has only at max speed, CR 702.178a)
     const field = s.player.battlefield.filter((c) => !exclude.includes(c.id) && !(c.maxSpeedMana && !maxSpeed(s, "player")))
       .filter((c) => !((isArtifact(c) || isCreature(c) || isPlaneswalker(c)) && clarion(s)))   // (Clarion Conqueror: no mana abilities either)
-      .map((c) => ({ id: c.id, colors: producesIn(s, c), kind: isTreasure(c) ? "treasure" : isLand(c) ? "land" : "other" }))
-      .filter((x) => x.colors !== null);
+      .map((c) => {
+        let colors = producesIn(s, c);
+        // ("{T}: Add {B} or {R}. Activate only if this land entered this turn or if you control a basic land.")
+        if (colors !== null && c.colorsIfBasicOrNew && (c.enteredThisTurn || s.player.battlefield.some((l) => isLand(l) && /\bbasic\b/i.test(l.type || "")))) colors += c.colorsIfBasicOrNew;
+        // ("{T}: Add one mana of any color. Spend this mana only to cast an artifact spell.": restrictedMana)
+        if (c.restrictedMana && !c.tapped) { const extra = c.restrictedMana.filter((r) => restrictionOk(r.only, forWhat)).map((r) => r.colors).join(""); if (extra) colors = (colors || "") + extra; }
+        return { id: c.id, colors, kind: isTreasure(c) ? "treasure" : isLand(c) ? "land" : "other" };
+      })
+      .filter((x) => x.colors !== null && x.colors !== "");   // (a source whose only mana can't be spent here makes none)
     // More mana from one tap: "Add {C}{C}" (manaAmount), and triggered mana abilities — "whenever enchanted Forest is
     // tapped for mana, add an additional one mana of the chosen color" (Utopia Sprawl; CR 605.1b, 605.4a: right away,
     // no stack). Each extra mana is its own payment slot "id+n", usable only when "id" itself is tapped.
@@ -432,6 +449,7 @@
     const tripled = /\bbasic\b/i.test(c.type || "") && isLand(c) ? s.player.battlefield.filter((v) => v.triplesBasicMana && !(v.st && v.st.lost)).length : 0;
     for (let i = 1; i < 3 ** tripled; i++) out.push(produces(c));
     s.player.battlefield.filter((a) => a.attachedTo === c.id && a.extraMana && a.chosenColor).forEach((a) => out.push(a.chosenColor));
+    if (s.moltenTide && isLand(c) && hasType(c, "Mountain")) out.push("R");   // (Molten Tide: "whenever you tap a Mountain for mana, add an additional {R}")
     return out;
   }
   const manaAvailable = (s, exclude) => manaSources(s, exclude).length;
@@ -442,9 +460,52 @@
   // (even one that's attacking). convoke: the creatures tapped this way (all of them must help), or "any".
   // lifePips: exactly this many Phyrexian pips are paid with life (compleated: how many changes the loyalty, so it's
   // the player's choice; then even with irrelevant life the pips are real)
-  function bestPayment(s, cost, { except, exclude = [], convoke, lifePips } = {}) {
+  // Which colors of mana a payment spent (CR 106.1, 702.119a converge): each source's mana is the color its controller
+  // chooses — the best choice for the spell: the most "{W}{W} was spent" conditions met (wants), then the most colors.
+  // Returns counts per color, e.g. { W: 2, R: 2 }.
+  function colorsSpentBy(s, pay, cost, convokers, wants) {
+    const units = pay.filter((id) => !id.startsWith("life:") && !convokers.includes(id)).map((id) => {
+      if (id.startsWith("pool:")) return s.pool[Number(id.slice(5))] || "C";
+      if (id.startsWith("rpool:")) return ((s.rpool || [])[Number(id.slice(6))] || {}).colors || "C";
+      if (id.startsWith("fire:")) return "R";
+      const src = find(s, id.split("+")[0]);
+      return (src && produces(src)) || "C";
+    });
+    const lifePaid = pay.filter((id) => id.startsWith("life:")).length;
+    let pips = parseCost(cost).pips;
+    for (let i = 0; i < lifePaid; i++) { const k = pips.findIndex((p) => /\/P$/.test(p)); if (k >= 0) pips = pips.filter((_, j) => j !== k); }
+    // can these unit colors pay the colored and hybrid pips? ("2/R": an R, or two of anything)
+    const pays = (cols) => {
+      const used = cols.map(() => false);
+      const go = (i) => {
+        if (i >= pips.length) return true;
+        const opts = pips[i].split("/");
+        for (let u = 0; u < cols.length; u++) if (!used[u] && opts.includes(cols[u])) { used[u] = true; if (go(i + 1)) return true; used[u] = false; }
+        if (opts[0] === "2") for (let u = 0; u < cols.length; u++) for (let v = u + 1; v < cols.length; v++) if (!used[u] && !used[v]) { used[u] = used[v] = true; if (go(i + 1)) return true; used[u] = used[v] = false; }
+        return false;
+      };
+      return go(0);
+    };
+    const choices = units.map((u) => [...new Set(u.split(""))]);
+    let best = null, bestScore = -1, tried = 0;
+    const walk = (i, cols) => {
+      if (tried > 4000) return;
+      if (i === choices.length) {
+        tried++;
+        if (!pays(cols)) return;
+        const n = {}; cols.forEach((c) => { if (c !== "C") n[c] = (n[c] || 0) + 1; });
+        const score = wants.filter((w) => (n[w] || 0) >= 2).length * 100 + Object.keys(n).length;
+        if (score > bestScore) { bestScore = score; best = n; }
+        return;
+      }
+      choices[i].forEach((c) => walk(i + 1, [...cols, c]));
+    };
+    walk(0, []);
+    return best || {};
+  }
+  function bestPayment(s, cost, { except, exclude = [], convoke, lifePips, forWhat } = {}) {
     const helpers = convoke === "any" ? s.player.battlefield.filter((c) => isCreature(c) && !c.tapped).map((c) => c.id) : convoke || [];
-    const sources = [...manaSources(s, [...exclude, ...helpers]),
+    const sources = [...manaSources(s, [...exclude, ...helpers], forWhat),
       ...helpers.map((id) => ({ id, colors: colorsOf(find(s, id)).join(""), kind: "convoke" }))];
     const fixed = lifePips != null;
     const lifeFree = s.player.life == null && !fixed;
@@ -584,7 +645,7 @@
     // CR 712.8a: off the battlefield a double-faced card has only its front face's characteristics
     // CR 708.9: a face-down permanent is revealed as it leaves: the card goes there face up
     const fresh = card.faceDown ? { ...card.hidden, id: card.id } : card.transformed ? { id: card.id, owner: card.owner, faces: card.faces, layout: card.layout, ...card.faces[0] } : { ...card };
-    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared", "enteredThisTurn", "poweredUp", "xPaid", "convokedBy", "giftPromised", "usedOnce", "impendingNow", "zantetsuken", "sephResolved", "resolvedN", "earthbent"].forEach((k) => delete fresh[k]);   // CR 400.7
+    ["dmg", "tapped", "sick", "deathtouched", "owner", "counters", "attachedTo", "st", "ts", "loyaltyUsed", "bargained", "wasCast", "suspected", "solved", "evidenced", "saddled", "level", "offspringPaid", "unlocked", "manifested", "exhausted", "warped", "webSlung", "sneaked", "prepared", "enteredThisTurn", "poweredUp", "xPaid", "convokedBy", "giftPromised", "usedOnce", "impendingNow", "zantetsuken", "sephResolved", "resolvedN", "earthbent", "evoked", "colorsSpent", "kwTs"].forEach((k) => delete fresh[k]);   // CR 400.7
     putCard(s, fresh, card.owner || side, zone);
   }
 
@@ -598,8 +659,13 @@
   function copyValues(c, except = {}) {
     const v = {};
     Object.keys(c).forEach((k) => { if (!NOT_COPIED.includes(k)) v[k] = clone(c[k]); });
-    const { kw = [], ...rest } = except;
-    return { ...v, ...clone(rest), kw: [...(v.kw || []), ...kw] };
+    const { kw = [], legendary, notLegendary, addTypes: more, ...rest } = except;
+    const out = { ...v, ...clone(rest), kw: [...(v.kw || []), ...kw] };
+    // ("except it's legendary" / "except it isn't legendary" / "is a Mutant in addition to its other types": the copiable type line)
+    if (legendary && !/\blegendary\b/i.test(out.type || "")) out.type = `Legendary ${out.type}`;
+    if (notLegendary) out.type = (out.type || "").replace(/\bLegendary\s+/i, "");
+    if (more) out.type = addTypes(out.type, more);
+    return out;
   }
 
   // CR 707.10: copy a spell on the stack — the copy keeps every choice (modes, targets, X), isn't cast, and you may
@@ -851,6 +917,8 @@
       if (src.static && src.static.oppBaseToughness != null && isCreature(target) && sideOf(s, target) !== srcSide) out.push({ ts: src.ts, setBaseT: src.static.oppBaseToughness });
       // "Artifacts you control have '{2}, Sacrifice this artifact: …'" (static.artifactsGain: activated abilities, layer 6)
       if (src.static && src.static.artifactsGain && isArtifact(target) && sideOf(s, target) === srcSide) out.push({ ts: src.ts, addAbilities: src.static.artifactsGain });
+      // "Lands you control have '{T}: Add two mana of any one color. …'" (static.landsGain)
+      if (src.static && src.static.landsGain && isLand(target) && sideOf(s, target) === srcSide) out.push({ ts: src.ts, addAbilities: src.static.landsGain });
       // "Planeswalkers you control have '[−2]: …'" (static.walkers: the loyalty abilities they gain, layer 6)
       if (src.static && src.static.walkers && isPlaneswalker(target) && sideOf(s, target) === srcSide) out.push({ ts: src.ts, addAbilities: src.static.walkers });
       if (src.perOther && src === target) {                    // "gets +2/+0 for each other Goblin you control"
@@ -1333,6 +1401,7 @@
     // a card that targets, counters or copies spells makes the stack itself matter (turns off a solver shortcut)
     const json = JSON.stringify(card);
     if (card.replacements) s.replaces = true;                 // (zone changes then check for replacement effects)
+    if (card.tracksAllSpells) s.tracksColorsSpent = true;      // (the colors spent on every spell matter: Magmablood Archaic)
     if (card.conditional || card.perCounter || card.ptCount || card.perHandCard || card.impending || /"hasCounter"/.test(json)) s.dynamicStatics = true;
     if (/firebending/.test(json)) add("attacks");             // (firebending it may gain later still triggers)
     if (/"damageSources"|"attackedCount"/.test(json)) s.tracksSources = true;
@@ -1441,6 +1510,8 @@
   const WALTZ = { effect: { impulseAll: 1 } };
   // CR 701.66a: an earthbent land has "When this permanent dies or is exiled, return it to the battlefield tapped"
   const EARTH_RETURN = { effect: { earthReturn: true } };
+  // CR 702.74a: an evoked permanent: "When this permanent enters, if its evoke cost was paid, its controller sacrifices it."
+  const EVOKE_SAC = { effect: { sacrificeEvent: true } };
 
   // The objects whose abilities can trigger now: permanents on the battlefield, plus cards in other zones whose
   // triggers say they function there (CR 113.6b). `battlefield` replaces the battlefield part for look-back events.
@@ -1603,6 +1674,9 @@
     if (cond.yourCreatureDied && !s.yourCreatureDied) return false;
     // ("attack with creatures with total power 12 or greater")
     if (cond.attackingPowerMin != null && !(((s.combat && s.combat.attackers) || []).map((id) => find(s, id)).filter(Boolean).reduce((t, c) => t + Math.max(power(c), 0), 0) >= cond.attackingPowerMin)) return false;
+    if (cond.spent && !(self && ((self.colorsSpent || {})[cond.spent] || 0) >= 2)) return false;   // ("if {W}{W} was spent to cast it")
+    if (cond.handMin != null && !(s[side].hand.length >= cond.handMin)) return false;   // ("only if you have seven or more cards in your hand")
+    if (cond.chargeMin != null && !(self && ((self.counters || {}).charge || 0) >= cond.chargeMin)) return false;   // (a station symbol: "2+ | …")
     if (cond.firstCombat && (s.combatNumber || 1) !== 1) return false;   // ("if it's the first combat phase of the turn")
     if (cond.scriedOrSurveilled && !(side === "player" && s.scriedOrSurveilled)) return false;   // ("if you've scried or surveilled this turn")
     if (cond.heroAttackedOrEntered && !(side === "player" && (s.heroAttacked || s.heroEntered))) return false;   // (Avengers Assemble!)
@@ -1680,6 +1754,7 @@
     // a spell's mana value (X included, CR 202.3e) and which multicolored spell of yours this turn it is
     if (e.type === "cast" && e.obj) {
       e.mv = manaValue(withX(e.obj.printedCost != null ? e.obj.printedCost : e.obj.cost, e.x));
+      e.converge = Object.keys(e.obj.colorsSpent || {}).length;   // (the number of colors of mana spent to cast it)
       e.blueSymbols = (((e.obj.printedCost != null ? e.obj.printedCost : e.obj.cost) || "").match(/\{[^}]*U[^}]*\}/g) || []).length;   // (Namor: "with one or more blue mana symbols in its mana cost")
       if (e.side === "player" && colorsOf(e.obj).length > 1) e.multiNumber = s.multiCast = (s.multiCast || 0) + 1;
       if (e.side === "player" && typeHas(e.obj, /instant|sorcery/i)) s.instSorcCast = (s.instSorcCast || 0) + 1;
@@ -1722,7 +1797,7 @@
         for (let k = 0; k < times; k++) {
           s.triggered.push({ side, name: card.name, srcId: card.id, td: defId(t), ...(zone && zone !== "battlefield" ? { zone } : {}),
             event: { id: e.obj && e.obj.id, side: e.side, controller: e.controller, ...(e.type === "dies" && e.obj.counters ? { counters: e.obj.counters } : {}), ...(e.ids ? { ids: e.ids } : {}), ...(e.to ? { to: e.to } : {}), ...(e.count != null ? { count: e.count } : {}), ...(e.vehicle ? { vehicle: e.vehicle } : {}),
-              ...(e.spent != null ? { spent: e.spent } : {}), ...(e.mv != null ? { mv: e.mv } : {}), ...(e.blueSymbols ? { blueSymbols: e.blueSymbols } : {}),
+              ...(e.spent != null ? { spent: e.spent } : {}), ...(e.mv != null ? { mv: e.mv } : {}), ...(e.blueSymbols ? { blueSymbols: e.blueSymbols } : {}), ...(e.converge ? { converge: e.converge } : {}),
               // (the object's power and toughness as it last existed: "equal to that creature's power")
               ...(e.obj && isCreature(e.obj) ? { objPower: Math.max(0, e.obj.lastPower ?? power(e.obj)), objToughness: Math.max(0, e.obj.lastToughness ?? toughness(e.obj)) } : {}) } });
         }
@@ -1812,7 +1887,8 @@
     if (f.subtypeIs && !hasType(c, f.subtypeIs)) return false;                                    // "a Cat you control"
     if (f.basic && !/\bbasic\b/i.test(c.type || "")) return false;
     if (f.type && !hasType(c, f.type)) return false;                                              // "other Ninjas you control"
-    if (f.nonbasic && /\bbasic\b/i.test(c.type || "")) return false;                              // "target nonbasic land"
+    if (f.nonbasic && /\bbasic\b/i.test(c.type || "")) return false;
+    if (f.multicolored && colorsOf(c).length < 2) return false;                                    // "each multicolored permanent you control"                              // "target nonbasic land"
     if (f.minMV != null && manaValue(c.cost) < f.minMV) return false;                            // "with mana value 3 or greater"
     if (f.legendary && !/\blegendary\b/i.test(c.type || "")) return false;
     if (f.nonlegendary && /\blegendary\b/i.test(c.type || "")) return false;
@@ -1930,7 +2006,7 @@
   };
   const castPaymentWith = (s, f, a, except, keep) =>
     // ("You may cast this spell as though it had flash if you pay {2} more": flashFor, paid only outside sorcery timing)
-    bestPayment(s, reducedCost(s, f, costOf(f, a) + (f.flashFor && !sorceryTime(s) ? f.flashFor : ""), a), { except, exclude: [...(a.bargain != null ? [a.bargain] : []), ...(a.tapFor != null ? [a.tapFor] : []), ...(a.teamwork != null ? [].concat(a.teamwork) : []), ...keep], lifePips: has(f, "compleated") ? a.lifePips || 0 : undefined, convoke: spellConvoke(s, f) ? (a.convoke == null ? "any" : a.convoke) : undefined });
+    bestPayment(s, reducedCost(s, f, costOf(f, a) + (f.flashFor && !sorceryTime(s) ? f.flashFor : ""), a), { except, exclude: [...(a.bargain != null ? [a.bargain] : []), ...(a.tapFor != null ? [a.tapFor] : []), ...(a.teamwork != null ? [].concat(a.teamwork) : []), ...keep], lifePips: has(f, "compleated") ? a.lifePips || 0 : undefined, convoke: spellConvoke(s, f) ? (a.convoke == null ? "any" : a.convoke) : undefined, forWhat: { spell: f } });
 
   // Every choice of targets for a spec: one target, or "up to two" (any distinct combination)
   function targetChoices(list, count) {
@@ -2131,6 +2207,9 @@
       : d === "greatestPower" ? Math.max(0, ...s[ctx.side].battlefield.filter(isCreature).map((c) => power(c)))
       : d === "colorsAmongOtherArtifacts" ? new Set(s[ctx.side].battlefield.filter((c) => isArtifact(c) && c.id !== ctx.selfId).flatMap((c) => colorsOf(c))).size
       : d === "eventSpent" ? (ctx.event && ctx.event.spent) || 0
+      // converge: "the number of colors of mana spent to cast it" (this spell, or this permanent as it was cast); eventConverge: the spell that triggered
+      : d === "converge" ? Object.keys(ctx.colorsSpent || me0().colorsSpent || {}).length
+      : d === "eventConverge" ? (ctx.event && ctx.event.converge) || 0
       : d === "eventMV" ? (ctx.event && ctx.event.mv) || 0                       // ("that spell's mana value")
       : d === "selfToughness" ? Math.max(0, toughness(me0()))
       : d === "handTo10" ? Math.max(0, 10 - s[ctx.side].hand.length)
@@ -2553,11 +2632,13 @@
     if (eff.team) {
       // (an amount is decided once, as the effect begins: Ouroboroid's X doesn't grow as it gets its own counters)
       const teamPumpBy = eff.team.pumpBy != null ? amount(eff.team.pumpBy) : null;
+      const teamPumpPowerBy = eff.team.pumpPowerBy != null ? amount(eff.team.pumpPowerBy) : null;
       const teamCounters = eff.team.counters ? Object.fromEntries(Object.entries(eff.team.counters).map(([k, n]) => [k, amount(n)])) : null;
       // ("Creatures and Vehicles you control gain haste": team.vehicles — a Vehicle that isn't a creature yet too)
       s[ctx.side].battlefield.filter((c) => isCreature(c) || (eff.team.vehicles && isVehicle(c))).filter((c) => matches(s, c, eff.team.filter, ctx.side) && !(eff.team.other && c.id === ctx.selfId)).forEach((c) => {
         if (eff.team.pump) addMod(s, c, eff.team.pump);
         if (teamPumpBy != null) addMod(s, c, [teamPumpBy, teamPumpBy]);   // ("+X/+X until end of turn, where X is …")
+        if (teamPumpPowerBy != null) addMod(s, c, [teamPumpPowerBy, 0]);   // ("+X/+0 until end of turn, where X is …")
         if (eff.team.grant) grant(c, eff.team.grant, s);
         // "put a +1/+1 counter on each creature you control"
         if (eff.team.counters) Object.entries(teamCounters).forEach(([k, n]) => addCounters(s, c, k, n, ev));
@@ -3173,6 +3254,18 @@
         if (now && now.equip && me && isCreature(me)) { now.attachedTo = me.id; now.ts = stamp(s); changed(s); }
       }
     }
+    // Wildgrowth Archaic: the creature spell that triggered it gets the counters as it enters
+    if (eff.bonusEnterCounters) { const it = s.stack.find((w) => w.kind === "spell" && w.id === (ctx.event && ctx.event.id)); if (it) it.card.bonusCounters = (it.card.bonusCounters || 0) + amount(eff.bonusEnterCounters); }
+    // restricted mana: "Add four mana in any combination of colors. Spend this mana only to cast Dragon spells." (oneColor:
+    // "two mana of any one color" — the color is chosen as it's added; any combination: kept open, chosen as it's spent)
+    if (eff.addRestricted && ctx.side === "player") {
+      const r = eff.addRestricted, n = amount(r.n);
+      const colors = r.oneColor ? "WUBRG"[choose(s, "Which color?", ["White", "Blue", "Black", "Red", "Green"], "player")] : r.colors;
+      s.rpool = [...(s.rpool || []), ...Array.from({ length: n }, () => ({ colors, only: r.only }))];
+      ev.push({ type: "mana", restricted: true, n });
+    }
+    // Molten Tide: "Until end of turn, whenever you tap a Mountain for mana, add an additional {R}."
+    if (eff.moltenTide && ctx.side === "player") s.moltenTide = true;
     // ---- Reality Fracture ----
     // Enlightened Confidant / Chandra: "If you put a card … into your graveyard this way, put that card into your hand." (the surveil just done)
     if (eff.fromSurveilled && ctx.side === "player") {
@@ -3374,7 +3467,9 @@
       if (eff.controlWhile.grant) grant(tgt, eff.controlWhile.grant, s);
     }
     // "Add three mana of any one color" (a choice of color)
-    if (eff.chooseColorMana && ctx.side === "player") { const col = "WUBRG"[choose(s, "Which color?", ["White", "Blue", "Black", "Red", "Green"], "player")]; s.pool.push(...Array(eff.chooseColorMana).fill(col)); }
+    if (eff.chooseColorMana && ctx.side === "player") { const col = "WUBRG"[choose(s, "Which color?", ["White", "Blue", "Black", "Red", "Green"], "player")]; s.pool.push(...Array(amount(eff.chooseColorMana)).fill(col)); }
+    // "Add {G} for each creature you control" (addManaCount: { color, per })
+    if (eff.addManaCount && ctx.side === "player") s.pool.push(...Array(amount({ per: eff.addManaCount.per })).fill(eff.addManaCount.color));
     // Howlsquad Heavy: "Add {R} for each Goblin you control"
     if (eff.addManaPer && ctx.side === "player") s.pool.push(...Array(s.player.battlefield.filter((c) => hasType(c, eff.addManaPer.type)).length).fill(eff.addManaPer.color));
     // Oildeep Gearhulk: "look at target player's hand. You may choose a card from it. If you do, that player discards that
@@ -4256,6 +4351,9 @@
   }
   function enter(s, perm, { x, payLife, lifePips, side = "player" } = {}, ev) {
     if (side === "player" && isCreature(perm)) s.creaturesEnteredYours = (s.creaturesEnteredYours || 0) + 1;   // (Kinbinding)
+    // Wildgrowth Archaic: "that creature enters with X additional +1/+1 counters on it" (set while it was a spell)
+    if (perm.bonusCounters) { perm.counters = { ...(perm.counters || {}), "+1/+1": ((perm.counters || {})["+1/+1"] || 0) + perm.bonusCounters }; delete perm.bonusCounters; }
+    if (perm.evoked) s.triggered.push({ side, name: perm.name, srcId: perm.id, td: defId(EVOKE_SAC), event: { id: perm.id } });
     if (side === "player" && isCreature(perm) && hasType(perm, "Hero")) s.heroEntered = true;
     // Spider-Woman: "Artifacts and creatures your opponents control enter tapped."
     if (side === "opponent" && (isArtifact(perm) || isCreature(perm)) && s.player.battlefield.some((c) => c.oppEntersTapped && !(c.st && c.st.lost))) perm.tapped = true;
@@ -4296,7 +4394,8 @@
     // a number means +1/+1 counters; an object names the kinds ("enters with two oil counters": { oil: 2 })
     if (perm.entersWithCounters) {
       const w = perm.entersWithCounters;
-      const kinds = typeof w === "object" ? Object.fromEntries(Object.entries(w).map(([k, n]) => [k, n === "X" ? x || 0 : n === "threeMinusX" ? Math.max(0, 3 - (x || 0)) : n])) : { "+1/+1": w === "X" ? x || 0 : w };
+      const conv = Object.keys(perm.colorsSpent || {}).length;   // (converge: "a +1/+1 counter on it for each color of mana spent to cast it")
+      const kinds = typeof w === "object" ? Object.fromEntries(Object.entries(w).map(([k, n]) => [k, n === "X" ? x || 0 : n === "threeMinusX" ? Math.max(0, 3 - (x || 0)) : n === "converge" ? conv : n])) : { "+1/+1": w === "X" ? x || 0 : w === "converge" ? conv : w };
       if (perm.entersTappedIfXMax != null && (x || 0) <= perm.entersTappedIfXMax) perm.tapped = true;   // (Slumbering Trudge: "If X is 2 or less, it enters tapped.")
       // (Ozolith applies to a permanent entering with counters too)
       Object.entries(kinds).forEach(([k, n]) => { if (n) perm.counters = { ...(perm.counters || {}), [k]: ((perm.counters || {})[k] || 0) + n + (k === "+1/+1" ? ozolithBonus(s, side, perm) : 0) }; });
@@ -4369,11 +4468,12 @@
   function spend(s, ids, ev) {
     let treasures = 0;
     ids.filter((id) => id.startsWith("pool:")).map((id) => Number(id.slice(5))).sort((x, y) => y - x).forEach((i) => s.pool.splice(i, 1));
+    ids.filter((id) => id.startsWith("rpool:")).map((id) => Number(id.slice(6))).sort((x, y) => y - x).forEach((i) => s.rpool.splice(i, 1));
     s.firePool = (s.firePool || 0) - ids.filter((id) => id.startsWith("fire:")).length;
     if (!s.firePool) delete s.firePool;
     ids.filter((id) => id.startsWith("life:")).forEach(() => changeLife(s, "you", -2, ev));
     // every source this payment taps: those it uses directly, and those whose extra mana it uses ("id+n")
-    const tapped = [...new Set(ids.filter((id) => !id.startsWith("pool:") && !id.startsWith("fire:") && !id.startsWith("life:")).map((id) => id.split("+")[0]))];
+    const tapped = [...new Set(ids.filter((id) => !id.startsWith("pool:") && !id.startsWith("rpool:") && !id.startsWith("fire:") && !id.startsWith("life:")).map((id) => id.split("+")[0]))];
     tapped.forEach((id) => {
       const src = find(s, id);
       // one tap makes all its mana at once (CR 605.4a); what this payment doesn't use stays in your pool (CR 106.4)
@@ -4621,7 +4721,7 @@
 
   // Turn-based actions when a step begins
   function enterStep(s, step, blocks, ev) {
-    s.pool = [];                                               // mana empties between steps
+    s.pool = []; s.rpool = [];                                 // mana empties between steps
     if (at(step) >= at("main2")) delete s.firePool;            // (firebending mana: at the end of combat)
     // "At the beginning of the end step" triggers (e.g. Ball Lightning's sacrifice) trigger as the end step
     // begins; you can respond to them, so they resolve when you move on from the end step
@@ -4751,7 +4851,7 @@
     if (ab.exhaust && !exhaustReady(s, card, ab)) return `${card.name}'s exhaust ability has already been activated.`;
     if (ab.oncePerTurn && (card.usedOnce || []).includes(exhaustSlot(card, ab))) return `${card.name}'s ability can be activated only once each turn.`;
     if (ab.powerUp && card.poweredUp) return `${card.name}'s power-up ability has already been activated.`;   // CR 702.193a: only once
-    if (ab.cost && !bestPayment(s, abilityCost(s, card, ab, x), { exclude: ab.tap ? [card.id] : [] })) return "Not enough mana.";
+    if (ab.cost && !bestPayment(s, abilityCost(s, card, ab, x), { exclude: ab.tap ? [card.id] : [], forWhat: { ability: card } })) return "Not enough mana.";
     if (ab.targets && !(ab.targetCount && ab.targetCount.min === 0) && !targetsFor(s, card, ab.targets, ab.filter).filter((t) => !(ab.effect && ab.effect.attach && t === card.attachedTo)).length) return "There's no legal target.";
     return null;
   }
@@ -4794,7 +4894,7 @@
   // CR 702.194a-b: teamwork — "if this spell was cast using teamwork" (a.teamwork: the creatures tapped): its teamwork
   // version (ifTeamwork), or "choose both instead" (teamworkBoth)
   // (castFromGraveyard: "Spells you cast from your graveyard cost {2} less to cast", Green Goblin)
-  const castFace = (from, a) => { const f = withTeamwork(castFaceBase(from, a), a); return from && from.zone === "graveyard" && !f.castFromGraveyard ? { ...f, castFromGraveyard: true } : f; };
+  const castFace = (from, a) => { const f = { ...withTeamwork(castFaceBase(from, a), a), castZone: from && from.zone }; return from && from.zone === "graveyard" && !f.castFromGraveyard ? { ...f, castFromGraveyard: true } : f; };
   // (Dracogenesis on the battlefield: a Dragon spell may be cast without paying its mana cost — from.draco)
   const dracoOn = (s) => s.player.battlefield.some((c) => c.dracogenesis && !(c.st && c.st.lost));
   function withTeamwork(f, a) {
@@ -4818,6 +4918,8 @@
     if (from.zone === "exile" && from.card.airbent) return { ...f, cost: "{2}", printedCost: f.cost };
     // CR 702.185a: warp — cast it from your hand for its warp cost instead (a.warp)
     if (a.warp && from.zone === "hand" && from.card.warp) return { ...f, cost: from.card.warp, warpCast: true, printedCost: f.cost };
+    // CR 702.74a: evoke — "You may cast this spell for its evoke cost. If you do, it's sacrificed when it enters."
+    if (a.evoke && from.zone === "hand" && from.card.evoke) return { ...f, cost: from.card.evoke, evokeCast: true, printedCost: f.cost };
     if (from.draco && hasType(f, "Dragon")) return { ...f, cost: "", printedCost: f.cost };
     // CR 702.176a: impending — cast it for its impending cost: it enters with N time counters and isn't a creature while it has any
     if (a.impending && from.zone === "hand" && from.card.impending) return { ...f, cost: from.card.impending.cost, impendingCast: true, printedCost: f.cost };
@@ -5052,7 +5154,7 @@
       if (a.waterTap != null) {
         const helpers = waterHelpers(s, card, ab), l = a.waterTap;
         if (!ab.waterbend || new Set(l).size !== l.length || !l.every((id) => helpers.includes(id)) || l.length > parseCost(withX(ab.cost, a.x)).generic) return "Waterbend: tap your untapped artifacts and creatures, one per generic mana.";
-        if (!bestPayment(s, abilityCost(s, card, ab, a.x, l), { exclude: [...(ab.tap ? [card.id] : []), ...l] })) return "Not enough mana.";
+        if (!bestPayment(s, abilityCost(s, card, ab, a.x, l), { exclude: [...(ab.tap ? [card.id] : []), ...l], forWhat: { ability: card } })) return "Not enough mana.";
       }
       if (ab.crew) {
         const crew = a.crew || [];
@@ -5139,7 +5241,7 @@
     }
     const f = withTeamwork(faceOf(card, a), a);
     // (a spell that gained keywords on the stack — "those spells gain wither" — has them as it resolves)
-    const ctx = { src: { ...f, kw: [...(f.kw || []), ...(w.gain || [])] }, side: "player", sacPower, x: a.x, fromGraveyard: !!w.flashback };   // ("if this spell was cast from a graveyard")
+    const ctx = { src: { ...f, kw: [...(f.kw || []), ...(w.gain || [])] }, side: "player", sacPower, x: a.x, fromGraveyard: !!w.flashback, colorsSpent: card.colorsSpent };   // ("if this spell was cast from a graveyard")
     const parts = plan(f, a);
     if (f.aura) {
       const p = parts[0];
@@ -5358,6 +5460,8 @@
       if (lifeTax(s, a.target)) changeLife(s, "you", -lifeTax(s, a.target), ev);
       // (the creatures that convoked it: "put a flying counter on each creature that convoked it")
       if (spellConvoke(s, f)) { const helpers = convokeHelpers(s); const by = pay.filter((id) => helpers.includes(id)); if (by.length) card.convokedBy = by; else delete card.convokedBy; }
+      // the colors of mana spent (converge; "if {W}{W} was spent to cast it"), worked out before the sources are tapped
+      if (f.tracksColorsSpent || s.tracksColorsSpent) card.colorsSpent = colorsSpentBy(s, pay, costOf(f, a), a.convoke || [], f.spentWants || []);
       spend(s, pay, ev);
       // harmonize: the chosen creature is tapped as the total cost is paid (CR 702.180b)
       if (a.tapFor != null) tap(s, find(s, a.tapFor), ev);
@@ -5365,6 +5469,7 @@
       if (a.teamwork != null) [].concat(a.teamwork).forEach((id) => tap(s, find(s, id), ev));
       // warp (CR 702.185c): "a spell was warped this turn"; the permanent remembers it was cast for its warp cost
       if (f.warpCast) { s.warped = true; card.warped = true; }
+      if (f.evokeCast) card.evoked = true;
       if (f.impendingCast) card.impendingNow = true;
       // web-slinging: returning the tapped creature is part of the cost; the permanent remembers it ("if they were cast
       // using web-slinging")
@@ -5425,7 +5530,7 @@
     if (a.type === "activate") {
       const card = find(s, a.id);
       const ab = abilitiesOf(card)[a.index];
-      const pay = ab.cost ? bestPayment(s, abilityCost(s, card, ab, a.x, ab.waterbend ? a.waterTap || [] : undefined), { exclude: [...(ab.tap ? [card.id] : []), ...(a.waterTap || [])] }) : [];
+      const pay = ab.cost ? bestPayment(s, abilityCost(s, card, ab, a.x, ab.waterbend ? a.waterTap || [] : undefined), { exclude: [...(ab.tap ? [card.id] : []), ...(a.waterTap || [])], forWhat: { ability: card } }) : [];
       (ab.waterbend ? a.waterTap || [] : []).forEach((id) => tap(s, find(s, id), ev));   // waterbend: tapped to help pay
       // CR 602.2: the ability goes on the stack, then its costs are paid; it's independent of its source (CR 113.7a)
       const ctx = { src: lastKnown(card), side: "player", sacPower: Math.max(power(card), 0), selfId: card.id, x: a.x };
@@ -5700,7 +5805,8 @@
         // harmonize: tap no creature, or one of your untapped creatures
         const tapFors = f.harmonizing ? [undefined, ...convokeHelpers(s)] : [undefined];
         // warp: cast it normally, or for its warp cost
-        const warps = zone === "hand" && card.warp ? [undefined, true] : [undefined];
+        // (and evoke: cast it for its evoke cost, CR 702.74a — "evoke")
+        const warps = [undefined, ...(zone === "hand" && card.warp ? [true] : []), ...(zone === "hand" && card.evoke ? ["evoke"] : [])];
         const impendings = zone === "hand" && card.impending ? [undefined, true] : [undefined];
         // sneak: in your declare blockers step, returning each unblocked attacker of yours
         const sneaks = zone === "hand" && card.sneak ? [undefined, ...unblockedMine(s)] : [undefined];
@@ -5720,7 +5826,8 @@
             for (const pick of castTargets(s, f, { mode, x, blight, bargain, evidence, gift, behold }, sac)) {
               const a = { type: "cast", id: card.id, face, mode, color, x, sac, ...pick };
               if (tapFor !== undefined) a.tapFor = tapFor;
-              if (warp) a.warp = true;
+              if (warp === true) a.warp = true;
+              if (warp === "evoke") a.evoke = true;
               if (impending) a.impending = true;
               if (webSling !== undefined) a.webSling = webSling;
               if (discard !== undefined) a.discard = discard;
@@ -5933,6 +6040,7 @@
     let d = `cast ${f ? f.name : nameOf(s, a.id)}${from && from.zone === "exile" ? " (from exile)" : from && from.zone === "graveyard" ? (from.card.flashback ? " (flashback)" : " (harmonize)") : ""}`;
     if (a.tapFor != null) d += ` (tapping ${nameOf(s, a.tapFor)})`;
     if (a.warp) d += " (warp)";
+    if (a.evoke) d += " (evoke)";
     if (a.webSling != null) d += ` (web-slinging, returning ${nameOf(s, a.webSling)})`;
     if (a.sneak != null) d += ` (sneak, returning ${nameOf(s, a.sneak)})`;
     if (a.teamwork != null) d += ` (teamwork: tapping ${[].concat(a.teamwork).map((id) => nameOf(s, id)).join(" + ")})`;
