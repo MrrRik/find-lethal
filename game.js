@@ -1564,7 +1564,9 @@
   function targetPhase() {
     if (casting.trigger && !casting.phases) {
       const p = E.pendingTrigger(state);
-      casting.phases = [{ kind: p.targets, filter: p.filter, count: p.count || ONE, src: p.src, label: `${p.name}'s ability` }];
+      // (target groups of their own: one phase each — "up to one target …" may be left empty)
+      casting.phases = p.slots ? p.slots.map((sl, i) => ({ kind: sl.targets, filter: sl.filter, count: sl.optional ? { min: 0, max: 1 } : ONE, src: p.src, label: `${p.name}'s ability (target ${i + 1})`, slot: i }))
+        : [{ kind: p.targets, filter: p.filter, count: p.count || ONE, src: p.src, label: `${p.name}'s ability` }];
     }
     casting.k = casting.k || 0;
     while (casting.k < casting.phases.length) {
@@ -1593,7 +1595,8 @@
     const cardOf = (id) => anyCard(id) || (state.stack.find((x) => x.id === id) || {}).card || null;
     const where = (id) => (state.stack.some((x) => x.id === id) ? " (on the stack)" : ["player", "opponent"].some((sd) => state[sd].graveyard.some((c) => c.id === id))
       ? (state.player.graveyard.some((c) => c.id === id) ? " (your graveyard)" : " (their graveyard)") : "");
-    const label = (id) => (id === "opp" ? "The opponent" : id === "you" ? "You" : `${(cardOf(id) || {}).name || id}${where(id)}`);
+    const label = (id) => (id === "opp" ? "The opponent" : id === "you" ? "You" : /^stack:\d+$/.test(id) ? `${(state.stack[state.stack.length - 1 - Number(id.slice(6))] || {}).name || "An ability"} (ability on the stack)`
+      : `${(cardOf(id) || {}).name || id}${where(id)}`);
     const finish = () => { casting.results[casting.k++] = max === 1 ? picks[0] : [...picks]; targetPhase(); };
     const next = () => {
       const left = list.filter((id) => !picks.includes(id));
@@ -1617,6 +1620,7 @@
         return askChoice(`${casting.card.name}: divide ${total} damage`, opts, (split) => { casting.split = split; finishChoice(casting.results[0]); });
       }
     }
+    if (casting.trigger && casting.phases.length > 1) return finishChoice(casting.phases.map((_, i) => casting.results[i] ?? null));   // (a trigger's target groups)
     if (casting.trigger || casting.index != null || casting.renew || casting.channel) return finishChoice(casting.results[0]);
     const f = faceNow();
     const phases = casting.phases;
@@ -1632,8 +1636,8 @@
       const ts = [].concat(target);
       const name = (id) => (id === "opp" ? "opponent" : id === "you" ? "you" : (E.castable(state, id) || {}).card?.name ||
         [...state.player.battlefield, ...state.opponent.battlefield].find((c) => c.id === id)?.name || id);
-      const opts = E.compositions(p0.total, ts.length).map((split) => [split, split.map((n, i) => `${n} to ${name(ts[i])}`).join(", ")]);
-      return askChoice(`${f.name}: divide ${p0.total} damage`, opts, (split) => { casting.split = split; finishChoice(ts); });
+      const opts = E.compositions(p0.total, ts.length).map((split) => [split, split.map((n, i) => `${n} ${p0.effect.counters ? "on" : "to"} ${name(ts[i])}`).join(", ")]);
+      return askChoice(`${f.name}: divide ${p0.total} ${p0.effect.counters ? "+1/+1 counters" : "damage"}`, opts, (split) => { casting.split = split; finishChoice(ts); });
     }
     finishChoice(target);
   }

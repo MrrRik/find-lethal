@@ -3753,4 +3753,69 @@
       triggers: [{ on: "combatDamage", enchanted: true, effect: { surveil: 2, freeCastGraveyard: { filter: { instantOrSorcery: true, maxMV: 2 } } } }],
       text: "Equipped creature gets +2/+2 and has protection from blue and from black. Whenever equipped creature deals combat damage to a player, surveil 2. Then you may cast an instant or sorcery spell with mana value 2 or less from your graveyard without paying its mana cost. If that spell would be put into your graveyard, exile it instead. Equip {2}" }
   });
+  // ---- second pass: Wilds of Eldraine ----
+  const NIGHTMARE = { name: "Nightmare", type: "Token Creature — Nightmare", pt: "1/1", colors: ["B"],
+    triggers: [{ on: "beginningOfCombat", filter: { controller: "you" }, if: { exiledThisTurn: true }, effect: { counters: { "+1/+1": 1 }, self: true } }],
+    text: "At the beginning of combat on your turn, if a card was put into exile this turn, put a +1/+1 counter on this token." };
+  const SCION = (name, cost, pt, kw, colors, by, colorWords, lifeWords) => ({ type: "Legendary Creature — Human Wizard", cost, pt, kw,
+    abilities: [{ tap: true, sorcery: true, effect: { costLessByLife: { colors, by } }, text: `{T}: ${colorWords} spells you cast this turn cost {X} less (X: life you ${lifeWords} this turn)` }],
+    text: `${kw[0][0].toUpperCase() + kw[0].slice(1)}. {T}: Spells you cast this turn that are ${colorWords} cost {X} less to cast, where X is the amount of life you ${lifeWords} this turn. Activate only as a sorcery.` });
+  Object.assign(CARDS, {
+    "Extraordinary Journey": { type: "Enchantment", cost: "{X}{X}{U}{U}", etb: { exileOwnerMayPlay: true }, targets: "creature", targetCount: { min: 0, max: "X" },
+      triggers: [{ on: "enters", filter: { creature: true, nontoken: true, fromExile: true }, oncePerTurn: true, effect: { draw: 1 } }],
+      text: "When this enchantment enters, exile up to X target creatures. For each of those cards, its owner may play it for as long as it remains exiled. Whenever one or more nontoken creatures enter, if one or more of them entered from exile or was cast from exile, you draw a card. This ability triggers only once each turn." },
+    "Virtue of Knowledge": ADV("Virtue of Knowledge", { type: "Enchantment", cost: "{4}{U}", enterTriggersTwice: true,
+      text: "If a permanent entering causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time." },
+      { name: "Vantress Visions", type: "Instant — Adventure", cost: "{1}{U}", targets: "ability-yours", effect: { copyTargetAbility: true },
+        text: "Copy target activated or triggered ability you control. You may choose new targets for the copy. (Then exile this card. You may cast the enchantment later from exile.)" }),
+    "Ashiok, Wicked Manipulator": { type: "Legendary Planeswalker — Ashiok", cost: "{3}{B}{B}", loyalty: 5, ashiok: true, abilities: [
+      { loyalty: 1, effect: { ashiokLook: true }, text: "+1: Look at the top two cards of your library. Exile one of them and put the other into your hand." },
+      { loyalty: -2, effect: { create: { ...NIGHTMARE, count: 2 } }, text: "−2: Create two 1/1 black Nightmare creature tokens with \"At the beginning of combat on your turn, if a card was put into exile this turn, put a +1/+1 counter on this token.\"" },
+      { loyalty: -7, targets: "player", effect: { ashiokMill: true }, text: "−7: Target player exiles the top X cards of their library, where X is the total mana value of cards you own in exile." }],
+      text: "If you would pay life while your library has at least that many cards in it, exile that many cards from the top of your library instead. +1: Look at the top two cards of your library. Exile one of them and put the other into your hand. −2: Create two 1/1 black Nightmare creature tokens with \"At the beginning of combat on your turn, if a card was put into exile this turn, put a +1/+1 counter on this token.\" −7: Target player exiles the top X cards of their library, where X is the total mana value of cards you own in exile." },
+    "Beseech the Mirror": { type: "Sorcery", cost: "{1}{B}{B}{B}", bargain: true, effect: { beseech: {} }, ifBargained: { effect: { beseech: { free: true } } },
+      text: "Bargain. Search your library for a card, exile it face down, then shuffle. If this spell was bargained, you may cast the exiled card without paying its mana cost if that spell's mana value is 4 or less. Put the exiled card into your hand if it wasn't cast this way." },
+    "Goddric, Cloaked Reveler": { type: "Legendary Creature — Human Noble", cost: "{1}{R}{R}", pt: "3/3", kw: ["haste"], goddric: true,
+      conditional: [{ if: { celebration: true }, setBase: [4, 4], grant: ["flying"], abilities: [{ cost: "{R}", effect: { team: { pump: [1, 0], filter: { subtypeIs: "Dragon" } } }, text: "{R}: Dragons you control get +1/+0" }] }],
+      text: "Haste. Celebration — As long as two or more nonland permanents entered the battlefield under your control this turn, Goddric is a Dragon with base power and toughness 4/4, flying, and \"{R}: Dragons you control get +1/+0 until end of turn.\" (He loses all other creature types.)" },
+    "Imodane, the Pyrohammer": { type: "Legendary Creature — Human Knight", cost: "{2}{R}{R}", pt: "4/4",
+      triggers: [{ on: "spellDamage", filter: { controller: "you", singleCreatureTarget: true }, effect: { damage: "eventCount", to: "opp" } }],
+      text: "Whenever an instant or sorcery spell you control that targets only a single creature deals damage to that creature, Imodane deals that much damage to each opponent." },
+    "Feral Encounter": { type: "Sorcery", cost: "{G}{G}", effect: { seq: [{ lookTop: { n: 5, filter: { creature: true }, max: 1, to: "exilePlayable" } }, { delayBoc: "feral" }] },
+      text: "Look at the top five cards of your library. You may exile a creature card from among them. Put the rest on the bottom of your library in a random order. You may cast the exiled card this turn. At the beginning of the next combat phase this turn, target creature you control deals damage equal to its power to up to one target creature you don't control." },
+    "Sentinel of Lost Lore": { type: "Creature — Elf Knight", cost: "{1}{G}{G}", pt: "3/4",
+      triggers: [{ on: "enters", self: true, oneOrMore: true, modes: [
+        { text: "Return target card you own in exile that has an Adventure to your hand", targets: "exile-card", targetFilter: { owner: "you", adventureCard: true }, effect: { exileToHand: true } },
+        { text: "Put target card you don't own in exile that has an Adventure on the bottom of its owner's library", targets: "exile-card", targetFilter: { owner: "notYou", adventureCard: true }, effect: { exileToBottom: true } },
+        { text: "Exile target player's graveyard", targets: "player", effect: { exilePlayerGraveyard: true } }] }],
+      text: "When this creature enters, choose one or more — • Return target card you own in exile that has an Adventure to your hand. • Put target card you don't own in exile that has an Adventure on the bottom of its owner's library. • Exile target player's graveyard." },
+    "Hylda of the Icy Crown": { type: "Legendary Creature — Human Warlock", cost: "{2}{W}{U}", pt: "3/4",
+      triggers: [{ on: "becomesTapped", filter: { controller: "opponent", creature: true }, effect: { mayPay: { cost: "{1}", then: { chooseEffect: [
+        { text: "Create a 4/4 white and blue Elemental creature token", effect: { create: { name: "Elemental", type: "Token Creature — Elemental", pt: "4/4", colors: ["W", "U"] } } },
+        { text: "Put a +1/+1 counter on each creature you control", effect: { team: { counters: { "+1/+1": 1 } } } },
+        { text: "Scry 2, then draw a card", effect: { scry: 2, draw: 1 } }] } } } }],
+      text: "Whenever you tap an untapped creature an opponent controls, you may pay {1}. When you do, choose one — • Create a 4/4 white and blue Elemental creature token. • Put a +1/+1 counter on each creature you control. • Scry 2, then draw a card." },
+    "Likeness Looter": { type: "Creature — Faerie Shapeshifter", cost: "{U}{B}", pt: "1/1", kw: ["flying"], abilities: [
+      { tap: true, effect: { loot: 1 }, text: "{T}: Draw a card, then discard a card" },
+      { cost: "{X}", sorcery: true, targets: "graveyard-card", filter: { creature: true }, effect: { becomeCopyCard: true }, text: "{X}: Becomes a copy of target creature card in your graveyard with mana value X (with flying and this ability)" }],
+      text: "Flying. {T}: Draw a card, then discard a card. {X}: This creature becomes a copy of target creature card in your graveyard with mana value X, except it has flying and this ability. Activate only as a sorcery." },
+    "Rowan, Scion of War": SCION("Rowan, Scion of War", "{1}{B}{R}", "4/2", ["menace"], ["B", "R"], "lost", "black and/or red", "lost"),
+    "Will, Scion of Peace": SCION("Will, Scion of Peace", "{1}{W}{U}", "2/4", ["vigilance"], ["W", "U"], "gained", "white and/or blue", "gained"),
+    "Yenna, Redtooth Regent": { type: "Legendary Creature — Elf Noble", cost: "{2}{G}{W}", pt: "4/4",
+      abilities: [{ cost: "{2}", tap: true, sorcery: true, targets: "permanent", filter: { controller: "you", enchantmentOnly: true, uniqueNameYours: true }, effect: { yenna: true },
+        text: "{2}, {T}: Token copy of target enchantment you control (not legendary); an Aura: untap Yenna, scry 2" }],
+      text: "{2}, {T}: Choose target enchantment you control that doesn't have the same name as another permanent you control. Create a token that's a copy of it, except it isn't legendary. If the token is an Aura, untap Yenna, then scry 2. Activate only as a sorcery." },
+    "Elusive Otter": ADV("Elusive Otter", { type: "Creature — Otter", cost: "{U}", pt: "1/1", kw: ["prowess", "unblockable by lesser power"],
+      text: "Prowess. Creatures with power less than this creature's power can't block it." },
+      { name: "Grove's Bounty", type: "Sorcery — Adventure", cost: "{X}{G}", divided: "X", dividedCounters: true, targets: "creature", targetFilter: { controller: "you" }, targetCount: { min: 1, max: "X" },
+        text: "Distribute X +1/+1 counters among any number of target creatures you control. (Then exile this card. You may cast the creature later from exile.)" }),
+    "Agatha's Soul Cauldron": { type: "Legendary Artifact", cost: "{2}", soulCauldron: true,
+      abilities: [{ tap: true, targets: "graveyard-card", filter: { anyGraveyard: true }, effect: { exileGraveyardCard: { tracked: true, ifCreature: { reflexive: "cauldron" } } },
+        text: "{T}: Exile target card from a graveyard (a creature card: +1/+1 counter on target creature you control)" }],
+      text: "You may spend mana as though it were mana of any color to activate abilities of creatures you control. Creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with Agatha's Soul Cauldron. {T}: Exile target card from a graveyard. When a creature card is exiled this way, put a +1/+1 counter on target creature you control." },
+    "The Irencrag": { type: "Legendary Artifact", cost: "{2}", produces: "C",
+      becomes: { name: "Everflame, Heroes' Legacy", type: "Legendary Artifact — Equipment", cost: "{2}", colors: [], equip: { cost: "{3}", static: { pump: [3, 3] } }, text: "Equipped creature gets +3/+3. Equip {3}" },
+      triggers: [{ on: "enters", filter: { controller: "you", creature: true, legendary: true }, effect: { becomeFace: true } }],
+      text: "{T}: Add {C}. Whenever a legendary creature you control enters, you may have The Irencrag become a legendary Equipment artifact named Everflame, Heroes' Legacy. If you do, it gains equip {3} and \"Equipped creature gets +3/+3\" and loses all other abilities." }
+  });
 })();
