@@ -1583,6 +1583,17 @@
 
   // Turn the chosen targets into the action's target (and ask how to divide damage, if needed)
   function assemble() {
+    // an ability that divides its damage (Lukka −4): how much to each chosen target
+    if (casting.index != null && casting.split === undefined) {
+      const ab = E.abilitiesOf(casting.card)[casting.index];
+      const ts = casting.results[0] == null ? [] : [].concat(casting.results[0]);
+      if (ab && ab.effect && ab.effect.divided && ts.length) {
+        const total = E.abilityDividedTotal(state, ab);
+        const nameOf = (id) => [...state.player.battlefield, ...state.opponent.battlefield].find((c) => c.id === id)?.name || id;
+        const opts = E.compositions(total, ts.length).map((split) => [split, split.map((n, i) => `${n} to ${nameOf(ts[i])}`).join(", ")]);
+        return askChoice(`${casting.card.name}: divide ${total} damage`, opts, (split) => { casting.split = split; finishChoice(casting.results[0]); });
+      }
+    }
     if (casting.trigger || casting.index != null || casting.renew || casting.channel) return finishChoice(casting.results[0]);
     const f = faceNow();
     const phases = casting.phases;
@@ -1608,7 +1619,7 @@
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
     : casting.renew ? { type: "renew", id: casting.card.id, target }
     : casting.channel ? { type: "channel", id: casting.card.id, target }
-    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined, taps: casting.taps ?? undefined }
+    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined, taps: casting.taps ?? undefined, split: casting.split ?? undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
