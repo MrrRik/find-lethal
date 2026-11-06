@@ -314,6 +314,7 @@
         if (r.noncreature && typeHas(f, /creature/i)) return t;
         if (r.color && !colorsOf(f).includes(r.color)) return t;
         if (r.perArtifact) return t + s.player.battlefield.filter(isArtifact).length;
+        if (r.bigInstSorcPerPower) return typeHas(f, /instant|sorcery/i) && manaValue(f.cost) >= 4 ? t + Math.max(0, power(c)) : t;   // (The Scarlet Witch)
         if (r.perCreatureInstSorc) return typeHas(f, /instant|sorcery/i) ? t + s.player.battlefield.filter(isCreature).length : t;   // (Witherbloom: instants and sorceries have affinity for creatures)
         if (r.toughGtPower && !(typeHas(f, /creature/i) && toughness(f) > power(f))) return t;   // (Doran: "with toughness greater than its power")   // (Sami: "Spells you cast have affinity for artifacts")      // ("White spells you cast cost {1} less")
         if (r.level && levelOf(c) < r.level) return t;                // (a Class's level 2 ability)
@@ -1179,7 +1180,7 @@
       if (has(src, "infect") || has(src, "wither")) {
         t.counters = { ...(t.counters || {}) };
         t.counters["-1/-1"] = (t.counters["-1/-1"] || 0) + n;
-      } else t.dmg = (t.dmg || 0) + n;
+      } else t.dmg = (t.wolverine && !(t.st && t.st.lost) ? 0 : t.dmg || 0) + n;   // (Wolverine: "that damage is dealt, but all other damage already dealt to him is healed")
       if (has(src, "deathtouch")) t.deathtouched = true;
       ev.push({ type: "damage", id: t.id, amount: n });
       // "Whenever a source deals damage to this creature, that source's controller …" (Phyrexian Obliterator)
@@ -1538,6 +1539,7 @@
     if (cond.drawnMin != null && !(((s.drawn || {})[side] || 0) >= cond.drawnMin)) return false;
     if (cond.creatureDied && !s.creatureDied) return false;                    // "if a creature died this turn"
     if (cond.yourCreatureDied && !s.yourCreatureDied) return false;
+    if (cond.heroAttackedOrEntered && !(side === "player" && (s.heroAttacked || s.heroEntered))) return false;   // (Avengers Assemble!)
     if (cond.creaturesDiedMin && (s.diedCount || 0) < cond.creaturesDiedMin) return false;   // ("if two or more creatures died this turn")
     if (cond.selfFlag && !(self && self[cond.selfFlag])) return false;          // (an ability it gained: "This creature gains …")
     if (cond.oppLostLife && !s.oppLostLife) return false;
@@ -1600,7 +1602,7 @@
     (!f.creatureOrVehicle || isCreature(c) || isVehicle(c)) && (!f.mountOrVehicleCard || isMount(c) || isVehicle(c)) &&
     (!f.gearhulk || ((isArtifact(c) || isCreature(c) || typeHas(c, /enchantment/i)) && manaValue(c.cost) <= 1)) &&
     (!f.balemurk || (isCreature(c) && !hasType(c, "Avatar")) || isPlaneswalker(c)) && (!f.adventureCard || c.layout === "adventure") && (!f.notName || c.name !== f.notName) &&
-    (!f.allTypes || f.allTypes.every((t) => hasType(c, t))) && (!f.creatureOrWalkerCard || isCreature(c) || isPlaneswalker(c)) && (!f.birdOrBasicLand || hasType(c, "Bird") || (isLand(c) && /\bbasic\b/i.test(c.type || ""))) && (!f.noncreatureCard || !isCreature(c)) && (!f.colorsAny || f.colorsAny.some((x) => colorsOf(c).includes(x))) && (!f.untapped || !c.tapped) && (!f.artifactOrEnchantmentCard || isArtifact(c) || (typeHas(c, /enchantment/i) && !c.aura)) && (!f.suspected || !!c.suspected) && (!f.planeswalker || isPlaneswalker(c));   // "artifact or non-Aura enchantment card"
+    (!f.equipmentOrInstSorc || hasType(c, "Equipment") || typeHas(c, /instant|sorcery/i)) && (!f.allTypes || f.allTypes.every((t) => hasType(c, t))) && (!f.creatureOrWalkerCard || isCreature(c) || isPlaneswalker(c)) && (!f.birdOrBasicLand || hasType(c, "Bird") || (isLand(c) && /\bbasic\b/i.test(c.type || ""))) && (!f.noncreatureCard || !isCreature(c)) && (!f.colorsAny || f.colorsAny.some((x) => colorsOf(c).includes(x))) && (!f.untapped || !c.tapped) && (!f.artifactOrEnchantmentCard || isArtifact(c) || (typeHas(c, /enchantment/i) && !c.aura)) && (!f.suspected || !!c.suspected) && (!f.planeswalker || isPlaneswalker(c));   // "artifact or non-Aura enchantment card"
 
   // The one place game events go: logged for the UI, and checked against every triggered ability that can
   // function (CR 603.2). Each matching ability triggers once per event (CR 603.2c) and waits in s.triggered
@@ -1612,6 +1614,7 @@
     // a spell's mana value (X included, CR 202.3e) and which multicolored spell of yours this turn it is
     if (e.type === "cast" && e.obj) {
       e.mv = manaValue(withX(e.obj.printedCost != null ? e.obj.printedCost : e.obj.cost, e.x));
+      e.blueSymbols = (((e.obj.printedCost != null ? e.obj.printedCost : e.obj.cost) || "").match(/\{[^}]*U[^}]*\}/g) || []).length;   // (Namor: "with one or more blue mana symbols in its mana cost")
       if (e.side === "player" && colorsOf(e.obj).length > 1) e.multiNumber = s.multiCast = (s.multiCast || 0) + 1;
       if (e.side === "player" && typeHas(e.obj, /instant|sorcery/i)) s.instSorcCast = (s.instSorcCast || 0) + 1;
       if (e.side === "player") { if (typeHas(e.obj, /creature/i)) s.castCreature = true; else s.castNoncreature = true; }
@@ -1653,7 +1656,9 @@
         for (let k = 0; k < times; k++) {
           s.triggered.push({ side, name: card.name, srcId: card.id, td: defId(t), ...(zone && zone !== "battlefield" ? { zone } : {}),
             event: { id: e.obj && e.obj.id, side: e.side, controller: e.controller, ...(e.type === "dies" && e.obj.counters ? { counters: e.obj.counters } : {}), ...(e.ids ? { ids: e.ids } : {}), ...(e.to ? { to: e.to } : {}), ...(e.count != null ? { count: e.count } : {}), ...(e.vehicle ? { vehicle: e.vehicle } : {}),
-              ...(e.spent != null ? { spent: e.spent } : {}), ...(e.mv != null ? { mv: e.mv } : {}) } });
+              ...(e.spent != null ? { spent: e.spent } : {}), ...(e.mv != null ? { mv: e.mv } : {}), ...(e.blueSymbols ? { blueSymbols: e.blueSymbols } : {}),
+              // (the object's power and toughness as it last existed: "equal to that creature's power")
+              ...(e.obj && isCreature(e.obj) ? { objPower: Math.max(0, e.obj.lastPower ?? power(e.obj)), objToughness: Math.max(0, e.obj.lastToughness ?? toughness(e.obj)) } : {}) } });
         }
       }
     }
@@ -2046,7 +2051,7 @@
       // last existed, "each creature that died this turn", "the number of lands you control")
       : d === "otherPermanentsMV" ? s[ctx.side].battlefield.filter((c) => c.id !== ctx.selfId).reduce((t, c) => t + manaValue(c.cost), 0)
       : d === "devotionRed" ? s[ctx.side].battlefield.reduce((t, c) => t + ((c.cost || "").match(/\{[^}]*R[^}]*\}/g) || []).length, 0)
-      : d === "eventLastPower" ? Math.max(0, ctx.event && ctx.event.obj ? (ctx.event.obj.lastPower ?? power(ctx.event.obj)) : 0)
+      : d === "eventLastPower" ? (ctx.event && ctx.event.objPower) || 0
       : d === "diedCount" ? s.diedCount || 0
       : d === "landsYouControl" ? s[ctx.side].battlefield.filter(isLand).length
       // ("the number of creatures they control", "the greatest power among creature cards in your graveyard", "the
@@ -2056,10 +2061,14 @@
       : d === "handTo8" ? Math.max(0, 8 - s[ctx.side].hand.length)
       : d === "handTo4" ? Math.max(0, 4 - s[ctx.side].hand.length)
       : d === "instSorcInGraveyard" ? s[ctx.side].graveyard.filter((c) => typeHas(faceOf(c, {}), /instant|sorcery/i)).length
+      : d === "eventMV" ? (ctx.event && ctx.event.mv) || 0                       // ("that spell's mana value")
+      : d === "selfToughness" ? Math.max(0, toughness(me0()))
+      : d === "handTo10" ? Math.max(0, 10 - s[ctx.side].hand.length)
+      : d === "eventBlueSymbols" ? (ctx.event && ctx.event.blueSymbols) || 0
       : d === "twoPowX" ? 2 ** (ctx.x || 0)                                       // (Mathemagics: "2ˣ cards")
       : d === "selfX" ? me0().xPaid || 0
       : d === "halfSelfXDown" ? Math.floor((me0().xPaid || 0) / 2)
-      : d === "eventLastToughness" ? Math.max(0, ctx.event && ctx.event.obj ? (ctx.event.obj.lastToughness ?? toughness(ctx.event.obj)) : 0)
+      : d === "eventLastToughness" ? (ctx.event && ctx.event.objToughness) || 0
       : d === "attackingCount" ? ((s.combat && s.combat.attackers) || []).filter((id) => s[ctx.side].battlefield.some((c) => c.id === id)).length
       : typeof d === "object" && d.per ? (d.plus || 0) + s[ctx.side].battlefield.filter((c) => matches(s, c, d.per, ctx.side)).length
       // ("2 plus the number of Lesson cards in your graveyard": { plus: 2, perGraveyard: "Lesson" })
@@ -2473,10 +2482,12 @@
     const greatest = eff.team && eff.team.pumpPer && eff.team.pumpPer.greatestPower ? Math.max(0, ...s[ctx.side].battlefield.filter(isCreature).map(power)) : null;
     if (eff.team) {
       // (an amount is decided once, as the effect begins: Ouroboroid's X doesn't grow as it gets its own counters)
+      const teamPumpBy = eff.team.pumpBy != null ? amount(eff.team.pumpBy) : null;
       const teamCounters = eff.team.counters ? Object.fromEntries(Object.entries(eff.team.counters).map(([k, n]) => [k, amount(n)])) : null;
       // ("Creatures and Vehicles you control gain haste": team.vehicles — a Vehicle that isn't a creature yet too)
       s[ctx.side].battlefield.filter((c) => isCreature(c) || (eff.team.vehicles && isVehicle(c))).filter((c) => matches(s, c, eff.team.filter, ctx.side) && !(eff.team.other && c.id === ctx.selfId)).forEach((c) => {
         if (eff.team.pump) addMod(s, c, eff.team.pump);
+        if (teamPumpBy != null) addMod(s, c, [teamPumpBy, teamPumpBy]);   // ("+X/+X until end of turn, where X is …")
         if (eff.team.grant) grant(c, eff.team.grant, s);
         // "put a +1/+1 counter on each creature you control"
         if (eff.team.counters) Object.entries(teamCounters).forEach(([k, n]) => addCounters(s, c, k, n, ev));
@@ -2807,6 +2818,7 @@
     if (eff.putFromHand && ctx.side === "player") {
       let room = eff.putFromHand.max == null ? Infinity : eff.putFromHand.max;
       // ("with mana value less than or equal to the number of lands you control": maxMV as an amount; "onto the battlefield tapped")
+      let putCount = 0;
       const pf = { ...(eff.putFromHand.filter || {}) }; if (typeof pf.maxMV === "string") pf.maxMV = amount(pf.maxMV);
       // ("with total power and toughness 5 or less")
       const ptOk = (c) => eff.putFromHand.maxPTSum == null || power(faceOf(c, {})) + toughness(faceOf(c, {})) <= eff.putFromHand.maxPTSum;
@@ -2821,7 +2833,10 @@
           if (eff.putFromHand.attacking && s.combat) { s.combat.attackers.push(now.id); if (s.combat.blocks) { s.combat.blocks[now.id] = []; s.combat.blocked[now.id] = false; } }
           if (eff.putFromHand.haste) grant(now, ["haste"], s);
           if (eff.putFromHand.sacrificeAtEnd) delay(s, "sacrificeIt", "player", now.name, now.id, now.id);
+          putCount++;
         });
+      // ("If you don't, draw a card.")
+      if (eff.putFromHand.elseDraw && !putCount) draw(s, "player", 1, ev);
     }
     // "for each creature you control with power greater than that creature's base power, put a number of +1/+1 counters
     // on that creature equal to the difference"
@@ -3029,6 +3044,33 @@
       }
       if (n) draw(s, "player", n, ev);
     }
+    // ---- Marvel Super Heroes ----
+    // Avengers: Under Siege: "deals 2 damage to each non-Villain creature"
+    if (eff.damageAllNonType) battlefieldNow(s).map(({ card }) => card).filter((c) => isCreature(c) && !hasType(c, eff.damageAllNonType.notType)).forEach((c) => dealDamage(s, ctx.src, ctx.side, c.id, eff.damageAllNonType.n, ev));
+    // Thunderbolts Conspiracy: "return it to the battlefield under its owner's control with a finality counter on it. That creature is a Hero in addition to its other types."
+    if (eff.returnEventCard) {
+      const id = ctx.event && ctx.event.obj && ctx.event.obj.id;
+      for (const side of ["player", "opponent"]) {
+        const card = s[side].graveyard.find((c) => c.id === id);
+        if (!card) continue;
+        s[side].graveyard = s[side].graveyard.filter((c) => c !== card);
+        const perm = asFace(card, 0); perm.sick = true;
+        if (eff.returnEventCard.addSubtype) perm.type = `${perm.type} ${eff.returnEventCard.addSubtype}`;
+        if (eff.returnEventCard.counters) perm.counters = { ...(perm.counters || {}), ...eff.returnEventCard.counters };
+        ev.push({ type: "returned", id: perm.id });
+        enter(s, perm, { side }, ev);
+      }
+    }
+    // Thor: "exile target … card from your graveyard. Until the end of your next turn, you may play that card."
+    if (eff.exilePlayable) { const z = s[ctx.side], card = z.graveyard.find((c) => c.id === target); if (card) { z.graveyard = z.graveyard.filter((c) => c !== card); z.exile.push({ ...card, playable: true }); emit(s, { type: "leavesGraveyard", side: ctx.side, count: 1 }, ev); } }
+    // Super-Adaptoid: for each of these keywords the target has and this doesn't, put that keyword counter on this
+    if (eff.copyKwCounters && tgt) { const me = find(s, ctx.selfId); if (me) ["haste", "flying", "first strike", "double strike", "deathtouch", "indestructible", "lifelink", "menace", "reach", "trample", "vigilance"].filter((k) => has(tgt, k) && !has(me, k)).forEach((k) => addCounters(s, me, k, 1, ev)); }
+    // Thanos: "Choose odd or even. Destroy each other creature with mana value of the chosen quality." (zero is even)
+    if (eff.destroyParity) {
+      const odd = choose(s, "Odd or even?", ["Odd", "Even"], ctx.side) === 0;
+      const before = s.listens.length ? battlefieldNow(s) : null;
+      battlefieldNow(s).map(({ card }) => card).filter((c) => isCreature(c) && c.id !== ctx.selfId && (manaValue(c.cost) % 2 === 1) === odd && !indestructible(c)).forEach((c) => leave(s, c, "graveyard", ev, { lookBack: before }));
+    }
     // ---- Secrets of Strixhaven ----
     // Swords to Plowshares: "Exile target creature. Its controller gains life equal to its power."
     if (eff.exileGainPower && tgt) { const who = sideOf(s, tgt) === "player" ? "you" : "opp", n = Math.max(0, power(tgt)); leave(s, tgt, "exile", ev); changeLife(s, who, n, ev); }
@@ -3058,7 +3100,7 @@
       const owner = tgt.owner || sideOf(s, tgt), token = tgt.token;
       leave(s, tgt, "exile", ev);
       const ex = !token && s[owner].exile.find((x) => x.id === tgt.id);
-      if (ex) { s[owner].exile = s[owner].exile.filter((x) => x !== ex); const perm = asFace(ex, 0); perm.sick = true; enter(s, perm, { side: owner }, ev); }
+      if (ex) { s[owner].exile = s[owner].exile.filter((x) => x !== ex); const perm = asFace(ex, 0); perm.sick = true; if (eff.blinkTarget.tapped) perm.tapped = true; enter(s, perm, { side: owner }, ev); }
     }
     // ---- Teenage Mutant Ninja Turtles ----
     // Renet: "return each other nonland permanent that entered this turn to its owner's hand"
@@ -4020,6 +4062,7 @@
   }
   function enter(s, perm, { x, payLife, lifePips, side = "player" } = {}, ev) {
     if (side === "player" && isCreature(perm)) s.creaturesEnteredYours = (s.creaturesEnteredYours || 0) + 1;   // (Kinbinding)
+    if (side === "player" && isCreature(perm) && hasType(perm, "Hero")) s.heroEntered = true;
     // Spider-Woman: "Artifacts and creatures your opponents control enter tapped."
     if (side === "opponent" && (isArtifact(perm) || isCreature(perm)) && s.player.battlefield.some((c) => c.oppEntersTapped && !(c.st && c.st.lost))) perm.tapped = true;
     // "You may have this creature enter as a copy of any creature on the battlefield, except …" (CR 614.1c, 707.5):
@@ -5265,6 +5308,7 @@
       s.combat = { attackers: [...a.ids], blocks: null, blocked: {}, fsHappened: false, dealtFirst: [], ...(a.at ? { at: { ...a.at } } : {}) };
       if (s.tracksSources) s.attackedCount = a.ids.length;     // ("three or more creatures attacked this turn")
       s.attackedIds = [...a.ids];                              // ("each creature that attacked this turn")
+      if (a.ids.some((id) => find(s, id) && hasType(find(s, id), "Hero"))) s.heroAttacked = true;   // ("if you attacked with a Hero this turn")
       const attackers = a.ids.map((id) => find(s, id));
       attackers.forEach((c) => { if (!has(c, "vigilance")) tap(s, c, ev); });   // CR 508.1f
       ev.push({ type: "attack", ids: a.ids });
