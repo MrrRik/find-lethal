@@ -301,7 +301,7 @@
       (!typeHas(f, /creature/i) ? s.player.battlefield.filter((c) => c.samut && !(c.st && c.st.lost)).length * speedOf(s, "player") : 0) +
       (typeHas(f, /creature/i) ? 2 * s.player.battlefield.filter((c) => c.sibsig && !(c.st && c.st.lost)).length : 0) +
       // Sunderflock: "This spell costs {X} less to cast, where X is the greatest mana value among Elementals you control."
-      (f.affinityArtifacts ? s.player.battlefield.filter(isArtifact).length : 0) +   // (affinity for artifacts, CR 702.41a)
+      (f.affinityArtifacts ? s.player.battlefield.filter(isArtifact).length : 0) + (f.affinityCreatures ? s.player.battlefield.filter(isCreature).length : 0) +   // (affinity for artifacts, CR 702.41a)
       (f.lessGreatestMVType ? Math.max(0, ...s.player.battlefield.filter((c) => hasType(c, f.lessGreatestMVType)).map((c) => manaValue(c.cost))) : 0) +   // (The Sibsig Ceremony)
       s.player.battlefield.filter((c) => c.battlecrier && !(c.st && c.st.lost)).length * s.player.battlefield.filter((c) => isCreature(c) && power(c) >= 4).length +   // (Temur Battlecrier)
       // ("The first instant or sorcery spell you cast each turn costs {3} less to cast")
@@ -314,6 +314,7 @@
         if (r.noncreature && typeHas(f, /creature/i)) return t;
         if (r.color && !colorsOf(f).includes(r.color)) return t;
         if (r.perArtifact) return t + s.player.battlefield.filter(isArtifact).length;
+        if (r.perCreatureInstSorc) return typeHas(f, /instant|sorcery/i) ? t + s.player.battlefield.filter(isCreature).length : t;   // (Witherbloom: instants and sorceries have affinity for creatures)
         if (r.toughGtPower && !(typeHas(f, /creature/i) && toughness(f) > power(f))) return t;   // (Doran: "with toughness greater than its power")   // (Sami: "Spells you cast have affinity for artifacts")      // ("White spells you cast cost {1} less")
         if (r.level && levelOf(c) < r.level) return t;                // (a Class's level 2 ability)
         return t + (r.perCounter ? (c.counters || {})[r.perCounter] || 0 : r.n || 0);
@@ -1537,6 +1538,7 @@
     if (cond.drawnMin != null && !(((s.drawn || {})[side] || 0) >= cond.drawnMin)) return false;
     if (cond.creatureDied && !s.creatureDied) return false;                    // "if a creature died this turn"
     if (cond.yourCreatureDied && !s.yourCreatureDied) return false;
+    if (cond.creaturesDiedMin && (s.diedCount || 0) < cond.creaturesDiedMin) return false;   // ("if two or more creatures died this turn")
     if (cond.selfFlag && !(self && self[cond.selfFlag])) return false;          // (an ability it gained: "This creature gains …")
     if (cond.oppLostLife && !s.oppLostLife) return false;
     if (cond.selfAttacking && !(self && s.combat && s.combat.attackers.includes(self.id))) return false;   // "if Tolsimir attacked this combat"
@@ -2053,6 +2055,8 @@
       : d === "greatestGraveyardPower" ? Math.max(0, ...s[ctx.side].graveyard.map((c) => faceOf(c, {})).filter(isCreature).map((c) => power(c)))
       : d === "handTo8" ? Math.max(0, 8 - s[ctx.side].hand.length)
       : d === "handTo4" ? Math.max(0, 4 - s[ctx.side].hand.length)
+      : d === "instSorcInGraveyard" ? s[ctx.side].graveyard.filter((c) => typeHas(faceOf(c, {}), /instant|sorcery/i)).length
+      : d === "twoPowX" ? 2 ** (ctx.x || 0)                                       // (Mathemagics: "2ˣ cards")
       : d === "selfX" ? me0().xPaid || 0
       : d === "halfSelfXDown" ? Math.floor((me0().xPaid || 0) / 2)
       : d === "eventLastToughness" ? Math.max(0, ctx.event && ctx.event.obj ? (ctx.event.obj.lastToughness ?? toughness(ctx.event.obj)) : 0)
@@ -3024,6 +3028,37 @@
         discardCard(s, s.player.hand[k], ev); n++;
       }
       if (n) draw(s, "player", n, ev);
+    }
+    // ---- Secrets of Strixhaven ----
+    // Swords to Plowshares: "Exile target creature. Its controller gains life equal to its power."
+    if (eff.exileGainPower && tgt) { const who = sideOf(s, tgt) === "player" ? "you" : "opp", n = Math.max(0, power(tgt)); leave(s, tgt, "exile", ev); changeLife(s, who, n, ev); }
+    // Erode: "Destroy target creature or planeswalker. Its controller may search their library for a basic land card, put it onto the battlefield tapped" (yours: a choice; theirs: an unknown library)
+    if (eff.erode && tgt) { const mine = sideOf(s, tgt) === ctx.side; if (!indestructible(tgt)) leave(s, tgt, "graveyard", ev); if (mine) applyEffect(s, { search: { filter: { type: "Land" }, basic: true, toBattlefield: true, tapped: true } }, undefined, ctx, ev); }
+    // "Target creature gains your choice of double strike or lifelink until end of turn."
+    if (eff.chooseKw && tgt) grant(tgt, [eff.chooseKw[choose(s, "Which ability?", eff.chooseKw, ctx.side, tgt.id)]], s);
+    // Emeritus of Ideation: "you may exile eight cards from your graveyard. If you do, …"
+    if (eff.mayExileFromGraveyard && ctx.side === "player" && s.player.graveyard.length >= eff.mayExileFromGraveyard.n &&
+      choose(s, `Exile ${eff.mayExileFromGraveyard.n} cards from your graveyard?`, ["Exile them", "Don't"], "player") === 0) {
+      for (let i = 0; i < eff.mayExileFromGraveyard.n; i++) { const g = s.player.graveyard, k = choose(s, `Exile which card? (${i + 1} of ${eff.mayExileFromGraveyard.n})`, g.map((c) => c.name), "player", g.map((c) => c.id)); s.player.exile.push(g[k]); s.player.graveyard = g.filter((_, j) => j !== k); }
+      emit(s, { type: "leavesGraveyard", side: "player", count: eff.mayExileFromGraveyard.n }, ev);
+      applyEffect(s, eff.mayExileFromGraveyard.then, target, ctx, ev);
+    }
+    // "All creatures get -2/-2 until end of turn."
+    if (eff.allPump) battlefieldNow(s).map(({ card }) => card).filter(isCreature).forEach((c) => addMod(s, c, eff.allPump));
+    // "Sacrifice two lands." / "sacrifice a permanent" (your choice of which)
+    if (eff.sacOwn) for (let i = 0; i < eff.sacOwn.n; i++) {
+      const opts = s[ctx.side].battlefield.filter((c) => objectIs(c, eff.sacOwn.filter || {}));
+      if (!opts.length) break;
+      leave(s, opts[choose(s, "Sacrifice which?", opts.map((c) => c.name), ctx.side, opts.map((c) => c.id))], "graveyard", ev, { sacrificed: true });
+    }
+    // Molten-Core Maestro: "add an amount of {R} equal to this creature's power"
+    if (eff.addRPower && ctx.side === "player") { const me = find(s, ctx.selfId); if (me) s.pool.push(...Array(Math.max(0, power(me))).fill("R")); }
+    // All Aboard: "Exile target non-Pilot creature you control, then return that card to the battlefield under its owner's control."
+    if (eff.blinkTarget && tgt) {
+      const owner = tgt.owner || sideOf(s, tgt), token = tgt.token;
+      leave(s, tgt, "exile", ev);
+      const ex = !token && s[owner].exile.find((x) => x.id === tgt.id);
+      if (ex) { s[owner].exile = s[owner].exile.filter((x) => x !== ex); const perm = asFace(ex, 0); perm.sick = true; enter(s, perm, { side: owner }, ev); }
     }
     // ---- Teenage Mutant Ninja Turtles ----
     // Renet: "return each other nonland permanent that entered this turn to its owner's hand"
@@ -4024,7 +4059,8 @@
     // a number means +1/+1 counters; an object names the kinds ("enters with two oil counters": { oil: 2 })
     if (perm.entersWithCounters) {
       const w = perm.entersWithCounters;
-      const kinds = typeof w === "object" ? Object.fromEntries(Object.entries(w).map(([k, n]) => [k, n === "X" ? x || 0 : n])) : { "+1/+1": w === "X" ? x || 0 : w };
+      const kinds = typeof w === "object" ? Object.fromEntries(Object.entries(w).map(([k, n]) => [k, n === "X" ? x || 0 : n === "threeMinusX" ? Math.max(0, 3 - (x || 0)) : n])) : { "+1/+1": w === "X" ? x || 0 : w };
+      if (perm.entersTappedIfXMax != null && (x || 0) <= perm.entersTappedIfXMax) perm.tapped = true;   // (Slumbering Trudge: "If X is 2 or less, it enters tapped.")
       // (Ozolith applies to a permanent entering with counters too)
       Object.entries(kinds).forEach(([k, n]) => { if (n) perm.counters = { ...(perm.counters || {}), [k]: ((perm.counters || {})[k] || 0) + n + (k === "+1/+1" ? ozolithBonus(s, side, perm) : 0) }; });
     }
@@ -4052,6 +4088,8 @@
     if (perm.chooseType) perm.chosenType = chooseCreatureType(s, side, perm);   // ("As this enters, choose a creature type")
     if (perm.siegeModes) perm.siegeMode = choose(s, `${perm.name}: choose`, perm.siegeModes, side, perm.id);   // ("As this enchantment enters, choose Abzan or Mardu")
     if (perm.impendingNow) { delete perm.impendingNow; perm.counters = { ...(perm.counters || {}), time: perm.impending.n }; }
+    // ("unless you control two or more other lands": minOtherLands)
+    if (perm.entersTappedUnless && perm.entersTappedUnless.minOtherLands != null && s[side].battlefield.filter(isLand).length < perm.entersTappedUnless.minOtherLands) perm.tapped = true;
     if (perm.entersTappedUnless && perm.entersTappedUnless.maxOtherLands != null && s[side].battlefield.filter(isLand).length > perm.entersTappedUnless.maxOtherLands) perm.tapped = true;
     if (perm.entersTappedUnless && perm.entersTappedUnless.basic && !s[side].battlefield.some((l) => isLand(l) && /\bbasic\b/i.test(l.type || ""))) perm.tapped = true;   // ("unless you control a basic land")
     if (perm.entersTappedUnless && perm.entersTappedUnless.types && !s[side].battlefield.some((l) => isLand(l) && perm.entersTappedUnless.types.some((ty) => hasType(l, ty)))) perm.tapped = true;
