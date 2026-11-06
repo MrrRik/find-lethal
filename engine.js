@@ -301,7 +301,9 @@
       (!typeHas(f, /creature/i) ? s.player.battlefield.filter((c) => c.samut && !(c.st && c.st.lost)).length * speedOf(s, "player") : 0) +
       (typeHas(f, /creature/i) ? 2 * s.player.battlefield.filter((c) => c.sibsig && !(c.st && c.st.lost)).length : 0) +
       // Sunderflock: "This spell costs {X} less to cast, where X is the greatest mana value among Elementals you control."
-      (f.affinityArtifacts ? s.player.battlefield.filter(isArtifact).length : 0) + (f.affinityCreatures ? s.player.battlefield.filter(isCreature).length : 0) +   // (affinity for artifacts, CR 702.41a)
+      (f.affinityArtifacts ? s.player.battlefield.filter(isArtifact).length : 0) + (f.affinityType ? s.player.battlefield.filter((c) => hasType(c, f.affinityType)).length : 0) +
+      (f.lessFlyerPower ? s.player.battlefield.filter((c) => isCreature(c) && has(c, "flying")).reduce((t, c) => t + Math.max(0, power(c)), 0) : 0) +   // (The Lord of the Eagles)
+      (f.affinityCreatures ? s.player.battlefield.filter(isCreature).length : 0) +   // (affinity, CR 702.41a)
       (f.lessGreatestMVType ? Math.max(0, ...s.player.battlefield.filter((c) => hasType(c, f.lessGreatestMVType)).map((c) => manaValue(c.cost))) : 0) +   // (The Sibsig Ceremony)
       s.player.battlefield.filter((c) => c.battlecrier && !(c.st && c.st.lost)).length * s.player.battlefield.filter((c) => isCreature(c) && power(c) >= 4).length +   // (Temur Battlecrier)
       // ("The first instant or sorcery spell you cast each turn costs {3} less to cast")
@@ -314,6 +316,7 @@
         if (r.noncreature && typeHas(f, /creature/i)) return t;
         if (r.color && !colorsOf(f).includes(r.color)) return t;
         if (r.perArtifact) return t + s.player.battlefield.filter(isArtifact).length;
+        if (r.equippedPower) { const host = c.attachedTo && find(s, c.attachedTo); return typeHas(f, /instant|sorcery/i) && host ? t + Math.max(0, power(host)) : t; }   // (Glamdring)
         if (r.bigInstSorcPerPower) return typeHas(f, /instant|sorcery/i) && manaValue(f.cost) >= 4 ? t + Math.max(0, power(c)) : t;   // (The Scarlet Witch)
         if (r.perCreatureInstSorc) return typeHas(f, /instant|sorcery/i) ? t + s.player.battlefield.filter(isCreature).length : t;   // (Witherbloom: instants and sorceries have affinity for creatures)
         if (r.toughGtPower && !(typeHas(f, /creature/i) && toughness(f) > power(f))) return t;   // (Doran: "with toughness greater than its power")   // (Sami: "Spells you cast have affinity for artifacts")      // ("White spells you cast cost {1} less")
@@ -504,10 +507,13 @@
   const sideOf = (s, card) => (s.player.battlefield.includes(card) ? "player" : "opponent");
   // "You may cast spells as though they had flash" (castsAsFlash, Heliod, the Warped Eclipse); "You may cast sorcery
   // spells this turn as though they had flash" (s.sorceryFlash, Complete the Circuit)
-  const asFlash = (s, f) => s.player.battlefield.some((c) => (c.castsAsFlash || (c.noncreatureFlash && !typeHas(f, /creature/i))) && !(c.st && c.st.lost)) || (!!s.sorceryFlash && typeHas(f, /sorcery/i)) || !!f.flashFor;
+  const asFlash = (s, f) => s.player.battlefield.some((c) => (c.castsAsFlash || (c.noncreatureFlash && !typeHas(f, /creature/i))) && !(c.st && c.st.lost)) || (!!s.sorceryFlash && typeHas(f, /sorcery/i)) || !!f.flashFor ||
+    (f.flashIfType && s.player.battlefield.some((c) => hasType(c, f.flashIfType)));   // ("You may cast this spell as though it had flash if you control a Human")
   // CR 305.2: one land a turn, plus "you may play an additional land this turn" effects and "on each of your turns" statics
   const landsPlayed = (s) => s.landsPlayed != null ? s.landsPlayed : s.landPlayed ? 1 : 0;
-  const landsAllowed = (s) => 1 + (s.extraLands || 0) + s.player.battlefield.filter((c) => c.extraLandEachTurn && !(c.st && c.st.lost)).length;
+  const landsAllowed = (s) => 1 + (s.extraLands || 0) + s.player.battlefield.filter((c) => c.extraLandEachTurn && !(c.st && c.st.lost) &&
+    // ("As long as you control another Elf, you may play an additional land": { ifOther: "Elf" })
+    (!c.extraLandEachTurn.ifOther || s.player.battlefield.some((x) => x !== c && hasType(x, c.extraLandEachTurn.ifOther)))).length;
   // your creatures that "attack each combat if able" and could attack now (untapped, no summoning sickness or haste)
   const mustAttackers = (s) => s.player.battlefield.filter((c) => isCreature(c) && has(c, "attacks each combat if able") && !c.tapped &&
     !(c.sick && !has(c, "haste")) && !has(c, "defender") && !has(c, "can't attack"));
@@ -803,7 +809,7 @@
     const effectsOn = (c) => byId.get(c.id) || [];
     // (only permanents with static abilities can give effects to others)
     const sources = all.filter(({ card: p }) => p.static || p.perOther || p.perCounter || p.perHandCard || p.conditional ||
-      (p.attachedTo && ((p.aura && (p.aura.static || p.aura.setsColor)) || (p.equip && p.equip.static))));
+      (p.attachedTo && ((p.aura && (p.aura.static || p.aura.setsColor)) || (p.equip && (p.equip.static || ((p.counters || {}).hone || 0) > 0)))));
     const staticFrom = (src, srcSide, target) => {                // the static effects src gives target
       const out = [];
       const attached = src.aura || src.equip;
@@ -812,6 +818,8 @@
         const ppa = attached.static.pumpPerArtifact ? s[srcSide].battlefield.filter(isArtifact).length : 0;   // ("+1/+0 for each artifact you control")
         out.push({ ts: src.ts, ...attached.static, ...(ppc ? { pump: [ppc.pump[0] * ((src.counters || {})[ppc.kind] || 0), ppc.pump[1] * ((src.counters || {})[ppc.kind] || 0)] } : {}), ...(attached.static.pumpPerArtifact ? { pump: [ppa, 0] } : {}) });
       }
+      // hone counters: "Each hone counter on an Equipment grants +1/+0 to equipped creature."
+      if (src.equip && src.attachedTo === target.id && ((src.counters || {}).hone || 0) > 0) out.push({ ts: src.ts, pump: [src.counters.hone, 0] });
       // layer 5: "Enchanted land is the chosen color" (Shimmerwilds Growth)
       if (src.aura && src.aura.setsColor && src.chosenColor && src.attachedTo === target.id) out.push({ ts: src.ts, setColor: [src.chosenColor] });
       // (static.if: only while a condition holds — a Case's "Solved — Creatures you control get +1/+0", CR 719.3c)
@@ -831,7 +839,7 @@
       if (src.static && src.static.walkers && isPlaneswalker(target) && sideOf(s, target) === srcSide) out.push({ ts: src.ts, addAbilities: src.static.walkers });
       if (src.perOther && src === target) {                    // "gets +2/+0 for each other Goblin you control"
         // ("+1/+0 for each other creature you control": perOther.creature)
-        const n = s[srcSide].battlefield.filter((x) => x !== src && (src.perOther.creature ? isCreature(x) : hasType(x, src.perOther.type))).length;
+        const n = s[srcSide].battlefield.filter((x) => x !== src && (src.perOther.creature ? isCreature(x) : src.perOther.artifact ? isArtifact(x) : hasType(x, src.perOther.type))).length;
         if (n) out.push({ ts: src.ts, pump: [src.perOther.pump[0] * n, src.perOther.pump[1] * n] });
       }
       // "This creature gets -1/-1 for each card in your hand" (perHandCard)
@@ -2061,6 +2069,7 @@
       : d === "handTo8" ? Math.max(0, 8 - s[ctx.side].hand.length)
       : d === "handTo4" ? Math.max(0, 4 - s[ctx.side].hand.length)
       : d === "instSorcInGraveyard" ? s[ctx.side].graveyard.filter((c) => typeHas(faceOf(c, {}), /instant|sorcery/i)).length
+      : d === "eventSpent" ? (ctx.event && ctx.event.spent) || 0
       : d === "eventMV" ? (ctx.event && ctx.event.mv) || 0                       // ("that spell's mana value")
       : d === "selfToughness" ? Math.max(0, toughness(me0()))
       : d === "handTo10" ? Math.max(0, 10 - s[ctx.side].hand.length)
@@ -3044,6 +3053,33 @@
       }
       if (n) draw(s, "player", n, ev);
     }
+    // ---- The Hobbit ----
+    // recruit: "Draw a card, then discard a card. If you discarded a nonland card, create a 1/1 white Human Soldier creature token."
+    if (eff.recruit && ctx.side === "player") {
+      draw(s, "player", 1, ev);
+      if (s.player.hand.length) {
+        const card = s.player.hand[choose(s, "Discard which card?", s.player.hand.map((c) => c.name), "player", s.player.hand.map((c) => c.id))];
+        discardCard(s, card, ev);
+        if (!isLand(faceOf(card, {}))) createToken(s, { name: "Human Soldier", type: "Token Creature — Human Soldier", pt: "1/1", colors: ["W"] }, "player", ev);
+      }
+    }
+    // Belladonna Took: "… if this is the first time this ability has resolved this turn. If it's the second time, … If it's the third time, …"
+    if (eff.byResolution) { const me = find(s, ctx.selfId); if (me) { const k = eff.byResolution.key; me.resolvedN = { ...(me.resolvedN || {}), [k]: ((me.resolvedN || {})[k] || 0) + 1 }; applyEffect(s, eff.byResolution.effects[me.resolvedN[k] - 1], target, ctx, ev); } }
+    // Balin: "you may discard your hand. Draw X cards, where X is the number of cards discarded this way. If you have an enduring story, Balin deals X damage to each opponent."
+    if (eff.balin && ctx.side === "player" && choose(s, "Discard your hand?", ["Discard and draw", "Don't"], "player") === 0) {
+      const x = s.player.hand.length; [...s.player.hand].forEach((c) => discardCard(s, c, ev)); draw(s, "player", x, ev);
+      if (conditionHolds(s, { enduring: true }, "player", find(s, ctx.selfId) || ctx.src)) dealDamage(s, find(s, ctx.selfId) || ctx.src, "player", "opp", x, ev);
+    }
+    // Dáin Ironfoot: "create … Axe … When you do, attach it to target creature you control."
+    if (eff.createAttach && tgt) { const before = new Set(s[ctx.side].battlefield.map((c) => c.id)); createToken(s, eff.createAttach, ctx.side, ev); const made = s[ctx.side].battlefield.find((c) => !before.has(c.id)); if (made && find(s, tgt.id)) { made.attachedTo = tgt.id; made.ts = stamp(s); changed(s); } }
+    // The Misty Mountains Cold: "sacrifice this Saga. If you do, …"
+    if (eff.sacSelfThen) { const me = find(s, ctx.selfId); if (me) { leave(s, me, "graveyard", ev, { sacrificed: true }); applyEffect(s, eff.sacSelfThen, target, ctx, ev); } }
+    // Dwalin: "put a hone counter on each Equipment you control"
+    if (eff.equipmentCounters) s[ctx.side].battlefield.filter((c) => c.equip).forEach((c) => Object.entries(eff.equipmentCounters).forEach(([k, n]) => addCounters(s, c, k, n, ev)));
+    // Sting: "Attach Sting to up to one target creature you control."
+    if (eff.attachSelfToTarget && tgt) { const me = find(s, ctx.selfId); if (me && me.equip && isCreature(tgt) && sideOf(s, tgt) === sideOf(s, me)) { me.attachedTo = tgt.id; me.ts = stamp(s); changed(s); ev.push({ type: "attach", id: me.id, to: tgt.id }); } }
+    // Orcrist: "choose a creature type. Create a Treasure token for each creature you control of that type."
+    if (eff.treasurePerChosenType && ctx.side === "player") { const t = chooseCreatureType(s, "player"); const n = t ? s.player.battlefield.filter((c) => isCreature(c) && hasType(c, t)).length : 0; for (let i = 0; i < n; i++) createToken(s, { name: "Treasure", type: "Token Artifact — Treasure", colors: [] }, "player", ev); }
     // ---- Marvel Super Heroes ----
     // Avengers: Under Siege: "deals 2 damage to each non-Villain creature"
     if (eff.damageAllNonType) battlefieldNow(s).map(({ card }) => card).filter((c) => isCreature(c) && !hasType(c, eff.damageAllNonType.notType)).forEach((c) => dealDamage(s, ctx.src, ctx.side, c.id, eff.damageAllNonType.n, ev));
@@ -3930,6 +3966,8 @@
     const z = s[side];
     // Quantum Riddler: "As long as you have one or fewer cards in hand, if you would draw one or more cards, you draw that many cards plus one instead."
     if (n > 0 && z.hand.length <= 1) n += z.battlefield.filter((c) => c.riddler && !(c.st && c.st.lost)).length;
+    // Bard, King of Dale: "If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead." (the puzzle is past the draw step)
+    if (n > 0) n *= 2 ** z.battlefield.filter((c) => c.bardDraws && !(c.st && c.st.lost)).length;
     for (let i = 0; i < n; i++) {
       // (cards drawn this turn, per player: "whenever an opponent draws their second card each turn", Heliod's cost reduction)
       if (side === "player" && maxSpeed(s, "player") && s.player.battlefield.some((c) => c.vnwxt && !(c.st && c.st.lost)) && !s.vnwxtDrawing) { s.vnwxtDrawing = true; draw(s, side, 2, ev); delete s.vnwxtDrawing; continue; }
