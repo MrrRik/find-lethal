@@ -794,7 +794,7 @@
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
     const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted || c.airbent);
     // (the top card of your library, when you may cast it from there: Errant and Giada)
-    const libTop = p.player.library[0] && E.castable(p, p.player.library[0].id) ? [p.player.library[0]] : [];
+    const libTop = p.player.library[0] && (E.castable(p, p.player.library[0].id) || (p.libraryTopPlay && E.isLand(p.player.library[0]))) ? [p.player.library[0]] : [];
     // (and graveyard cards with harmonize, cast from there, or renew, an ability used from there)
     // (also anything else castable or playable from there: an Adventure, a creature card, a land)
     const flashbacks = [...p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn) || E.castable(p, c.id) || (E.isLand(c) && E.landsFromGraveyard(p))),
@@ -1154,7 +1154,8 @@
     if (casting && casting.pick) { if (el.classList.contains("targetable")) togglePick(el.dataset.id); return; }   // (behold: reveal it)
     const from = E.castable(state, el.dataset.id) ||            // your hand, or an Adventure card waiting in exile
       ((g) => (g && g.renew ? { card: g, zone: "graveyard", renew: true }
-        : g && E.isLand(g) && E.landsFromGraveyard(state) ? { card: g, zone: "graveyard" } : null))(state.player.graveyard.find((c) => c.id === el.dataset.id));
+        : g && E.isLand(g) && E.landsFromGraveyard(state) ? { card: g, zone: "graveyard" } : null))(state.player.graveyard.find((c) => c.id === el.dataset.id)) ||
+      ((t) => (t && t.id === el.dataset.id && state.libraryTopPlay && E.isLand(t) ? { card: t, zone: "library" } : null))(state.player.library[0]);
     if (!from) return;
     const card = from.card;
     if (casting && casting.card && casting.card.id === card.id) {
@@ -1247,6 +1248,11 @@
           prompt: n > 1 ? `Discard ${n} cards from your hand for ${card.name}'s ability.` : `Discard a card from your hand for ${card.name}'s ability.`,
           then: (picked) => again("discard")(n > 1 ? [].concat(picked) : Array.isArray(picked) ? picked[0] : picked) });
       }
+      // Fabrication Foundry: "Exile one or more other artifacts you control with total mana value X"
+      if (ab.exileArtifactsX && casting.exiles === undefined) {
+        const ids = E.artifactsToExile(state, card);
+        return pickCards({ ids, min: 1, max: ids.length, confirm: "Exile", prompt: `Exile one or more other artifacts for ${card.name}'s ability (X: their total mana value).`, then: (l) => again("exiles")([].concat(l)) });
+      }
       // "Sacrifice two other artifacts and/or creatures: …": which ones
       if (ab.sacCost && casting.sacs === undefined) {
         const n = ab.sacCost.n;
@@ -1289,9 +1295,12 @@
       if (ab.craft && casting.craft === undefined) {
         const opts = E.legalActions(state).filter((a) => a.type === "activate" && a.id === card.id && a.index === casting.index && a.craft)
           .map((a) => {
+            // (several materials — "four or more nonlands", "a Dinosaur, a Merfolk, a Pirate, and a Vampire": one answer per set)
+            const nm = (id) => { const f = state.player.battlefield.find((c) => c.id === id); const c = f || state.player.graveyard.find((x) => x.id === id); return `${c ? c.name : id}${f ? "" : " (graveyard)"}`; };
+            if (Array.isArray(a.craft)) return [a.craft, a.craft.map(nm).join(" + "), null];
             const onField = state.player.battlefield.find((c) => c.id === a.craft);
             const c = onField || state.player.graveyard.find((x) => x.id === a.craft);
-            return [a.craft, `${c ? c.name : a.craft}${onField ? "" : " (graveyard)"}`, c];
+            return [a.craft, nm(a.craft), c];
           });
         if (!opts.length) { cancelCast(); return rulesNote(`${card.name} has nothing to craft with.`); }
         return askChoice(`${card.name}: craft with what?`, opts, again("craft"));
@@ -1436,15 +1445,16 @@
       // (checked with the way it's being cast: sneak, warp or web-slinging change what it costs)
       const how = { face: casting.face ?? undefined, evidence: casting.evidence ?? undefined, tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, impending: casting.impending || undefined,
         webSling: casting.webSling ?? undefined, sneak: casting.sneak ?? undefined };
-      const opts = f.spree
+      const opts = f.spree || f.oneOrMoreIf
         ? E.subsets(ids).filter((l) => l.length && !E.check(state, { type: "cast", id: card.id, mode: l, ...how }))
           .map((l) => [l, l.map((i) => `${f.modes[i].plus ? f.modes[i].plus + " " : ""}${f.modes[i].text}`).join(" + ")])
+        : f.repeatModes ? E.multisets(ids, n).map((c) => [c, c.map((i) => f.modes[i].text).join(" + ")])   // ("You may choose the same mode more than once.")
         : n > 1 ? combos(ids, n).map((c) => [c, c.map((i) => f.modes[i].text).join(" + ")])
         // (tiered: each mode with its additional cost, only the ones you can pay for)
         : f.tiered ? f.modes.map((m, i) => [i, `${m.plus} — ${m.text}`]).filter(([i]) => !E.check(state, { type: "cast", id: card.id, mode: i, ...how }))
         : f.modes.map((m, i) => [i, m.text || `Mode ${i + 1}`]);
       if (!opts.length) { cancelCast(); return rulesNote(`Not enough mana for any mode of ${f.name}.`); }
-      const choose = f.oneOrMore ? "choose one or more" : f.spree ? "choose one or more (spree)" : f.tiered ? "choose one (tiered)" : `choose ${n === 1 ? "one" : n}`;
+      const choose = f.oneOrMore || f.oneOrMoreIf ? "choose one or more" : f.repeatModes ? `choose ${n} (the same one more than once allowed)` : f.spree ? "choose one or more (spree)" : f.tiered ? "choose one (tiered)" : `choose ${n === 1 ? "one" : n}`;
       return askModes(card, f, opts, choose, again("mode"));
     }
     if (f.chooseColor && casting.color == null) {
@@ -1504,12 +1514,13 @@
     }
     // "As an additional cost, discard a card or pay {2}": a card from your hand, or pay
     if (f.discardCost && casting.discard === undefined) {
-      const ids = state.player.hand.filter((c) => c.id !== card.id).map((c) => c.id);
+      // ("discard a card or sacrifice a permanent": your permanents can be picked too)
+      const ids = [...state.player.hand.filter((c) => c.id !== card.id).map((c) => c.id), ...(f.discardCost.orSacrifice ? state.player.battlefield.map((c) => c.id) : [])];
       const canPay = f.discardCost.orPay && !E.check(state, { ...base, discard: "pay" });
       if (!ids.length && !canPay) { cancelCast(); return rulesNote(`${f.name} needs a card to discard.`); }
       if (!ids.length) casting.discard = "pay";
       else return pickCards({ ids, confirm: "Discard", alt: canPay ? { label: `Pay ${f.discardCost.orPay} instead`, value: "pay" } : null,
-        prompt: `Discard a card from your hand for ${f.name}${f.discardCost.orPay ? `, or pay ${f.discardCost.orPay}` : ""}.`,
+        prompt: `${f.discardCost.orSacrifice ? "Discard a card or sacrifice a permanent" : "Discard a card from your hand"} for ${f.name}${f.discardCost.orPay ? `, or pay ${f.discardCost.orPay}` : ""}.`,
         then: (picked) => again("discard")(Array.isArray(picked) ? picked[0] : picked) });
     }
     // convoke: any set of your untapped creatures that, with your mana, pays the cost (only those can be picked)
