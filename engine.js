@@ -732,20 +732,24 @@
     const chooser = from === "battlefield" ? side : card.owner || side;
     const applied = new Set();
     for (;;) {
-      const options = replacementsFor(s, card, to, side).filter((r) => !applied.has(r.key));
+      const options = replacementsFor(s, card, to, side, from).filter((r) => !applied.has(r.key));
       if (!options.length) return to;
       const pick = choose(s, `${card.name}: which effect applies?`, options.map((r) => `${r.name}: ${r.instead} instead`), chooser);
       applied.add(options[pick].key);
       to = options[pick].instead;
     }
   }
-  function replacementsFor(s, card, to, side) {
+  function replacementsFor(s, card, to, side, from) {
     const out = [];
     const consider = (src, srcSide, r, i) => {
       if (r.to !== to) return;
       if (r.self && src.id !== card.id) return;
       if (r.cardsOnly && card.token) return;
       if (r.owner && ((card.owner || side) === srcSide ? "you" : "opponent") !== r.owner) return;
+      // ("If a creature an opponent controls would die, exile it instead": creature, controller, from the battlefield)
+      if (r.creature && !isCreature(card)) return;
+      if (r.controller && (side === srcSide ? "you" : "opponent") !== r.controller) return;
+      if (r.fromBattlefield && from !== "battlefield") return;
       out.push({ key: `${src.id}#${i}`, name: src.name, instead: r.instead });
     };
     battlefieldNow(s).forEach(({ card: p, side: ps }) => (p.replacements || []).forEach((r, i) => { if (!r.self) consider(p, ps, r, i); }));
@@ -968,6 +972,10 @@
     if (c.ptCount.greatestOtherArtifactMV) return [Math.max(0, ...s[side].battlefield.filter((x) => isArtifact(x) && x.id !== c.id).map((x) => manaValue(x.cost))), basePT(c)[1]];
     // Cosmogoyf: "the number of cards you own in exile and its toughness is equal to that number plus 1"
     if (c.ptCount.exileOwned) { const n = s[side].exile.length; return [n, n + 1]; }
+    // Tarmogoyf: "the number of card types among cards in all graveyards" (toughness: that number plus 1)
+    if (c.ptCount.goyf) { const n = new Set([...s.player.graveyard, ...s.opponent.graveyard].flatMap((x) => CARD_TYPES.filter((t) => new RegExp(`\\b${t}\\b`, "i").test((faceOf(x, {}).type || "").split("—")[0])))).size; return [n, n + 1]; }
+    // Dark Matter Manipulator: "+2/+0 for every seven cards in your graveyard" (on a 1/2)
+    if (c.ptCount.graveyardSevens) return [basePT(c)[0] + 2 * Math.floor(s[side].graveyard.length / 7), basePT(c)[1]];
     if (c.ptCount.powerOnly) return [s[side].battlefield.filter((x) => objectIs(x, c.ptCount.filter || {})).length, basePT(c)[1]];
     const n = c.ptCount.graveyardInstSorc ? c.ptCount.graveyardInstSorc * s[side].graveyard.filter((x) => typeHas(faceOf(x, {}), /instant|sorcery/i)).length : c.ptCount.graveyardCreatures ? [...s.player.graveyard, ...s.opponent.graveyard].filter((x) => isCreature(faceOf(x, {}))).length
       : s[side].battlefield.filter((x) => objectIs(x, c.ptCount.filter || {})).length;
@@ -1462,6 +1470,8 @@
     if (f.fromHand && !e.fromHand) return false;
     if (f.underspent && !((e.spent || 0) < (e.mv || 0))) return false;                  // ("if the amount of mana spent to cast it was less than its mana value")
     if (f.chosenType && !(src.chosenType && hasType(e.obj, src.chosenType))) return false;   // ("a spell of the chosen type")
+    if (f.creatureOrWalkerEvent && !isCreature(e.obj) && !isPlaneswalker(e.obj)) return false;   // ("another creature or planeswalker you control enters")
+    if (f.name && e.obj.name !== f.name) return false;
     if (f.nonland && isLand(e.obj)) return false;                                          // "a nonland creature you control"
     if (f.artifactOrLesson && !isArtifact(e.obj) && !hasType(e.obj, "Lesson")) return false;   // "an artifact or Lesson spell"
     if (f.fromExile && !e.fromExile) return false;                                       // "whenever you cast a spell from exile"
@@ -2069,6 +2079,9 @@
       : d === "handTo8" ? Math.max(0, 8 - s[ctx.side].hand.length)
       : d === "handTo4" ? Math.max(0, 4 - s[ctx.side].hand.length)
       : d === "instSorcInGraveyard" ? s[ctx.side].graveyard.filter((c) => typeHas(faceOf(c, {}), /instant|sorcery/i)).length
+      : d === "exiledCount" ? ctx.exiled || 0
+      : d === "greatestPower" ? Math.max(0, ...s[ctx.side].battlefield.filter(isCreature).map((c) => power(c)))
+      : d === "colorsAmongOtherArtifacts" ? new Set(s[ctx.side].battlefield.filter((c) => isArtifact(c) && c.id !== ctx.selfId).flatMap((c) => colorsOf(c))).size
       : d === "eventSpent" ? (ctx.event && ctx.event.spent) || 0
       : d === "eventMV" ? (ctx.event && ctx.event.mv) || 0                       // ("that spell's mana value")
       : d === "selfToughness" ? Math.max(0, toughness(me0()))
@@ -2262,7 +2275,7 @@
     // (it has no printed loyalty, so it enters with none, CR 306.5b; the counters go on before state-based actions)
     if (eff.empower) {
       const jace = s[ctx.side].battlefield.find((c) => c.token && isPlaneswalker(c) && subtypes(c).includes("Jace")) || createToken(s, JACE, ctx.side, ev);
-      addLoyalty(s, jace, eff.empower, ctx.side, ev);
+      addLoyalty(s, jace, amount(eff.empower), ctx.side, ev);
     }
     // "put a loyalty counter on each planeswalker you control" (Way of the Mentor): one event for all of them ("whenever
     // you put one or more loyalty counters …" triggers once)
@@ -3053,6 +3066,24 @@
       }
       if (n) draw(s, "player", n, ev);
     }
+    // ---- Reality Fracture ----
+    // "gets +X/+0 until end of turn, where X is …"
+    if (eff.pumpPowerBy && tgt) addMod(s, tgt, [amount(eff.pumpPowerBy), 0]);
+    // Sphinx of False Conclusions: "When this creature dies, if it isn't a token, create a token that's a copy of it." (its last known values)
+    if (eff.copyDeadSelf && ctx.src && !ctx.src.token) createToken(s, copyValues(ctx.src, {}), ctx.side, ev);
+    // Kindred Judgment: "Choose a creature type. Destroy all creatures that aren't of the chosen type."
+    if (eff.destroyAllButType) { const t = chooseCreatureType(s, ctx.side); const before = s.listens.length ? battlefieldNow(s) : null; battlefieldNow(s).map(({ card }) => card).filter((c) => isCreature(c) && !(t && hasType(c, t)) && !indestructible(c)).forEach((c) => leave(s, c, "graveyard", ev, { lookBack: before })); }
+    // Hexhaven Invigorator: "search your library for up to that many land cards, put them onto the battlefield tapped"
+    if (eff.searchLandsN) for (let i = 0; i < amount(eff.searchLandsN); i++) applyEffect(s, { search: { filter: { land: true }, toBattlefield: true, tapped: true } }, undefined, ctx, ev);
+    // Vindictive Triumph: "Exile target creature or planeswalker. If that permanent's mana value was 3 or less, return it to the battlefield tapped under your control. Exile it at the beginning of the next end step."
+    if (eff.vindictive && tgt) {
+      const mv = manaValue(tgt.cost), owner = tgt.owner || sideOf(s, tgt), token = tgt.token;
+      leave(s, tgt, "exile", ev);
+      const ex = !token && mv <= 3 && s[owner].exile.find((x) => x.id === tgt.id);
+      if (ex) { s[owner].exile = s[owner].exile.filter((x) => x !== ex); const perm = asFace(ex, 0); perm.tapped = true; perm.sick = true; perm.owner = owner; enter(s, perm, { side: ctx.side }, ev); delay(s, "exileIt", ctx.side, perm.name, perm.id, perm.id); }
+    }
+    // Ajani Unrelenting −3: "deals 4 damage to each creature except for tokens you control"
+    if (eff.damageAllButYourTokens) battlefieldNow(s).filter(({ card, side }) => isCreature(card) && !(card.token && side === ctx.side)).forEach(({ card }) => dealDamage(s, find(s, ctx.selfId) || ctx.src, ctx.side, card.id, eff.damageAllButYourTokens, ev));
     // ---- The Hobbit ----
     // recruit: "Draw a card, then discard a card. If you discarded a nonland card, create a 1/1 white Human Soldier creature token."
     if (eff.recruit && ctx.side === "player") {
@@ -3124,10 +3155,14 @@
     // "All creatures get -2/-2 until end of turn."
     if (eff.allPump) battlefieldNow(s).map(({ card }) => card).filter(isCreature).forEach((c) => addMod(s, c, eff.allPump));
     // "Sacrifice two lands." / "sacrifice a permanent" (your choice of which)
-    if (eff.sacOwn) for (let i = 0; i < eff.sacOwn.n; i++) {
-      const opts = s[ctx.side].battlefield.filter((c) => objectIs(c, eff.sacOwn.filter || {}));
-      if (!opts.length) break;
-      leave(s, opts[choose(s, "Sacrifice which?", opts.map((c) => c.name), ctx.side, opts.map((c) => c.id))], "graveyard", ev, { sacrificed: true });
+    if (eff.sacOwn) {
+      let done = 0;
+      for (let i = 0; i < eff.sacOwn.n; i++) {
+        const opts = s[ctx.side].battlefield.filter((c) => objectIs(c, eff.sacOwn.filter || {}));
+        if (!opts.length) break;
+        leave(s, opts[choose(s, "Sacrifice which?", opts.map((c) => c.name), ctx.side, opts.map((c) => c.id))], "graveyard", ev, { sacrificed: true }); done++;
+      }
+      if (done && eff.sacOwn.then) applyEffect(s, eff.sacOwn.then, target, ctx, ev);   // ("If you sacrificed a creature this way, …")
     }
     // Molten-Core Maestro: "add an amount of {R} equal to this creature's power"
     if (eff.addRPower && ctx.side === "player") { const me = find(s, ctx.selfId); if (me) s.pool.push(...Array(Math.max(0, power(me))).fill("R")); }
@@ -4067,6 +4102,10 @@
   }
   const createToken = (s, spec, side, ev) => createTokens(s, spec, side, ev)[0];
   function createTokens(s, spec, side, ev) {
+    // Draconic Visitor: "If one or more artifact tokens would be created under your control, that many 5/5 red Dragon
+    // creature tokens with flying are created instead." (applied first: the Dragons are what the doublers see)
+    if (/artifact/i.test(spec.type || "") && s[side].battlefield.some((c) => c.draconicVisitor && !(c.st && c.st.lost)))
+      spec = { name: "Dragon", type: "Token Creature — Dragon", pt: "5/5", colors: ["R"], kw: ["flying"] };
     const doublers = s[side].battlefield.filter((c) => c.doublesTokens && !(c.st && c.st.lost)).length;
     // (Ojer Taq: "If one or more creature tokens would be created under your control, three times that many …")
     const triplers = /creature/i.test(spec.type || "") ? s[side].battlefield.filter((c) => c.triplesCreatureTokens && !(c.st && c.st.lost)).length : 0;
@@ -5306,6 +5345,7 @@
         changed(s);
       }
       if (ab.sacSelf) leave(s, card, "graveyard", ev, { sacrificed: true });
+      if (ab.exileSelfCost) leave(s, card, "exile", ev);   // ("Exile The Echoverse Fulcrum" as a cost)
       if (ab.discardCost) {
         const l = a.discard != null ? [].concat(a.discard) : s.player.hand.slice(0, discardCount(ab)).map((c) => c.id);
         l.forEach((id) => { const c = s.player.hand.find((x) => x.id === id); if (c) discardCard(s, c, ev); });
