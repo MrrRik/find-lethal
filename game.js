@@ -809,7 +809,7 @@
       : c.playable ? "Exiled: you may play it this turn" : c.airbent ? "Airbent: cast it for {2}" : "On an adventure (exile)"));
     prepared.forEach((c) => mark(c, `Prepared (${c.preparedFrom}): cast a copy`));
     flashbacks.forEach((c) => mark(c, E.isLand(c) && !c.flashback ? "Play it from your graveyard" : c.graveAdventure ? "Cast its Adventure (graveyard)" : !c.flashback && !c.harmonize && !c.renew && !c.mayhem ? "Cast it from your graveyard" : c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)`
-      : c.renew ? `Renew ${c.renew.cost} (graveyard)` : `Mayhem ${c.mayhem} (graveyard)`));
+      : c.renew ? `${c.renew.label || "Renew"} ${c.renew.cost} (graveyard)` : `Mayhem ${c.mayhem} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
       (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} usable from the graveyard` : "") +
       (prepared.length ? ` · ${prepared.length} prepared spell${prepared.length === 1 ? "" : "s"}` : "");
@@ -1199,6 +1199,7 @@
       const why = E.check(state, { type: "renew", id: casting.card.id });
       if (why) { cancelCast(); return rulesNote(why); }
       const r = casting.card.renew;
+      if (!r.targets) return finishChoice(undefined);            // (an ability from the graveyard with no target)
       casting.phases = casting.phases || [{ kind: r.targets, filter: r.filter, count: ONE, src: casting.card, label: `${casting.card.name}'s renew` }];
       return targetPhase();
     }
