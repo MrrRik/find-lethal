@@ -793,14 +793,17 @@
     const hand = p.player.hand;
     // cards you can cast from elsewhere sit with your hand, marked: on an Adventure (exile), flashback (graveyard)
     const adventures = p.player.exile.filter((c) => c.onAdventure || c.playable || c.plotted || c.airbent);
+    // (the top card of your library, when you may cast it from there: Errant and Giada)
+    const libTop = p.player.library[0] && E.castable(p, p.player.library[0].id) ? [p.player.library[0]] : [];
     // (and graveyard cards with harmonize, cast from there, or renew, an ability used from there)
     // (also anything else castable or playable from there: an Adventure, a creature card, a land)
-    const flashbacks = p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn) || E.castable(p, c.id) || (E.isLand(c) && E.landsFromGraveyard(p)));
+    const flashbacks = [...p.player.graveyard.filter((c) => c.flashback || c.harmonize || c.renew || (c.mayhem && c.discardedThisTurn) || E.castable(p, c.id) || (E.isLand(c) && E.landsFromGraveyard(p))),
+      ...p.opponent.graveyard.filter((c) => E.castable(p, c.id))];   // (The Great Work: from their graveyard too)
     // a prepared creature's prepare spell: a copy you may cast (shown with your hand)
     const prepared = p.player.battlefield.filter((c) => c.prepared && c.prepare)
       // (shown as its creature's card: the prepare spell is printed on it)
       .map((c) => ({ ...c.prepare, id: `${c.id}#prep`, token: true, image: scry(c.name), text: c.prepare.text, preparedFrom: c.name }));
-    fill($("hand"), [...hand, ...adventures, ...flashbacks, ...prepared]);
+    fill($("hand"), [...hand, ...adventures, ...flashbacks, ...prepared, ...libTop]);
     const mark = (c, label) => {
       const el = document.querySelector(`#hand .card[data-id="${c.id}"]`);
       if (el) { el.classList.add("adventure"); el.append(Object.assign(document.createElement("div"), { className: "attachchip", textContent: label })); }
@@ -808,13 +811,14 @@
     adventures.forEach((c) => mark(c, c.plotted ? (c.plottedNow ? "Plotted (cast it free on a later turn)" : "Plotted: cast it free (main phase)")
       : c.playable ? "Exiled: you may play it this turn" : c.airbent ? "Airbent: cast it for {2}" : "On an adventure (exile)"));
     prepared.forEach((c) => mark(c, `Prepared (${c.preparedFrom}): cast a copy`));
+    libTop.forEach((c) => mark(c, "Top of your library: you may cast it"));
     flashbacks.forEach((c) => mark(c, E.isLand(c) && !c.flashback ? "Play it from your graveyard" : c.graveAdventure ? "Cast its Adventure (graveyard)" : !c.flashback && !c.harmonize && !c.renew && !c.mayhem ? "Cast it from your graveyard" : c.flashback ? `Flashback ${c.flashback.cost} (graveyard)` : c.harmonize ? `Harmonize ${c.harmonize} (graveyard)`
       : c.renew ? `${c.renew.label || "Renew"} ${c.renew.cost} (graveyard)` : `Mayhem ${c.mayhem} (graveyard)`));
     $("hand-count").textContent = `${hand.length} card${hand.length === 1 ? "" : "s"} in hand` +
       (adventures.length ? ` · ${adventures.length} on an adventure` : "") + (flashbacks.length ? ` · ${flashbacks.length} usable from the graveyard` : "") +
       (prepared.length ? ` · ${prepared.length} prepared spell${prepared.length === 1 ? "" : "s"}` : "");
     // (shown whenever something can be cast from it: a prepared spell's copy too, even with an empty hand)
-    $("hand-wrap").classList.toggle("empty", !hand.length && !adventures.length && !flashbacks.length && !prepared.length);
+    $("hand-wrap").classList.toggle("empty", !hand.length && !adventures.length && !flashbacks.length && !prepared.length && !libTop.length);
     showPhase(p.phase);
     const floating = p.pool.length + (p.firePool || 0);              // (firebending {R}s last until end of combat)
     const limited = (p.rpool || []).length;                          // (mana that can only be spent on some things)
@@ -1239,7 +1243,7 @@
       // "Discard a card: …" / "Discard two cards: …": which cards
       if (ab.discardCost && casting.discard === undefined) {
         const n = ab.discardCost === true ? 1 : ab.discardCost;
-        return pickCards({ ids: state.player.hand.map((c) => c.id), min: n, max: n, confirm: "Discard",
+        return pickCards({ ids: E.discardable(state, ab), min: n, max: n, confirm: "Discard",
           prompt: n > 1 ? `Discard ${n} cards from your hand for ${card.name}'s ability.` : `Discard a card from your hand for ${card.name}'s ability.`,
           then: (picked) => again("discard")(n > 1 ? [].concat(picked) : Array.isArray(picked) ? picked[0] : picked) });
       }
@@ -1572,6 +1576,8 @@
         cancelCast();
         return rulesNote(`There's no legal target for ${ph.label}.`);
       }
+      // (targets that aren't on the board — cards in a graveyard, a spell on the stack — are picked from a list)
+      if (list.some((id) => !elFor(id))) return listTargets(ph, list);
       casting.picks = [];
       markChoices(list);
       updateDone(ph);
@@ -1581,6 +1587,23 @@
     assemble();
   }
 
+  // Targets chosen from a list, one at a time ("up to N": then Done; "up to one": or no target)
+  function listTargets(ph, list) {
+    const picks = [], { min, max } = ph.count;
+    const cardOf = (id) => anyCard(id) || (state.stack.find((x) => x.id === id) || {}).card || null;
+    const where = (id) => (state.stack.some((x) => x.id === id) ? " (on the stack)" : ["player", "opponent"].some((sd) => state[sd].graveyard.some((c) => c.id === id))
+      ? (state.player.graveyard.some((c) => c.id === id) ? " (your graveyard)" : " (their graveyard)") : "");
+    const label = (id) => (id === "opp" ? "The opponent" : id === "you" ? "You" : `${(cardOf(id) || {}).name || id}${where(id)}`);
+    const finish = () => { casting.results[casting.k++] = max === 1 ? picks[0] : [...picks]; targetPhase(); };
+    const next = () => {
+      const left = list.filter((id) => !picks.includes(id));
+      if (picks.length >= max || !left.length) return finish();
+      const opts = left.map((id) => [id, label(id), cardOf(id)]);
+      if (picks.length >= min) opts.push([null, picks.length ? "Done" : "No target", null]);
+      askChoice(`Choose ${max > 1 ? `up to ${max} targets` : "a target"} for ${ph.label}${picks.length ? ` (${picks.length} chosen)` : ""}`, opts, (v) => { if (v == null) return finish(); picks.push(v); next(); });
+    };
+    next();
+  }
   // Turn the chosen targets into the action's target (and ask how to divide damage, if needed)
   function assemble() {
     // an ability that divides its damage (Lukka −4): how much to each chosen target
