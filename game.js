@@ -1196,9 +1196,11 @@
     if (casting.trigger) return targetPhase();
     // an ability that discards this card from your hand ("{1}{R}, Discard this card: …"): cast it, or use that
     if (casting.card.handAbility && casting.channel === undefined && state.player.hand.includes(casting.card)) {
-      const card = casting.card, canUse = !E.check(state, { type: "channel", id: card.id }), canCast = !E.check(state, { type: "cast", id: card.id });
-      if (canUse && canCast) return askChoice(`${card.name}: cast it, or discard it for its ability?`,
-        [[false, `Cast ${card.name} (${card.cost})`], [true, `Discard it: ${card.handAbility.cost} — its ability`]], (v) => { casting.channel = v; nextChoice(); });
+      // (Urban Retreat: a land with an ability from your hand that doesn't discard it — play it, or use that)
+      const card0 = casting.card, land = E.isLand(E.faceOf(card0, {}));
+      const card = card0, canUse = !E.check(state, { type: "channel", id: card.id }), canCast = !E.check(state, land ? { type: "play", id: card.id } : { type: "cast", id: card.id });
+      if (canUse && canCast) return askChoice(`${card0.name}: ${land ? "play it" : "cast it"}, or ${card0.handAbility.noDiscard ? "use" : "discard it for"} its ability?`,
+        [[false, land ? `Play ${card0.name}` : `Cast ${card0.name} (${card0.cost})`], [true, `${card0.handAbility.noDiscard ? "Its ability" : "Discard it"}: ${card0.handAbility.cost} — ${card0.handAbility.label || "its ability"}`]], (v) => { casting.channel = v; nextChoice(); });
       casting.channel = canUse && !canCast;
     }
     if (casting.channel) {
