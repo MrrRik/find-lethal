@@ -1525,6 +1525,11 @@
       if (max < 1) { cancelCast(); return rulesNote(`Not enough mana for ${f.name}.`); }
       return askChoice(`${f.name}: choose X`, Array.from({ length: max }, (_, i) => [i + 1, String(i + 1)]), again("x"));
     }
+    // Soul Immolation: "blight X. X can't be greater than the greatest toughness among creatures you control."
+    if (f.blight && f.blight.n === "X" && casting.x == null) {
+      const max = Math.max(0, ...state.player.battlefield.filter((c) => E.isCreature(c)).map((c) => E.toughness(c)));
+      return askChoice(`${f.name}: choose X (blight X)`, Array.from({ length: max + 1 }, (_, i) => [i, String(i)]), again("x"));
+    }
     // compleated: Phyrexian pips paid with life instead of mana cost the planeswalker two loyalty each
     if (E.has(f, "compleated") && casting.lifePips === undefined) {
       const pips = E.parseCost(f.cost).pips.filter((p) => /\/P$/.test(p)).length;
