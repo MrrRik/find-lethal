@@ -1560,12 +1560,14 @@
     // "As an additional cost, discard a card or pay {2}": a card from your hand, or pay
     if (f.discardCost && casting.discard === undefined) {
       // ("discard a card or sacrifice a permanent": your permanents can be picked too)
-      const ids = [...state.player.hand.filter((c) => c.id !== card.id).map((c) => c.id), ...(f.discardCost.orSacrifice ? state.player.battlefield.map((c) => c.id) : [])];
+      // ("sacrifice a legendary creature or pay {2}": only the permanents that can be sacrificed)
+      const ids = f.discardCost.sacOnly ? state.player.battlefield.map((c) => c.id).filter((id) => !E.check(state, { ...base, discard: id }))
+        : [...state.player.hand.filter((c) => c.id !== card.id).map((c) => c.id), ...(f.discardCost.orSacrifice ? state.player.battlefield.map((c) => c.id) : [])];
       const canPay = f.discardCost.orPay && !E.check(state, { ...base, discard: "pay" });
       if (!ids.length && !canPay) { cancelCast(); return rulesNote(`${f.name} needs a card to discard.`); }
       if (!ids.length) casting.discard = "pay";
-      else return pickCards({ ids, confirm: "Discard", alt: canPay ? { label: `Pay ${f.discardCost.orPay} instead`, value: "pay" } : null,
-        prompt: `${f.discardCost.orSacrifice ? "Discard a card or sacrifice a permanent" : "Discard a card from your hand"} for ${f.name}${f.discardCost.orPay ? `, or pay ${f.discardCost.orPay}` : ""}.`,
+      else return pickCards({ ids, confirm: f.discardCost.sacOnly ? "Sacrifice" : "Discard", alt: canPay ? { label: `Pay ${f.discardCost.orPay} instead`, value: "pay" } : null,
+        prompt: `${f.discardCost.sacOnly ? "Sacrifice a legendary creature" : f.discardCost.orSacrifice ? "Discard a card or sacrifice a permanent" : "Discard a card from your hand"} for ${f.name}${f.discardCost.orPay ? `, or pay ${f.discardCost.orPay}` : ""}.`,
         then: (picked) => again("discard")(Array.isArray(picked) ? picked[0] : picked) });
     }
     // convoke: any set of your untapped creatures that, with your mana, pays the cost (only those can be picked)
