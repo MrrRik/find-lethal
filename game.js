@@ -1392,8 +1392,8 @@
     // an alternative cost from a permanent: Leyline of Mutation ({W}{U}{B}{R}{G}), Warped Space ({0} from exile, once each turn)
     if (casting.altCost === undefined) {
       const fr = E.castable(state, card.id) || {};
-      const alts = [...(fr.mutation ? ["mutation"] : []), ...(fr.warped || fr.weft || fr.zaffai ? ["zero"] : [])].filter((k) => !E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, altCost: k }));
-      if (alts.length) return askChoice(`${card.name}: how do you pay for it?`, [[null, `Its mana cost (${card.cost || "{0}"})`], ...alts.map((k) => [k, k === "mutation" ? "Pay {W}{U}{B}{R}{G} instead (Leyline of Mutation)" : `Pay {0} instead (${fr.weft ? "Weftwalking" : fr.zaffai ? "Zaffai and the Tempests" : "Warped Space"})`])], again("altCost"));
+      const alts = [...(fr.mutation ? ["mutation"] : []), ...(fr.warped || fr.weft || fr.zaffai || fr.freeRG || fr.omni ? ["zero"] : [])].filter((k) => !E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, altCost: k }));
+      if (alts.length) return askChoice(`${card.name}: how do you pay for it?`, [[null, `Its mana cost (${card.cost || "{0}"})`], ...alts.map((k) => [k, k === "mutation" ? "Pay {W}{U}{B}{R}{G} instead (Leyline of Mutation)" : `Pay {0} instead (${fr.weft ? "Weftwalking" : fr.omni ? "Omnipresence" : fr.freeRG ? "World War Hulk" : fr.zaffai ? "Zaffai and the Tempests" : "Warped Space"})`])], again("altCost"));
       casting.altCost = null;
     }
     // delve (Teval: "Spells you cast have delve."): how many cards from your graveyard pay {1} each
