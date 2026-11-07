@@ -1392,8 +1392,8 @@
     // an alternative cost from a permanent: Leyline of Mutation ({W}{U}{B}{R}{G}), Warped Space ({0} from exile, once each turn)
     if (casting.altCost === undefined) {
       const fr = E.castable(state, card.id) || {};
-      const alts = [...(fr.mutation ? ["mutation"] : []), ...(fr.warped || fr.weft ? ["zero"] : [])].filter((k) => !E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, altCost: k }));
-      if (alts.length) return askChoice(`${card.name}: how do you pay for it?`, [[null, `Its mana cost (${card.cost || "{0}"})`], ...alts.map((k) => [k, k === "mutation" ? "Pay {W}{U}{B}{R}{G} instead (Leyline of Mutation)" : `Pay {0} instead (${fr.weft ? "Weftwalking" : "Warped Space"})`])], again("altCost"));
+      const alts = [...(fr.mutation ? ["mutation"] : []), ...(fr.warped || fr.weft || fr.zaffai ? ["zero"] : [])].filter((k) => !E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, altCost: k }));
+      if (alts.length) return askChoice(`${card.name}: how do you pay for it?`, [[null, `Its mana cost (${card.cost || "{0}"})`], ...alts.map((k) => [k, k === "mutation" ? "Pay {W}{U}{B}{R}{G} instead (Leyline of Mutation)" : `Pay {0} instead (${fr.weft ? "Weftwalking" : fr.zaffai ? "Zaffai and the Tempests" : "Warped Space"})`])], again("altCost"));
       casting.altCost = null;
     }
     // delve (Teval: "Spells you cast have delve."): how many cards from your graveyard pay {1} each
@@ -1525,7 +1525,11 @@
       if (max < 1) { cancelCast(); return rulesNote(`Not enough mana for ${f.name}.`); }
       return askChoice(`${f.name}: choose X`, Array.from({ length: max }, (_, i) => [i + 1, String(i + 1)]), again("x"));
     }
-    // Soul Immolation: "blight X. X can't be greater than the greatest toughness among creatures you control."
+    // "As an additional cost to cast this spell, pay X life." (Fix What's Broken, Vicious Rivalry)
+    if (f.payLifeX && casting.x == null) {
+      const max = Math.min(15, state.player.life == null ? 15 : state.player.life - 1);
+      return askChoice(`${f.name}: choose X (pay X life)`, Array.from({ length: Math.max(0, max) + 1 }, (_, i) => [i, String(i)]), again("x"));
+    }    // Soul Immolation: "blight X. X can't be greater than the greatest toughness among creatures you control."
     if (f.blight && f.blight.n === "X" && casting.x == null) {
       const max = Math.max(0, ...state.player.battlefield.filter((c) => E.isCreature(c)).map((c) => E.toughness(c)));
       return askChoice(`${f.name}: choose X (blight X)`, Array.from({ length: max + 1 }, (_, i) => [i, String(i)]), again("x"));
