@@ -1588,6 +1588,12 @@
       if (!ids.length) casting.waterTap = [];
       else return pickCards({ ids, min: 0, max: Math.min(wbN, ids.length), confirm: "Waterbend",
         prompt: `Waterbend: tap up to ${Math.min(wbN, ids.length)} of your artifacts and creatures to help pay (each pays {1}), or pay with mana.`, then: (l) => again("waterTap")([].concat(l || [])) });
+    }    // improvise ("Noncreature spells you cast have improvise."): which untapped artifacts help pay (each pays {1})
+    if (casting.improvise === undefined && (E.has(faceNow(), "improvise") || (!/creature/i.test(faceNow().type || "") && state.player.battlefield.some((c) => c.ironheart)))) {
+      const ids = state.player.battlefield.filter((c) => E.isArtifact(c) && !c.tapped).map((c) => c.id);
+      if (!ids.length) casting.improvise = null;
+      else return pickCards({ ids, min: 0, max: ids.length, confirm: "Improvise",
+        prompt: "Improvise: tap any of your artifacts to help pay (each pays {1}), or pay with mana.", then: (l) => again("improvise")([].concat(l || []).length ? [].concat(l) : null) });
     }    // "As an additional cost, discard a card or pay {2}": a card from your hand, or pay
     if (f.discardCost && casting.discard === undefined) {
       // ("discard a card or sacrifice a permanent": your permanents can be picked too)
@@ -1740,7 +1746,7 @@
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
       lifePips: casting.lifePips || undefined, bargain: casting.bargain ?? undefined, evidence: casting.evidence ?? undefined, faceDown: casting.faceDown || undefined, offspring: casting.offspring || undefined, gift: casting.gift || undefined,
-      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, altCost: casting.altCost || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined, altCost: casting.altCost || undefined, delve: casting.delve || undefined, waterTap: casting.waterTap || undefined };
+      tapFor: casting.tapFor ?? undefined, warp: casting.warp || undefined, evoke: casting.evoke || undefined, altCost: casting.altCost || undefined, impending: casting.impending || undefined, webSling: casting.webSling ?? undefined, discard: casting.discard ?? undefined, sneak: casting.sneak ?? undefined, teamwork: casting.teamwork || undefined, altCost: casting.altCost || undefined, delve: casting.delve || undefined, waterTap: casting.waterTap || undefined, improvise: casting.improvise || undefined };
 
   function finishChoice(target) {
     const action = actionFor(target);
