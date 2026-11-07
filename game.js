@@ -1282,6 +1282,17 @@
         return pickCards({ ids: E.sacCostOptions(state, card, ab), min: n, max: n, confirm: "Sacrifice",
           prompt: `Choose ${n} to sacrifice for ${card.name}'s ability.`, then: (l) => again("sacs")([].concat(l)) });
       }
+      // Secluded Starforge: "Tap X untapped artifacts you control" (X: how many)
+      if (ab.tapArtifactsX && casting.taps === undefined) {
+        const ids = state.player.battlefield.filter((c) => E.isArtifact(c) && !c.tapped).map((c) => c.id);
+        return pickCards({ ids, min: 0, max: ids.length, confirm: "Tap", prompt: `Tap any number of untapped artifacts for ${card.name}'s ability (X: how many).`,
+          then: (l) => { casting.x = [].concat(l || []).length; again("taps")([].concat(l || [])); } });
+      }
+      // Sunstar Chaplain: "Remove a +1/+1 counter from a creature you control"
+      if (ab.removeCounterCost && casting.rc === undefined) {
+        const ids = state.player.battlefield.filter((c) => E.isCreature(c) && ((c.counters || {})["+1/+1"] || 0) > 0).map((c) => c.id);
+        return pickCards({ ids, min: 1, max: 1, confirm: "Remove", prompt: `Remove a +1/+1 counter from a creature you control for ${card.name}'s ability.`, then: (l) => again("rc")([].concat(l)[0]) });
+      }
       // "Tap three untapped artifacts and/or creatures you control: …": which ones
       if (ab.tapCost && casting.taps === undefined) {
         const n = ab.tapCost.n;
@@ -1368,17 +1379,19 @@
       casting.cycle = canCycle && !canCast;
     }
     // warp (a card in your hand): cast it normally, or for its warp cost
-    if (card.warp && casting.warp === undefined && state.player.hand.includes(card)) {
+    // (Tannuk: "Artifact cards and red creature cards in your hand have warp {2}{R}.")
+    const warpCost = card.warp || (state.player.hand.includes(card) && (E.castable(state, card.id) || {}).warpCost);
+    if (warpCost && casting.warp === undefined && state.player.hand.includes(card)) {
       const canWarp = !E.check(state, { type: "cast", id: card.id, warp: true });
       const canCast = !E.check(state, { type: "cast", id: card.id });
-      if (canWarp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Warp it for ${card.warp} (exiled at the next end step)`]], again("warp"));
+      if (canWarp && canCast) return askChoice(`${card.name}: how do you cast it?`, [[false, `Cast ${card.name} (${card.cost})`], [true, `Warp it for ${warpCost} (exiled at the next end step)`]], again("warp"));
       casting.warp = canWarp && !canCast;
     }
     // an alternative cost from a permanent: Leyline of Mutation ({W}{U}{B}{R}{G}), Warped Space ({0} from exile, once each turn)
     if (casting.altCost === undefined) {
       const fr = E.castable(state, card.id) || {};
-      const alts = [...(fr.mutation ? ["mutation"] : []), ...(fr.warped ? ["zero"] : [])].filter((k) => !E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, altCost: k }));
-      if (alts.length) return askChoice(`${card.name}: how do you pay for it?`, [[null, `Its mana cost (${card.cost || "{0}"})`], ...alts.map((k) => [k, k === "mutation" ? "Pay {W}{U}{B}{R}{G} instead (Leyline of Mutation)" : "Pay {0} instead (Warped Space)"])], again("altCost"));
+      const alts = [...(fr.mutation ? ["mutation"] : []), ...(fr.warped || fr.weft ? ["zero"] : [])].filter((k) => !E.check(state, { type: "cast", id: card.id, face: casting.face ?? undefined, altCost: k }));
+      if (alts.length) return askChoice(`${card.name}: how do you pay for it?`, [[null, `Its mana cost (${card.cost || "{0}"})`], ...alts.map((k) => [k, k === "mutation" ? "Pay {W}{U}{B}{R}{G} instead (Leyline of Mutation)" : `Pay {0} instead (${fr.weft ? "Weftwalking" : "Warped Space"})`])], again("altCost"));
       casting.altCost = null;
     }
     // delve (Teval: "Spells you cast have delve."): how many cards from your graveyard pay {1} each
@@ -1704,7 +1717,7 @@
   const actionFor = (target) => casting.trigger ? { type: "trigger", target }
     : casting.renew ? { type: "renew", id: casting.card.id, target }
     : casting.channel ? { type: "channel", id: casting.card.id, target }
-    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined, taps: casting.taps ?? undefined, split: casting.split ?? undefined, evidence: casting.index != null && casting.evidence != null ? casting.evidence : undefined }
+    : casting.index != null ? { type: "activate", id: casting.card.id, index: casting.index, target, x: casting.x ?? undefined, crew: casting.crew ?? undefined, craft: casting.craft ?? undefined, discard: casting.discard ?? undefined, waterTap: casting.waterTap ?? undefined, blight: casting.blight ?? undefined, sacs: casting.sacs ?? undefined, exiles: casting.exiles ?? undefined, taps: casting.taps ?? undefined, rc: casting.rc ?? undefined, split: casting.split ?? undefined, evidence: casting.index != null && casting.evidence != null ? casting.evidence : undefined }
     : { type: "cast", id: casting.card.id, face: casting.face ?? undefined, target, sac: casting.sac ?? undefined,
       mode: casting.mode ?? undefined, color: casting.color ?? undefined, x: casting.x ?? undefined, split: casting.split,
       blight: casting.blight ?? undefined, behold: casting.behold ?? undefined, convoke: casting.convoke ?? undefined,
