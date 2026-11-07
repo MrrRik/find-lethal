@@ -3330,7 +3330,94 @@
     mshEffects(s, eff, tgt, to, ctx, ev, target, amount);
     hobEffects(s, eff, tgt, to, ctx, ev, target, amount);
     fraEffects(s, eff, tgt, to, ctx, ev, target, amount);
+    oppChoiceEffects(s, eff, tgt, to, ctx, ev, target, amount);
     moreEffects(s, eff, tgt, to, ctx, ev, target, amount);
+  }
+
+  // Effects for cards first left out because the opponent decides (the opponent's choices go through choose(): the
+  // worst for you); the opponent's unknown cards stay unknown
+  function oppChoiceEffects(s, eff, tgt, to, ctx, ev, target, amount) {
+    const z = s[ctx.side], opp = ctx.side === "player" ? "opponent" : "player", unknownCard = () => ({ id: `unknown-${s.nextId++}`, name: "Unknown card", type: "Card", unknown: true });
+    // a card from a graveyard onto the battlefield under your control (its owner stays its owner)
+    const steal = (c, from, tapped) => { s[from].graveyard = s[from].graveyard.filter((x) => x !== c); const p = asFace(c, 0); p.sick = true; if (tapped) p.tapped = true; if (from !== ctx.side) p.owner = from; enter(s, p, { side: ctx.side }, ev); return p; };
+    // Breach the Multiverse: "Each player mills ten cards. For each player, choose a creature or planeswalker card in that player's graveyard. Put those cards onto the battlefield under your control. Then each creature you control becomes a Phyrexian in addition to its other types."
+    if (eff.breach) {
+      ["player", "opponent"].forEach((sd) => millSide(s, sd, 10, ev));
+      const picked = ["player", "opponent"].map((sd) => {
+        const l = s[sd].graveyard.filter((c) => isCreature(faceOf(c, {})) || isPlaneswalker(faceOf(c, {})));
+        return l.length ? [l[choose(s, `Which card from ${sd === ctx.side ? "your" : "their"} graveyard?`, l.map((c) => c.name), ctx.side, l.map((c) => c.id))], sd] : null;
+      }).filter(Boolean);
+      picked.forEach(([c, sd]) => steal(c, sd));
+      z.battlefield.filter(isCreature).forEach((c) => { c.type = addTypes(c.type, { subtypes: ["Phyrexian"] }); });
+    }
+    // Etali, Primal Conqueror: "each player exiles cards from the top of their library until they exile a nonland card. You may cast any number of spells from among the nonland cards exiled this way without paying their mana costs." (an unknown card ends the reveal: it can't be cast)
+    if (eff.etaliExile && ctx.side === "player") {
+      const found = [];
+      ["player", "opponent"].forEach((sd) => { for (;;) { const c = exileTop(s, sd); if (!c) break; if (!isLand(faceOf(c, {}))) { if (sd === "opponent") c.owner = "opponent"; found.push(c); break; } } });
+      for (let i = 0; i < found.length; i++) { const l = found.filter((c) => !c.done); if (!l.length) break; const r = castFree(s, l, "player", ev, { zone: "exile", decline: "Stop" }); if (!r.cast) break; r.cast.done = true; }
+      found.forEach((c) => delete c.done);
+    }
+    // Etali, Primal Sickness: "Whenever Etali deals combat damage to a player, they get that many poison counters."
+    if (eff.etaliPoison && ctx.event) {
+      const n = (ctx.event.count || 0) * counterMult(s, ctx.side), who = ctx.side === "player" ? "opp" : "you";
+      s[who === "opp" ? "opponent" : "player"].poison = (s[who === "opp" ? "opponent" : "player"].poison || 0) + n; ev.push({ type: "poison", who, amount: n });
+    }
+    // Realmbreaker: "Target opponent mills three cards. Put a land card from their graveyard onto the battlefield tapped under your control. It gains 'If this land would leave the battlefield, exile it instead of putting it anywhere else.'"
+    if (eff.realmbreaker && to === "opp") {
+      millSide(s, opp, 3, ev);
+      const l = s[opp].graveyard.filter((c) => isLand(faceOf(c, {})));
+      if (l.length) { const p = steal(l[choose(s, "Which land?", l.map((c) => c.name), ctx.side, l.map((c) => c.id))], opp, true); const c = find(s, p.id); if (c) { c.replacements = ["graveyard", "hand", "library"].map((zz) => ({ to: zz, instead: "exile", self: true })); s.replaces = true; } }
+    }
+    // Realmbreaker: "Search your library for any number of Praetor cards, put them onto the battlefield, then shuffle."
+    if (eff.praetors) {
+      for (;;) {
+        const l = [...z.library, ...z.libraryBottom].filter((c) => hasType(faceOf(c, {}), "Praetor"));
+        const k = l.length ? choose(s, "Search: a Praetor?", [...l.map((c) => `Find ${c.name}`), "Stop"], ctx.side, [...l.map((c) => c.id), null]) : 0;
+        if (k >= l.length) break;
+        const c = l[k]; z.library = z.library.filter((x) => x !== c); z.libraryBottom = z.libraryBottom.filter((x) => x !== c); c.sick = true; enter(s, asFace(c, 0), { side: ctx.side }, ev);
+      }
+      z.libraryCount = (z.libraryCount || 0) + z.library.length + z.libraryBottom.length; z.library = []; z.libraryBottom = [];
+      ev.push({ type: "search", side: ctx.side });
+    }
+    // Krenko's Buzzcrusher: "for each player, destroy up to one nonbasic land that player controls. For each land destroyed this way, its controller may search their library for a basic land card, put it onto the battlefield tapped, then shuffle."
+    if (eff.buzzcrusher) {
+      const gone = [];
+      ["player", "opponent"].forEach((sd) => {
+        const l = s[sd].battlefield.filter((c) => isLand(c) && !/\bbasic\b/i.test(c.type || ""));
+        const k = l.length ? choose(s, `Destroy a nonbasic land ${sd === ctx.side ? "you control" : "they control"}?`, [...l.map((c) => c.name), "None"], ctx.side, [...l.map((c) => c.id), null]) : l.length;
+        if (k < l.length && !survivesDestroy(s, l[k], ev)) { leave(s, l[k], "graveyard", ev); if (!find(s, l[k].id)) gone.push(sd); }
+      });
+      gone.forEach((sd) => applyEffect(s, { search: { filter: { land: true }, basic: true, toBattlefield: true, tapped: true } }, undefined, { ...ctx, side: sd }, ev));
+    }
+    // Step Between Worlds: "Each player may shuffle their hand and graveyard into their library. Each player who does draws seven cards."
+    if (eff.stepBetween) sevenEach(s, ctx, ev, true);
+    // Parker Luck: "two target players each reveal the top card of their library. They each lose life equal to the mana value of the card revealed by the other player. Then they each put the card they revealed into their hand." (an unknown card: mana value 0)
+    if (eff.parkerLuck) {
+      const top = (sd) => { const zz = s[sd], c = zz.library[0] || (!(zz.libraryCount > 0) ? zz.libraryBottom[0] : null); return c ? manaValue(faceOf(c, {}).cost) : 0; };
+      const mine = top("player"), theirs = top("opponent");
+      changeLife(s, "you", -theirs, ev); changeLife(s, "opp", -mine, ev);
+      ["player", "opponent"].forEach((sd) => {
+        const zz = s[sd], c = zz.library.shift() || (!(zz.libraryCount > 0) ? zz.libraryBottom.shift() : null);
+        if (!c && !(zz.libraryCount > 0)) return;
+        if (!c) zz.libraryCount--;
+        if (sd === "player") zz.hand.push(c || unknownCard()); else if (c) zz.hand.push(c); else zz.handCount = (zz.handCount || 0) + 1;
+      });
+    }
+    // The Death of Gwen Stacy II: "Each player may discard a card. Each player who doesn't loses 3 life."
+    if (eff.gwenDiscard) {
+      const h = s.player.hand, k = h.length ? choose(s, "Discard a card (or lose 3 life)?", [...h.map((c) => `Discard ${c.name}`), "Lose 3 life"], "player", [...h.map((c) => c.id), null]) : 0;
+      if (k < h.length) discardCard(s, h[k], ev); else changeLife(s, "you", -3, ev);
+      const o = s.opponent, oh = (o.handCount || 0) + o.hand.length;
+      if (oh && choose(s, "Does the opponent discard a card?", ["Discard", "Lose 3 life"], "opponent") === 0) applyEffect(s, { discard: 1, to: "opp" }, undefined, ctx, ev);
+      else changeLife(s, "opp", -3, ev);
+    }
+    // The Death of Gwen Stacy III: "Exile any number of target players' graveyards."
+    if (eff.exileGraveyards) ["player", "opponent"].forEach((sd) => {
+      const zz = s[sd];
+      if (!(zz.graveyard.length || zz.gyUnknown) || choose(s, `Exile ${sd === ctx.side ? "your" : "their"} graveyard?`, ["Exile it", "Don't"], ctx.side) !== 0) return;
+      [...zz.graveyard].forEach((c) => { zz.graveyard = zz.graveyard.filter((x) => x !== c); putCard(s, c, sd, "exile"); });
+      zz.exileUnknown = (zz.exileUnknown || 0) + (zz.gyUnknown || 0); zz.gyUnknown = 0;
+    });
   }
 
   // Effects added in the second pass over Foundations-era Planeswalker set (FRA)

@@ -218,7 +218,7 @@
 
   // ---- March of the Machine (MOM) ----
   // Left out (the opponent decides, or something random; see the second pass below): Elesh Norn, Rona, Herald of
-  // Invasion, Breach the Multiverse, Etali, Primal Conqueror, Realmbreaker, the Invasion Tree
+  // Invasion
   const TF = (name, front, back) => ({ ...front, layout: "transform", faces: [{ name, ...front }, back] });
   const SIEGE = "(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it's defeated, exile it, then cast it transformed.) ";
   const siege = (name, cost, def, front, text, back) => TF(name, { type: "Battle — Siege", cost, defense: String(def), ...front, text: SIEGE + text }, back);
@@ -865,8 +865,7 @@
   });
 
   // ---- Murders at Karlov Manor (MKM) ----
-  // Left out (the opponent decides, or something random; see the second pass below): Intrude on the Mind, Krenko's
-  // Buzzcrusher
+  // Left out (the opponent decides, or something random; see the second pass below): Intrude on the Mind
   const CLUE_TOKEN = { name: "Clue", type: "Token Artifact — Clue", colors: [], abilities: [{ cost: "{2}", sacSelf: true, effect: { draw: 1 }, text: "{2}, Sacrifice: Draw a card" }],
     text: "{2}, Sacrifice this token: Draw a card." };
   const DETECTIVE = { name: "Detective", type: "Token Creature — Detective", pt: "2/2", colors: ["W", "U"] };
@@ -1042,8 +1041,8 @@
   });
 
   // ---- Outlaws of Thunder Junction (OTJ) ----
-  // Left out (the opponent decides, or something random; see the second pass below): Archangel of Tithes, Step Between
-  // Worlds, Breeches, the Blastmaker
+  // Left out (the opponent decides, or something random; see the second pass below): Archangel of Tithes, Breeches, the
+  // Blastmaker
   const PLOT = (cost) => `Plot ${cost} (You may pay ${cost} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)`;
   const MERC = { name: "Mercenary", type: "Token Creature — Mercenary", pt: "1/1", colors: ["R"],
     abilities: [{ tap: true, sorcery: true, targets: "creature", filter: { controller: "you" }, effect: { pump: [1, 0] }, text: "{T}: Target creature you control gets +1/+0" }],
@@ -2220,8 +2219,6 @@
   });
 
   // ---- Marvel's Spider-Man (SPM) ----
-  // Left out (the opponent decides, or something random; see the second pass below): The Death of Gwen Stacy, Parker
-  // Luck
   const SPIDER = { name: "Spider", type: "Token Creature — Spider", pt: "2/1", colors: ["G"], kw: ["reach"] };
   const CITIZEN = { name: "Human Citizen", type: "Token Creature — Human Citizen", pt: "1/1", colors: ["G", "W"] };
   const WEB = (cost) => `Web-slinging ${cost} (You may cast this spell for ${cost} if you also return a tapped creature you control to its owner's hand.)`;
@@ -3497,8 +3494,7 @@
       text: "{T}: Add {C}. {T}: Add one mana of any color. Spend this mana only to cast Phyrexian creature spells. Corrupted — {T}: Target 1/1 creature gets +2/+1 until end of turn. Activate only if an opponent has three or more poison counters." }
   });
   // ---- second pass: March of the Machine ----
-  // (left out: Elesh Norn — the opponent decides to pay {1}; Rona — a card exiled at random; Etali, Breach the
-  // Multiverse and Realmbreaker — they turn over the opponent's unknown library)
+  // (left out: Elesh Norn — the opponent decides to pay {1}; Rona — a card exiled at random)
   const KNIGHT_WU = { name: "Knight", type: "Token Creature — Knight", pt: "2/2", colors: ["W", "U"], kw: ["vigilance"] };
   const PRAETOR = (cost, requires, requiresText) => ({ cost, sorcery: true, ...(requires ? { requires, requiresText } : {}), effect: { blinkTransformed: { face: 1 } },
     text: `${cost}: Exile it, then return it transformed (only as a sorcery${requiresText ? `; ${requiresText.toLowerCase().replace(/\.$/, "")}` : ""})` });
@@ -3850,7 +3846,7 @@
       text: "This land enters tapped. As it enters, choose a color. {T}: Add one mana of the chosen color. {T}: Add two mana of the chosen color. Spend this mana only to activate abilities of land sources." }
   });
   // ---- second pass: Murders at Karlov Manor ----
-  // (left out: Intrude on the Mind — the opponent chooses a pile; Krenko's Buzzcrusher — the opponent may search their unknown library)
+  // (left out: Intrude on the Mind — the opponent chooses a pile)
   const REL = { reanimate: true, animateAs: { subtypes: ["Elemental"], pt: "5/5" } };
   const SPIRIT_WB = { name: "Spirit", type: "Token Creature — Spirit", pt: "1/1", colors: ["W", "B"], kw: ["flying"] };
   Object.assign(CARDS, {
@@ -3946,8 +3942,7 @@
       text: "{T}, Collect evidence 3: Add one mana of any color. Put an unlock counter on this artifact. (To collect evidence 3, exile cards with total mana value 3 or greater from your graveyard.) Sacrifice this artifact: Surveil 3, then draw three cards. Activate only if this artifact has five or more unlock counters on it." }
   });
   // ---- second pass: Outlaws of Thunder Junction ----
-  // (left out: Archangel of Tithes — the opponent decides whether to pay; Step Between Worlds — each player may shuffle;
-  // Breeches, the Blastmaker — a coin flip)
+  // (left out: Archangel of Tithes — the opponent decides whether to pay; Breeches, the Blastmaker — a coin flip)
   const METEORITE = { name: "Meteorite", type: "Token Artifact", colors: [], produces: "WUBRG", tapped: true, etb: { damage: 2 }, targets: "any",
     text: "When this token enters, it deals 2 damage to any target. {T}: Add one mana of any color." };
   const MERCENARY_T = { name: "Mercenary", type: "Token Creature — Mercenary", pt: "1/1", colors: ["R"],
@@ -4664,8 +4659,6 @@
       text: "{T}: Add {C}. {2}, {T}, Tap X untapped artifacts you control: Target creature gets +X/+0 until end of turn. Activate only as a sorcery. {5}, {T}: Create a 2/2 colorless Robot artifact creature token." }
   });
   // ---- second pass: Marvel's Spider-Man ----
-  // (left out: Parker Luck — it reveals the unknown top card of the opponent's library; The Death of Gwen Stacy — each
-  // player chooses whether to discard)
   Object.assign(CARDS, {
     "Arachne, Psionic Weaver": { type: "Legendary Creature — Spider Human Hero", cost: "{2}{W}", pt: "3/3", webSlinging: "{W}", arachne: true,
       text: `${WEB("{W}")} As Arachne enters, look at an opponent's hand, then choose a card type other than creature. Spells of the chosen type cost {1} more to cast.` },
@@ -5554,5 +5547,33 @@
       text: "Artifact creatures you control have vigilance. Whenever you cast a noncreature spell, create a 1/1 colorless Sculpture Treasure artifact creature token with \"{T}, Sacrifice this token: Add one mana of any color.\"" },
     "Sphinx's Approach": { type: "Instant", cost: "{1}{U}{U}", effect: { seq: [{ draw: 2 }, { sphinxApproach: true }] },
       text: "Draw two cards. Then you may exile this spell and four cards named Sphinx's Approach from your graveyard. If you do, search your library for a Sphinx creature card, put it onto the battlefield, then shuffle. A deck can have any number of cards named Sphinx's Approach." }
+  });
+  // ---- cards first left out because the opponent decides (added on request: the opponent's choices are the worst for you) ----
+  Object.assign(CARDS, {
+    "Breach the Multiverse": { type: "Sorcery", cost: "{5}{B}{B}", effect: { breach: true },
+      text: "Each player mills ten cards. For each player, choose a creature or planeswalker card in that player's graveyard. Put those cards onto the battlefield under your control. Then each creature you control becomes a Phyrexian in addition to its other types." },
+    "Etali, Primal Conqueror": TF("Etali, Primal Conqueror", { type: "Legendary Creature — Elder Dinosaur", cost: "{5}{R}{R}", pt: "7/7", kw: ["trample"],
+      etb: { etaliExile: true }, abilities: [TRANSFORM("{9}{G/P}")],
+      text: "Trample. When Etali enters, each player exiles cards from the top of their library until they exile a nonland card. You may cast any number of spells from among the nonland cards exiled this way without paying their mana costs. {9}{G/P}: Transform Etali. Activate only as a sorcery. ({G/P} can be paid with either {G} or 2 life.)" },
+      { name: "Etali, Primal Sickness", type: "Legendary Creature — Phyrexian Elder Dinosaur", pt: "11/11", colors: ["G", "R"], kw: ["trample", "indestructible"],
+        triggers: [{ on: "combatDamage", self: true, effect: { etaliPoison: true } }],
+        text: "Trample, indestructible. Whenever Etali deals combat damage to a player, they get that many poison counters. (A player with ten or more poison counters loses the game.)" }),
+    "Realmbreaker, the Invasion Tree": { type: "Legendary Artifact", cost: "{3}",
+      abilities: [
+        { cost: "{2}", tap: true, targets: "opponent", effect: { realmbreaker: true }, text: "{2}, {T}: Target opponent mills three; take a land from their graveyard" },
+        { cost: "{10}", tap: true, sacSelf: true, effect: { praetors: true }, text: "{10}, {T}, Sacrifice: Search for any number of Praetors" }],
+      text: "{2}, {T}: Target opponent mills three cards. Put a land card from their graveyard onto the battlefield tapped under your control. It gains \"If this land would leave the battlefield, exile it instead of putting it anywhere else.\" {10}, {T}, Sacrifice Realmbreaker: Search your library for any number of Praetor cards, put them onto the battlefield, then shuffle." },
+    "Krenko's Buzzcrusher": { type: "Artifact Creature — Insect Thopter", cost: "{2}{R}{R}", pt: "4/4", kw: ["flying", "trample"], etb: { buzzcrusher: true },
+      text: "Flying, trample. When this creature enters, for each player, destroy up to one nonbasic land that player controls. For each land destroyed this way, its controller may search their library for a basic land card, put it onto the battlefield tapped, then shuffle." },
+    "Step Between Worlds": { type: "Sorcery", cost: "{3}{U}{U}", plot: "{4}{U}{U}", exileSelf: true, effect: { stepBetween: true },
+      text: `Each player may shuffle their hand and graveyard into their library. Each player who does draws seven cards. Exile Step Between Worlds. ${PLOT("{4}{U}{U}")}` },
+    "Parker Luck": { type: "Enchantment", cost: "{2}{B}",
+      triggers: [{ on: "endStep", filter: { controller: "you" }, effect: { parkerLuck: true } }],
+      text: "At the beginning of your end step, two target players each reveal the top card of their library. They each lose life equal to the mana value of the card revealed by the other player. Then they each put the card they revealed into their hand." },
+    "The Death of Gwen Stacy": { type: "Enchantment — Saga", cost: "{2}{B}", chapters: [
+      { n: [1], targets: "creature", effect: { destroy: true } },
+      { n: [2], effect: { gwenDiscard: true } },
+      { n: [3], effect: { exileGraveyards: true } }],
+      text: `${SAGA("III")} I — Destroy target creature. II — Each player may discard a card. Each player who doesn't loses 3 life. III — Exile any number of target players' graveyards.` }
   });
 })();
