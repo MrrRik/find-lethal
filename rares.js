@@ -9,12 +9,7 @@
   const { CARDS } = window.CARD_CATALOG;
 
   // ---- Phyrexia: All Will Be One (ONE) ----
-  // Not modeled yet: Skrelv, Defector Mite, Blade of Shared Souls, Encroaching Mycosynth, Jace, the Perfected Mind,
-  // Tekuthal, Inquiry Dominus, Unctus, Grand Metatect, Vraska, Betrayal's Sting, All Will Be One, Capricious
-  // Hellraiser, Red Sun's Twilight, Slobad, Iron Goblin, Conduit of Worlds, Green Sun's Twilight, Atraxa, Grand
-  // Unifier, Kaito, Dancing Shadow, Kethek, Crucible Goliath, Lukka, Bound to Ruin, Melira, the Living Cure, Ria Ivor,
-  // Bane of Bladehold, The Filigree Sylex, Graaz, Unstoppable Juggernaut, Mirran Safehouse, Monument to Perfection,
-  // Soulless Jailer, Staff of Compleation, The Mycosynth Gardens, The Seedcore
+  // Left out (the opponent decides, or something random; see the second pass below): Capricious Hellraiser
   const MITE = { name: "Phyrexian Mite", type: "Token Artifact Creature — Phyrexian Mite", pt: "1/1", colors: [], kw: ["toxic 1", "can't block"],
     text: "Toxic 1. This token can't block." };
   const GOLEM = { name: "Phyrexian Golem", type: "Token Artifact Creature — Phyrexian Golem", pt: "3/3", colors: [] };
@@ -222,13 +217,8 @@
   });
 
   // ---- March of the Machine (MOM) ----
-  // Not modeled yet: Elesh Norn, Knight-Errant of Eos, Jin-Gitaxias, Rona, Herald of Invasion, See Double, Archpriest
-  // of Shadows, Breach the Multiverse, Grafted Butcher, Hoarding Broodlord, Invasion of Fiora, Sheoldred, Bloodfeather
-  // Phoenix, Etali, Primal Conqueror, Invasion of Kaldheim, Nahiri's Warcrafting, Urabrask, Deeproot Wayfinder,
-  // Doomskar Warrior, Invasion of Ikoria, Vorinclex, Wrenn and Realmbreaker, Baral and Kari Zev, Borborygmos and
-  // Fblthp, Djeru and Hazoret, Drana and Linvala, Errant and Giada, Hidetsugu and Kairi, Inga and Esika, Invasion of
-  // Alara, Invasion of New Phyrexia, Omnath, Locus of All, Quintorius, Loremaster, Zurgo and Ojutai, Realmbreaker, the
-  // Invasion Tree, Sword of Once and Future
+  // Left out (the opponent decides, or something random; see the second pass below): Elesh Norn, Rona, Herald of
+  // Invasion, Breach the Multiverse, Etali, Primal Conqueror, Realmbreaker, the Invasion Tree
   const TF = (name, front, back) => ({ ...front, layout: "transform", faces: [{ name, ...front }, back] });
   const SIEGE = "(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it's defeated, exile it, then cast it transformed.) ";
   const siege = (name, cost, def, front, text, back) => TF(name, { type: "Battle — Siege", cost, defense: String(def), ...front, text: SIEGE + text }, back);
@@ -441,10 +431,6 @@
   });
 
   // ---- Wilds of Eldraine (WOE) ----
-  // Not modeled yet: Extraordinary Journey, Virtue of Knowledge, Ashiok, Wicked Manipulator, Beseech the Mirror,
-  // Goddric, Cloaked Reveler, Imodane, the Pyrohammer, Feral Encounter, Sentinel of Lost Lore, Hylda of the Icy Crown,
-  // Likeness Looter, Rowan, Scion of War, Will, Scion of Peace, Yenna, Redtooth Regent, Elusive Otter, Agatha's Soul
-  // Cauldron, The Irencrag
   const ADV = (name, creature, adv) => ({ ...creature, layout: "adventure", faces: [{ name, ...creature }, adv],
     text: `${creature.text} // ${adv.name} ${adv.cost} (${adv.type.split(" —")[0]}): ${adv.text}` });
   const ADVT = " (Then exile this card. You may cast the creature later from exile.)";
@@ -687,13 +673,6 @@
   });
 
   // ---- The Lost Caverns of Ixalan (LCI) ----
-  // Not modeled yet: Fabrication Foundry, Braided Net, Deeproot Pilgrimage, The Enigma Jewel, Kitesail Larcenist,
-  // Malcolm, Alluring Scoundrel, Ojer Pakpatiq, Deepest Epoch, Subterranean Schooner, Tishana's Tidebinder, Preacher of
-  // the Schism, Souls of the Lost, Starving Revenant, Tarrian's Journal, Breeches, Eager Pillager, Magmatic Galleon,
-  // Bedrock Tortoise, Cosmium Confluence, Huatli, Poet of Unity, Intrepid Paleontologist, The Skullspore Nexus, The
-  // Ancient One, The Belligerent, Deepfathom Echo, Molten Collapse, Quintorius Kand, Wail of the Forgotten,
-  // Matzalantli, the Great Door, Roaming Throne, Throne of the Grim Captain, Cavern of Souls, Echoing Deeps, Sunken
-  // Citadel
   const OJER = (name, front, temple) => TF(name, { ...front, onDeath: { effect: { returnTransformed: {} } } }, { type: "Land", colors: [], ...temple });
   const MAP_TOKEN = { name: "Map", type: "Token Artifact — Map", colors: [],
     abilities: [{ cost: "{1}", tap: true, sacSelf: true, sorcery: true, targets: "creature", filter: { controller: "you" }, effect: { explore: 1 }, text: "{1}, {T}, Sacrifice: target creature you control explores" }],
@@ -886,12 +865,8 @@
   });
 
   // ---- Murders at Karlov Manor (MKM) ----
-  // Not modeled yet: Assemble the Players, Aurelia's Vindicator, Tenth District Hero, Conspiracy Unraveler, Coveted
-  // Falcon, Intrude on the Mind, Lost in the Maze, Reenact the Crime, Anzrag's Rampage, Connecting the Dots, Fugitive
-  // Codebreaker, Krenko's Buzzcrusher, Axebane Ferox, Case of the Locked Hothouse, The Pride of Hull Clade, Anzrag, the
-  // Quake-Mole, Blood Spatter Analysis, Etrata, Deadly Fugitive, Kaya, Spirits' Justice, Kylox, Visionary Inventor,
-  // Kylox's Voltstrider, Lazav, Wearer of Faces, Leyline of the Guildpact, Niv-Mizzet, Guildpact, Officious
-  // Interrogation, Relive the Past, Treacherous Greed, Urgent Necropsy, Yarus, Roar of the Old Gods, Cryptex
+  // Left out (the opponent decides, or something random; see the second pass below): Intrude on the Mind, Krenko's
+  // Buzzcrusher
   const CLUE_TOKEN = { name: "Clue", type: "Token Artifact — Clue", colors: [], abilities: [{ cost: "{2}", sacSelf: true, effect: { draw: 1 }, text: "{2}, Sacrifice: Draw a card" }],
     text: "{2}, Sacrifice this token: Draw a card." };
   const DETECTIVE = { name: "Detective", type: "Token Creature — Detective", pt: "2/2", colors: ["W", "U"] };
@@ -1067,13 +1042,8 @@
   });
 
   // ---- Outlaws of Thunder Junction (OTJ) ----
-  // Not modeled yet: Archangel of Tithes, Aven Interrupter, Fortune, Loyal Steed, Double Down, Fblthp, Lost on the
-  // Range, The Key to the Vault, Step Between Worlds, Three Steps Ahead, Kaervek, the Punisher, Tinybones Joins Up,
-  // Tinybones, the Pickpocket, Calamity, Galloping Inferno, Great Train Heist, Colossal Rattlewurm, Assimilation Aegis,
-  // Breeches, the Blastmaker, Eriette, the Beguiler, The Gitrog, Ravenous Ride, Kambal, Profiteering Mayor, Kellan, the
-  // Kid, Laughing Jasper Flint, Lilah, Undefeated Slickshot, Obeka, Splitter of Seconds, Oko, the Ringleader, Rakdos,
-  // the Muscle, Riku of Many Paths, Roxanne, Starfall Savant, Satoru, the Infiltrator, Selvala, Eager Trailblazer, Taii
-  // Wakeen, Perfect Shot, Vraska, the Silencer
+  // Left out (the opponent decides, or something random; see the second pass below): Archangel of Tithes, Step Between
+  // Worlds, Breeches, the Blastmaker
   const PLOT = (cost) => `Plot ${cost} (You may pay ${cost} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)`;
   const MERC = { name: "Mercenary", type: "Token Creature — Mercenary", pt: "1/1", colors: ["R"],
     abilities: [{ tap: true, sorcery: true, targets: "creature", filter: { controller: "you" }, effect: { pump: [1, 0] }, text: "{T}: Target creature you control gets +1/+0" }],
@@ -1233,12 +1203,7 @@
   });
 
   // ---- Bloomburrow (BLB) ----
-  // Not modeled yet: Jackdaw Savior, Season of the Burrow, Eluge, the Shoreless Sea, Kitnap, Kitsa, Otterball Elite,
-  // Mockingbird, Portent of Calamity, Season of Weaving, Wishing Well, Osteomancer Adept, Rottenmouth Viper, Season of
-  // Loss, Festival of Embers, Season of the Bold, Season of Gathering, Thornvault Forager, Alania, Divergent Storm,
-  // Camellia, the Seedmiser, Clement, the Worrywort, Glarb, Calamity's Augur, Helga, Skittish Seer, Hugs, Grisly
-  // Guardian, The Infamous Cruelclaw, Kastral, the Windcrested, Vren, the Relentless, Ygra, Eater of All, Three Tree
-  // City
+  // Left out (the opponent decides, or something random; see the second pass below): Rottenmouth Viper
   const OFFSPRING = (cost) => `Offspring ${cost} (You may pay an additional ${cost} as you cast this spell. If you do, when this creature enters, create a 1/1 token copy of it.)`;
   const GIFT = "Gift a card (You may promise an opponent a gift as you cast this spell. If you do, they draw a card before its other effects.)";
   const OTTER = { name: "Otter", type: "Token Creature — Otter", pt: "1/1", colors: ["U", "R"], kw: ["prowess"] };
@@ -1441,11 +1406,6 @@
   });
 
   // ---- Duskmourn: House of Horror (DSK) ----
-  // Not modeled yet: Abhorrent Oculus, Leyline of Transformation, Marina Vendrell's Grimoire, Silent Hallcreeper, The
-  // Tale of Tamiyo, Doomsday Excruciator, Valgavoth, Terror Eater, Charred Foyer, Fear of Missing Out, The
-  // Rollercrusher Ride, Balustrade Wurm, Leyline of Mutation, Omnivorous Flytrap, Twitching Doll, Walk-In Closet,
-  // Kaito, Bane of Nightmares, Marina Vendrell, Nashi, Searcher in the Dark, Niko, Light of Hope, Rip, Spawn Hunter,
-  // Winter, Misanthropic Guide, Ghost Vacuum, Marvin, Murderous Mimic, Valgavoth's Lair
   const ROOM_NOTE = "(You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.)";
   const ROOM = (a, b, extra = {}) => ({ type: "Enchantment — Room", layout: "room", ...extra,
     faces: [{ type: "Enchantment — Room", ...a }, { type: "Enchantment — Room", ...b }],
@@ -1611,10 +1571,6 @@
   });
 
   // ---- Aetherdrift (DFT) ----
-  // Not modeled yet: Valor's Flagship, Cursecloth Wrappings, Demonic Junker, The Last Ride, Boommobile, Full Throttle,
-  // Gastal Thrillroller, Webstrike Elite, Captain Howler, Sea Scourge, Ketramose, the New Dawn, Mendicant Core,
-  // Guidelight, Mimeoplasm, Revered One, Redshift, Rocketeer Chief, Winter, Cursed Rider, The Aetherspark, Lifecraft
-  // Engine, Radiant Lotus
   const SYE = "start your engines!";
   const SYE_TEXT = "Start your engines! (If you have no speed, it starts at 1. It increases once on each of your turns when an opponent loses life. Max speed is 4.)";
   const EXH = "(Activate each exhaust ability only once.)";
@@ -1804,10 +1760,7 @@
   });
 
   // ---- Tarkir: Dragonstorm (TDM) ----
-  // Not modeled yet: Ugin, Eye of the Storms, Sage of the Skies, Naga Fleshcrafter, Rot-Curse Rakshasa, Sidisi, Regent
-  // of the Mire, Stormscale Scion, Tersa Lightshatter, Herd Heirloom, All-Out Assault, Flamehold Grappler, Jeskai
-  // Revelation, Mardu Siegebreaker, New Way Forward, Revival of the Ancestors, Shiko, Paragon of the Way, Teval,
-  // Arbiter of Virtue, Ureni, the Song Unending, Dragonfire Blade, Maelstrom of the Spirit Dragon
+  // Left out (the opponent decides, or something random; see the second pass below): Tersa Lightshatter
   const OMEN = (name, front, back) => ({ ...front, layout: "omen", faces: [{ name, type: front.type, cost: front.cost, pt: front.pt }, { kw: [], ...back }],
     text: `${front.text} // ${back.name} ${back.cost} (${back.type.split(" —")[0]} — Omen): ${back.text} (Then shuffle this card into its owner's library.)` });
   const ENDURE = (n) => `(Put ${n === 1 ? "a +1/+1 counter" : `${["", "", "two", "three"][n]} +1/+1 counters`} on it or create a ${n}/${n} white Spirit creature token.)`;
@@ -1991,18 +1944,8 @@
   });
 
   // ---- Final Fantasy (FIN) ----
-  // Not modeled yet: Ultima, Origin of Oblivion, Cloud, Midgar Mercenary, Machinist's Arsenal, Stiltzkin, Moogle
-  // Merchant, Ultima, Astrologian's Planisphere, Gogo, Master of Mimicry, Louisoix's Sacrifice, The Lunar Whale,
-  // Memories Returning, The Water Crystal, Y'shtola Rhul, Ardyn, the Usurper, Cecil, Dark Knight, The Darkness Crystal,
-  // Kain, Traitorous Dragoon, Ninja's Blades, Zenos yae Galvus, Zodiark, Umbral God, The Fire Crystal, Firion, Wild
-  // Rose Warrior, Gilgamesh, Master-at-Arms, Raubahn, Bull of Ala Mhigo, Seifer Almasy, Summon: Brynhildr, Vaan, Street
-  // Thief, Ancient Adamantoise, Bartz and Boko, The Earth Crystal, Esper Origins, A Realm Reborn, Summoner's Grimoire,
-  // Traveling Chocobo, Balthier and Fran, Choco, Seeker of Paradise, Golbez, Crystal Collector, Hope Estheim, Joshua,
-  // Phoenix's Dominant, Kefka, Court Mage, Kuja, Genome Sorcerer, Noctis, Prince of Lucis, Serah Farron, Sin, Spira's
-  // Punishment, Tellah, Great Sage, Terra, Magical Adept, Vivi Ornitier, The Wandering Minstrel, Aettir and Priwen,
-  // Buster Sword, The Masamune, The Regalia, Balamb Garden, SeeD Academy, Clive's Hideaway, Ishgard, the Holy See,
-  // Jidoor, Aristocratic Capital, Starting Town, Zanarkand, Ancient Metropolis, Cloud, Planet's Champion, Lightning,
-  // Security Sergeant, Xande, Dark Mage, Magitek Scythe
+  // Left out (the opponent decides, or something random; see the second pass below): Memories Returning, Kefka, Court
+  // Mage, Sin, Spira's Punishment
   const FWIZ = { name: "Wizard", type: "Token Creature — Wizard", pt: "0/1", colors: ["B"],
     triggers: [{ on: "cast", filter: { controller: "you", noncreature: true }, effect: { damage: 1, to: "opp" } }],
     text: "Whenever you cast a noncreature spell, this token deals 1 damage to each opponent." };
@@ -2176,13 +2119,7 @@
   });
 
   // ---- Edge of Eternities (EOE) ----
-  // Not modeled yet: Tezzeret, Cruel Captain, Astelli Reclaimer, Hardlight Containment, Pinnacle Starcage, Sunstar
-  // Chaplain, Consult the Star Charts, Mm'menon, the Right Hand, Moonlit Meditation, Weftwalking, Chorale of the Void,
-  // Entropic Battlecruiser, Requiem Monolith, Sothera, the Supervoid, Xu-Ifit, Osteoharmonist, Zero Point Ballad,
-  // Memorial Vault, Pain for All, Possibility Technician, Tannuk, Steadfast Second, Terminal Velocity, Bioengineered
-  // Future, Famished Worldsire, Terrasymbiosis, Dyadrine, Synthesis Amalgam, Mutinous Massacre, Ragost, Deft
-  // Gastronaut, Singularity Rupture, Space-Time Anomaly, Syr Vondam, Sunstar Exemplar, The Endstone, Thrumming
-  // Hivepool, Secluded Starforge
+  // Left out (the opponent decides, or something random; see the second pass below): Sothera, the Supervoid
   const WARP = (cost, what = "creature") => `Warp ${cost} (You may cast this card from your hand for its warp cost. Exile this ${what} at the beginning of the next end step, then you may cast it from exile on a later turn.)`;
   const STATION = (n) => `Station (Tap another creature you control: Put charge counters equal to its power on this Spacecraft. Station only as a sorcery. It's an artifact creature at ${n}+.)`;
   const ROBOT = { name: "Robot", type: "Token Artifact Creature — Robot", pt: "2/2", colors: [] };
@@ -2283,14 +2220,8 @@
   });
 
   // ---- Marvel's Spider-Man (SPM) ----
-  // Not modeled yet: Arachne, Psionic Weaver, Friendly Neighborhood, Rent Is Due, With Great Power . . ., The Clone
-  // Saga, Hide on the Ceiling, Hydro-Man, Fluid Felon, Impostor Syndrome, Lady Octopus, Inspired Inventor, Mysterio,
-  // Master of Illusion, Spider-Sense, Behold the Sinister Six!, Black Cat, Cunning Thief, The Death of Gwen Stacy,
-  // Gwenom, Remorseless, Parker Luck, The Soul Stone, Electro, Assaulting Battery, Maximum Carnage, Shadow of the
-  // Goblin, Spider-Punk, Spider-Verse, Spinneret and Spiderling, Lizard, Connors's Curse, Sandman, Shifting Scoundrel,
-  // Strength of Will, Carnage, Crimson Chaos, Jackal, Genius Geneticist, Kraven the Hunter, Scarlet Spider, Ben Reilly,
-  // Spider-Man 2099, The Spot, Living Portal, Superior Spider-Man, Symbiote Spider-Man, Iron Spider, Stark Upgrade,
-  // Peter Parker's Camera, Rocket-Powered Goblin Glider, Multiversal Passage, Oscorp Industries, Urban Retreat
+  // Left out (the opponent decides, or something random; see the second pass below): The Death of Gwen Stacy, Parker
+  // Luck
   const SPIDER = { name: "Spider", type: "Token Creature — Spider", pt: "2/1", colors: ["G"], kw: ["reach"] };
   const CITIZEN = { name: "Human Citizen", type: "Token Creature — Human Citizen", pt: "1/1", colors: ["G", "W"] };
   const WEB = (cost) => `Web-slinging ${cost} (You may cast this spell for ${cost} if you also return a tapped creature you control to its owner's hand.)`;
@@ -2365,16 +2296,8 @@
   });
 
   // ---- Avatar: The Last Airbender (TLA) ----
-  // Not modeled yet: Airbender Ascension, Hakoda, Selfless Commander, The Legend of Yangchen, Momo, Friendly Flier, The
-  // Legend of Kuruk, Secret of Bloodbending, Spirit Water Revival, Yue, the Moon Spirit, Boiling Rock Rioter, The Fire
-  // Nation Drill, Foggy Swamp Visions, Koh, the Face Stealer, Obsessive Pursuit, Phoenix Fleet Airship, Raven Eagle,
-  // The Rise of Sozin, Firebender Ascension, Firebending Student, The Last Agni Kai, Ran and Shaw, Redirect Lightning,
-  // Zhao, the Moon Slayer, Avatar Destiny, Badgermole Cub, Diligent Zookeeper, The Earth King, Earthbender Ascension,
-  // Earthen Ally, Elemental Teachings, Great Divide Guide, The Legend of Kyoshi, Aang, Swift Savior, Avatar Aang,
-  // Azula, Cunning Usurper, Fire Lord Azula, Fire Lord Zuko, Iroh, Grand Lotus, Iroh, Tea Master, Katara, the Fearless,
-  // Katara, Water Tribe's Hope, Ozai, the Phoenix King, Sandbender Scavengers, Toph, Hardheaded Teacher, Toph, the
-  // First Metalbender, Planetarium of Wan Shi Tong, The Walls of Ba Sing Se, White Lotus Tile, Realm of Koh, Secret
-  // Tunnel
+  // Left out (the opponent decides, or something random; see the second pass below): The Legend of Yangchen, Elemental
+  // Teachings, Azula, Cunning Usurper
   const ALLY_T = { name: "Ally", type: "Token Creature — Ally", pt: "1/1", colors: ["W"] };
   const AIRBEND_T = "(Exile it. While it's exiled, its owner may cast it for {2} rather than its mana cost.)";
   const EARTH_T = (n) => `Earthbend ${n}. (Target land you control becomes a 0/0 creature with haste that's still a land. Put ${n} +1/+1 counter${n === 1 ? "" : "s"} on it. When it dies or is exiled, return it to the battlefield tapped.)`;
@@ -2473,14 +2396,7 @@
   });
 
   // ---- Lorwyn Eclipsed (ECL) ----
-  // Not modeled yet: Champion of the Clachan, Morningtide's Light, Rhys, the Evermore, Slumbering Walker, Winnowing,
-  // Champions of the Shoal, Glen Elendra Guardian, Glen Elendra's Answer, Mirrorform, Oko, Lorwyn Liege, Rimefire
-  // Torque, Sygg, Wanderwine Wisdom, Champion of the Weird, Dawnhand Dissident, Gloom Ripper, Grub, Storied Matriarch,
-  // Moonshadow, Mornsong Aria, Taster of Wares, Twilight Diviner, Ashling, Rekindled, Champion of the Path, End-Blaze
-  // Epiphany, Goliath Daydreamer, Lavaleaper, Soul Immolation, Aurora Awakener, Bloom Tender, Celestial Reunion,
-  // Champions of the Perfect, Sapling Nursery, Selfless Safewright, Trystan, Callous Cultivator, Bre of Clan Stoutarm,
-  // Deepway Navigator, Dream Harvest, Kirol, Attentive First-Year, Lluwen, Imperfect Naturalist, Maralen, Fae
-  // Ascendant, Raiding Schemes, Sanar, Innovative First-Year, Shadow Urchin, Tam, Mindful First-Year, Mirrormind Crown
+  // Left out (the opponent decides, or something random; see the second pass below): Champion of the Weird
   const KITHKIN = { name: "Kithkin", type: "Token Creature — Kithkin", pt: "1/1", colors: ["G", "W"] };
   const FAERIE = { name: "Faerie", type: "Token Creature — Faerie", pt: "1/1", colors: ["U", "B"], kw: ["flying"] };
   const CONVOKE_T = "Convoke (Your creatures can help cast this spell. Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.)";
@@ -2592,13 +2508,7 @@
   });
 
   // ---- Teenage Mutant Ninja Turtles (TMT) ----
-  // Not modeled yet: Leonardo, Sewer Samurai, Prehistoric Pet, Turtles Forever, April O'Neil, Hacktivist, Does
-  // Machines, Donatello, Mutant Mechanic, Kitsune, Dragon's Daughter, Kitsune's Technique, Mondo Gecko, Turtles in
-  // Time, The Cloning of Shredder, Ninja Teen, Rat King, Verminister, Shark Shredder, Killer Clone, Cool but Rude,
-  // Raphael, Ninja Destroyer, Raphael's Technique, Groundchuck & Dirtbag, Leatherhead, Swamp Stalker, Michelangelo's
-  // Technique, Mutagen Man, Living Ooze, Party Dude, Don & Leo, Problem Solvers, Don & Raph, Hard Science, Krang &
-  // Shredder, The Last Ronin, Mikey & Don, Party Planners, Raph & Mikey, Troublemakers, The Ooze, Turtle Van, Weather
-  // Maker, Northampton Farm
+  // Left out (the opponent decides, or something random; see the second pass below): Turtles Forever
   const SNEAK = (cost, perm = true) => `Sneak ${cost} (You may cast this spell for ${cost} if you also return an unblocked attacker you control to hand during the declare blockers step.${perm ? " It enters tapped and attacking." : ""})`;
   const MUTANT = { name: "Mutant", type: "Token Creature — Mutant", pt: "2/2", colors: ["R"] };
   const MUTAGEN_T = { name: "Mutagen", type: "Token Artifact — Mutagen", colors: [],
@@ -2708,12 +2618,6 @@
   });
 
   // ---- Secrets of Strixhaven (SOS) ----
-  // Not modeled yet: The Dawning Archaic, Joined Researchers, Exhibition Tidecaller, Harmonized Trio, Mana Sculpt,
-  // Wisdom of Ages, Grave Researcher, Moseo, Vein's New Dean, Postmortem Professor, Pox Plague, Scheming Silvertongue,
-  // Choreographed Sparks, Improvisation Capstone, Ambitious Augmenter, Applied Geometry, Ark of Hunger, Aziza, Mage
-  // Tower Captain, Berta, Wise Extrapolator, Conciliator's Duelist, Fix What's Broken, Geometer's Arthropod, Lorehold,
-  // the Historian, Moment of Reckoning, Nita, Forum Conciliator, Prismari, the Inspiration, Quandrix, the Proof,
-  // Silverquill, the Disputant, Vicious Rivalry, Zaffai and the Tempests, Petrified Hamlet
   const PREP_T = "(While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)";
   const INCREMENT_T = "Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)";
   const PARADIGM_T = "Paradigm (Then exile this spell. After you first resolve a spell with this name, you may cast a copy of it from exile without paying its mana cost at the beginning of each of your first main phases.)";
@@ -2849,13 +2753,6 @@
   });
 
   // ---- Marvel Super Heroes (MSH) ----
-  // Not modeled yet: Super-Soldier Serum, Ironheart, Clever Champion, Loki, God of Mischief, Ms. Marvel, Kamala Khan,
-  // Multiversal Incursion, Secret Invasion, The Wondrous Wasp, Baron Helmut Zemo, Black Widow, Super Spy, Doom Reigns
-  // Supreme, Fin Fang Foom, Hawkeye, Master Marksman, Mjölnir, Hammer of Thor, Heroic Feast, World War Hulk, Absorbing
-  // Man, Alien Invasion, Ares, God of War, Armor Wars, The Astonishing Ant-Man, Cloak and Dagger, Entwined, Daredevil,
-  // Man Without Fear, The Kingpin of Crime, The Ruinous Wrecking Crew, Scientist Supreme of A.I.M., The Serpent
-  // Society, Storm, Windrider, The Super Hero Civil War, Taskmaster, Mercenary Mimic, Vision Quest, Winter Soldier, Icy
-  // Assassin, Worlds Within Worlds, Arc Reactor, Cosmic Cube, Iron Man Armor, Ultron, Artificial Malevolence
   const POWER_T = "(Activate each power-up ability only once. Reduce the cost by its mana cost if it entered this turn.)";
   const TEAM_T = (n) => `Teamwork ${n} (As an additional cost to cast this spell, you may tap any number of creatures you control with total power ${n} or more.)`;
   const VILLAIN = { name: "Villain", type: "Token Creature — Villain", pt: "2/1", colors: ["B"], kw: ["menace"] };
@@ -2987,12 +2884,8 @@
   });
 
   // ---- The Hobbit (HOB) ----
-  // Not modeled yet: Bilbo's Gambit, The Eagles Are Coming!, Kíli the Resourceful, The Queen of Dale, Roads Go Ever,
-  // Ever On, Settle the Wreckage, Bilbo, Thief in the Night, Elrond, Moon-Reader, Riddles in the Dark, Wizard's Staff,
-  // Gollum, Riddle Master, Head of the Hunt, Inside Information, The Master of Lake-town, Supper for Spiders, Gandalf,
-  // Goblins' Bane, Getaway Barrel, Last Light of Durin's Day, Thorin, Mountain-king, The Notary Hobbits, Part in
-  // Friendship, Radagast of Rhosgobel, Smaug, Wicked Worm, Thranduil, the Elvenking, Tom, Bert, and William, My
-  // Precious, Elven Passage, The Lonely Mountain
+  // Left out (the opponent decides, or something random; see the second pass below): Riddles in the Dark, Getaway
+  // Barrel
   const STORIED_T = "Storied (If you control three or more artifacts, legendaries, and/or Sagas, you have an enduring story for the rest of the game.)";
   const RECRUIT_T = "(Draw a card, then discard a card. If you discarded a nonland card, create a 1/1 white Human Soldier creature token.)";
   const DWARF = { name: "Dwarf", type: "Token Creature — Dwarf", pt: "2/2", colors: ["R"] };
@@ -3107,11 +3000,8 @@
   });
 
   // ---- Reality Fracture (FRA) ----
-  // Not modeled yet: Emrakul, the Exigent Doom, Loyal Tutor, Cruel Calculations, Jace's Machinations, Seasoned
-  // Cryomancer, Extrapolate the Impossible, Sanctum Lurker, Curse-Marred Demon, Face Yourself, Identity Echo,
-  // Omnipresence, Puppet Crafting, Entrust the Spark, Kwia Vigorbloom, Null Summoner, Solitary Cell, Uldaros Theorix,
-  // Codie, Ravenous Codex, Hall of Echoes, Theorist's Sanctum, Jace, Reality Sculptor, Chandra, Torch of Defiance, Tam,
-  // the Possibility, Vraska, Soul of Stone, Sphinx's Approach
+  // Left out (the opponent decides, or something random; see the second pass below): Extrapolate the Impossible,
+  // Curse-Marred Demon
   const EMPOWER_T = (n) => `Empower Jace ${n}. (Put that many loyalty counters on a Jace token you control. If you don't control one, first create a blue Jace planeswalker token with "[−1]: Surveil 1" and "[−3]: Draw a card.")`;
   const CADET = { name: "Cadet", type: "Token Creature — Wizard Soldier", pt: "2/2", colors: [] };
   const HEARTWOOD = { name: "Heartwood", type: "Token Artifact", colors: ["R", "G"], produces: "RG", text: "{T}: Add {R} or {G}." };
