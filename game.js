@@ -1128,13 +1128,13 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("zoneview").hidden) closeZone(); });
 
   // A short message that fades out by itself
-  function toast(text) {
+  function toast(text, long = false) {
     const t = document.createElement("div");
-    t.className = "toast";
+    t.className = "toast" + (long ? " long" : "");          // (long: a sentence to read, shown for longer)
     t.textContent = text;
     document.body.appendChild(t);
     t.addEventListener("animationend", () => t.remove());
-    setTimeout(() => t.remove(), 1800);                     // in case animations are off
+    setTimeout(() => t.remove(), long ? 4500 : 1800);       // in case animations are off
   }
 
   /* ---------- playing cards from hand ---------- */
@@ -2093,6 +2093,8 @@
     locked = true;
     selected = new Set();
     updateButton();
+    // (a modal trigger whose other modes have no legal target: no choice to make, so say which mode it uses)
+    events.filter((e) => e.type === "onlyMode").forEach((e) => toast(`${e.name}: only "${e.mode}" can be chosen — the other mode has no legal target`, true));
     let delay = 0;
     if (action.type === "cast") {
       const spellEl = document.querySelector(`#hand .card[data-id="${action.id}"]`);

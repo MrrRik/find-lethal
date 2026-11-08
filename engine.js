@@ -7304,6 +7304,9 @@
           const combos = modeCombos(def).filter((l) => l.every((i) => !used.includes(i))).filter((l) => l.every((i) => { const m = def.modes[i];
             return !m.targets || (m.count && m.count.min === 0) || targetsFor(s, src, m.targets, m.targetFilter, p.side).length; }));
           if (!combos.length) { s.pending.shift(); continue; }
+          // (CR 700.2a: a mode without a legal target can't be chosen; when that leaves one choice, say so)
+          if (combos.length === 1 && modeCombos(def).length > 1 && p.side === "player")
+            ev.push({ type: "onlyMode", name: p.name, mode: combos[0].map((i) => def.modes[i].text).join(" + ") });
           const pick = choose(s, `${p.name}: choose ${def.anyNumber ? "any number" : def.oneOrBoth ? "one or both" : def.oneOrMore ? "one or more" : "one"}`,
             combos.map((l) => (l.length ? l.map((i) => def.modes[i].text).join(" + ") : "No mode")), p.side);
           s.pending[0] = { ...p, modes: combos[pick] };

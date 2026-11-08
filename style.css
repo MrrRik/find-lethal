@@ -337,6 +337,7 @@ body.targeting .targetable:hover{box-shadow:0 0 0 3px var(--red),0 0 18px 2px rg
 .toast{position:fixed;left:50%;top:50%;z-index:85;transform:translate(-50%,-50%);pointer-events:none;
   padding:.7rem 1.2rem;border-radius:.75rem;background:var(--felt-2);color:var(--ink);border:1px solid var(--line);
   font:600 1rem var(--font);box-shadow:0 10px 30px rgba(0,0,0,.5);animation:toast 1.5s ease forwards}
+.toast.long{animation-duration:4s;width:max-content;max-width:min(88vw,24rem);text-align:center;font-size:.95rem}
 @keyframes toast{0%{opacity:0;scale:.9}12%{opacity:1;scale:1}70%{opacity:1}100%{opacity:0}}
 
 /* zoom overlay */
