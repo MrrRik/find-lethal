@@ -126,15 +126,22 @@
   const solvedIn = (list) => list.filter((p) => progress[p.id] === "solved").length;
   // user submissions solved: read from the saved progress, so it's right before they've loaded (and if one is removed)
   const userSolved = () => Object.keys(progress).filter((id) => id.startsWith("user-") && progress[id] === "solved").length;
-  const WIN_NAMES = { 1: "First Blood", 10: "Combat Trick", 25: "Calculated Risk", 50: "Math Wizard", 100: "Lethal Weapon", 200: "Puzzle Master" };
+  const WIN_NAMES = { 1: "First Blood", 10: "Combat Trick", 25: "Calculated Risk", 50: "Math Wizard", 100: "Lethal Weapon", 200: "Puzzle Master",
+    300: "Grand Tactician", 400: "Multiverse Legend" };
+  // a set's puzzles 1-10 (its mechanics) and 11-20 (its rares and mythics, rarepuzzles.js)
+  const isRarePuzzle = (p) => Number(p.id.split("-")[1]) > 10;
+  const mechanicsOf = (id) => setOf(id).filter((p) => !isRarePuzzle(p));
+  const raresOf = (id) => setOf(id).filter(isRarePuzzle);
   const USER_NAMES = { 1: "Guest Star", 10: "Open Mind", 25: "Fan Favorite", 100: "Community Pillar", 250: "Connoisseur", 500: "Hall of Fame", 1000: "Living Legend" };
   // count() against goal: unlocked once count reaches goal (bigger goals show a progress bar)
   const ACHIEVEMENTS = [
-    ...[1, 10, 25, 50, 100, 200].map((n) => ({ id: `wins-${n}`, group: "Find lethal", name: WIN_NAMES[n],
+    ...[1, 10, 25, 50, 100, 200, 300, 400].map((n) => ({ id: `wins-${n}`, group: "Find lethal", name: WIN_NAMES[n],
       desc: n === 1 ? "Find lethal for the first time." : `Find lethal in ${n} different puzzles (replaying one doesn't count).`,
       count: () => solvedIn(allPuzzles()), goal: n })),
     ...DIFFS.map((d) => ({ id: `set-${d.id}`, group: "Sets", set: d, name: d.label,
-      desc: `Solve every ${d.label} puzzle.`, count: () => solvedIn(setOf(d.id)), goal: setOf(d.id).length })),
+      desc: `Solve ${d.label} puzzles 1–10 (its mechanics).`, count: () => solvedIn(mechanicsOf(d.id)), goal: mechanicsOf(d.id).length })),
+    ...DIFFS.map((d) => ({ id: `rares-${d.id}`, group: "Rares and mythics", set: d, name: `${d.label}: Rares`,
+      desc: `Solve ${d.label} puzzles 11–20 (its rares and mythics).`, count: () => solvedIn(raresOf(d.id)), goal: raresOf(d.id).length })),
     { id: "all", group: "Sets", name: "Multiverse Champion", desc: "Solve every puzzle in every set.",
       count: () => solvedIn(allPuzzles()), goal: allPuzzles().length },
     // per month of daily puzzles: solve 1, 7, 15 and all of that month's dailies
