@@ -5,7 +5,8 @@
   const HOLD_MS = 260;
 
   /* ---------- puzzle sets: one category per Magic set, in release order ---------- */
-  // Each has 10 puzzles themed on that set's mechanics: 4 easy, 2 medium, 4 hard (a puzzle's tier)
+  // Each has 10 puzzles themed on that set's mechanics, then 10 with its rares and mythics (rarepuzzles.js): 4 easy,
+  // 2 medium, 4 hard each (a puzzle's tier)
   const SET_LIST = [
     ["one", "Phyrexia: All Will Be One"], ["mom", "March of the Machine"], ["woe", "Wilds of Eldraine"],
     ["lci", "The Lost Caverns of Ixalan"], ["mkm", "Murders at Karlov Manor"], ["otj", "Outlaws of Thunder Junction"],
