@@ -464,7 +464,8 @@
     ["The stack", "Spells and abilities wait on the stack: respond with another one, or press Resolve."]
   ];
   // What creator.js needs from the game
-  window.FindLethal = { cardEl: (c) => cardEl(c, { detached: true }), play: (p) => play(p), menu: () => showMenu(),
+  // (zoom: the enlarged card, until the next release; holdMs: how long a press takes to enlarge a card)
+  window.FindLethal = { cardEl: (c) => cardEl(c, { detached: true }), zoom: (c) => showZoom(c), holdMs: HOLD_MS, play: (p) => play(p), menu: () => showMenu(),
     replayWins: (p, sol) => replayWins(p, sol), groupLabel: (id) => diffOf(id).label };
   // (moderators only) open the puzzle being played in the mod view's creator, to tweak it
   $("edit-puzzle").addEventListener("click", () => {

@@ -171,17 +171,20 @@
     }
   }
 
-  /* ---------- dragging (mouse and touch) and tapping a card ---------- */
+  /* ---------- dragging (mouse and touch), tapping a card, and press-and-hold to enlarge it ---------- */
   let drag = null;
   $("creator").addEventListener("pointerdown", (e) => {
     const el = e.target.closest(".cr-card");
     if (!el || e.button > 0) return;
-    drag = { el, id: el.dataset.id, x: e.clientX, y: e.clientY, ghost: null };
+    drag = { el, id: el.dataset.id, x: e.clientX, y: e.clientY, ghost: null, held: false };
+    const d = drag;
+    d.timer = setTimeout(() => { const [card] = cardById(d.id); if (drag === d && card) { d.held = true; closeMenu(); app.zoom(card); } }, app.holdMs || 260);
   });
   window.addEventListener("pointermove", (e) => {
-    if (!drag) return;
+    if (!drag || drag.held) return;
     if (!drag.ghost) {
       if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return;
+      clearTimeout(drag.timer);                                // (moving: a drag, not a press-and-hold)
       const r = drag.el.getBoundingClientRect();
       drag.ghost = drag.el.cloneNode(true);
       drag.ghost.classList.add("cr-ghost");
@@ -200,6 +203,8 @@
     if (!drag) return;
     const d = drag;
     drag = null;
+    clearTimeout(d.timer);
+    if (d.held) return;                                        // (the enlarged card closes on release; no menu)
     document.querySelectorAll(".cr-zone.over").forEach((z) => z.classList.remove("over"));
     if (d.ghost) {
       d.ghost.remove();
@@ -210,9 +215,11 @@
     else openMenu(d.id, d.el);
   });
   window.addEventListener("pointercancel", () => {
+    if (drag) clearTimeout(drag.timer);
     if (drag && drag.ghost) { drag.ghost.remove(); drag.el.classList.remove("cr-dragging"); }
     drag = null;
   });
+  document.addEventListener("contextmenu", (e) => { if (e.target.closest && e.target.closest(".cr-card")) e.preventDefault(); });
   const zoneAt = (x, y) => { const n = document.elementFromPoint(x, y); return n && n.closest("#creator .cr-zone"); };
 
   // Attaching an Aura or Equipment: the next creature tapped on a battlefield becomes its host
@@ -246,6 +253,10 @@
       return row;
     };
     const kids = [Object.assign(document.createElement("h3"), { textContent: card.name })];
+    // (enlarge it to read it: it closes on the next tap; pressing and holding a card does the same)
+    const big = Object.assign(document.createElement("button"), { type: "button", className: "ghost small-btn", textContent: "🔍 Enlarge to read" });
+    big.addEventListener("click", () => { closeMenu(); setTimeout(() => app.zoom(card), 0); });
+    kids.push(big);
     if (onField) kids.push(btn(card.tapped ? "Untap" : "Tap", () => { card.tapped = !card.tapped; }));
     if (onField && isCreature && zone === "you.battlefield") {
       kids.push(btn(card.sick ? "✓ Cast this turn (summoning sick)" : "Cast this turn (summoning sick)", () => { card.sick = !card.sick; }));
