@@ -51,9 +51,34 @@ window.Online = (() => {
   }
   const logout = () => keepSession(null);
 
+  // Titles and author names may not contain slurs, hate terms or profanity — also written with numbers or symbols for
+  // letters, s p a c e d out, or stretched (fuuuck). The database checks the same list (tools/supabase-protect.sql,
+  // fl_offensive: keep the two in step); this copy only tells the player before sending.
+  const BLOCK_ANYWHERE = ["nigger", "nigga", "niggah", "faggot", "wetback", "beaner", "chingchong", "raghead", "towelhead", "spearchucker",
+    "junglebunny", "porchmonkey", "shemale", "fuck", "cunt", "whore", "bitch", "slut", "bullshit", "shithead", "shitty", "asshole", "dickhead",
+    "cocksucker", "blowjob", "handjob", "dildo", "porn", "pussy", "penis", "vagina", "molest", "pedophil", "paedophil",
+    "nazi", "hitler", "siegheil", "heilhitler", "kkk", "whitepower", "gaschamber", "killyourself",
+    "kanker", "klootzak", "neuk", "flikker", "mongool", "nikker", "kutwijf", "tyfus", "hoerenzoon", "godverdomme"];
+  // (short words that are also parts of innocent ones — Assassin, Cockatrice, Raccoon, Spicy, Grape — only as whole words)
+  const BLOCK_WHOLE = ["ass", "arse", "dick", "cock", "coon", "coons", "spic", "spics", "chink", "chinks", "gook", "gooks", "kike", "kikes",
+    "paki", "pakis", "dyke", "dykes", "tranny", "trannies", "fag", "fags", "homo", "homos", "rape", "raped", "raping",
+    "rapist", "rapists", "retard", "retards", "retarded", "pedo", "pedos", "kys", "cum", "tits", "twat", "wank",
+    "negro", "negroes", "neger", "jap", "japs", "nig", "nigs", "heil", "kut", "lul", "hoer", "tering", "shit", "shits"];
+  const LEET = { 0: "o", 1: "i", 3: "e", 4: "a", 5: "s", 7: "t", 8: "b", "@": "a", $: "s", "!": "i", "|": "i" };
+  // a word as a pattern where each letter may be stretched, but doubled letters stay doubled: fuck → f+u+c+k+,
+  // mongool → m+o+n+g+o{2,}l+ (so "fuuuck" matches and "Mongol" doesn't)
+  const stretch = (w) => w.replace(/(.)\1*/g, (run, ch) => (run.length > 1 ? `${ch}{${run.length},}` : `${ch}+`));
+  const ANYWHERE_RE = BLOCK_ANYWHERE.map((w) => new RegExp(stretch(w))), WHOLE_RE = BLOCK_WHOLE.map((w) => new RegExp(`^${stretch(w)}$`));
+  function offensive(text) {
+    const low = String(text || "").toLowerCase().replace(/[0134578@$!|]/g, (ch) => LEET[ch]);
+    const joined = low.replace(/[^a-z]/g, ""), words = low.split(/[^a-z]+/).filter(Boolean);
+    return ANYWHERE_RE.some((re) => re.test(joined)) || WHOLE_RE.some((re) => words.some((w) => re.test(w)));
+  }
+
   const COLUMNS = "id,created_at,title,author,tier,puzzle,solution,status,reviewed_at";
   return {
     ready,
+    offensive,
     loggedIn: () => !!session,
     login, logout,
     // a new submission: { title, author, tier, puzzle, solution }

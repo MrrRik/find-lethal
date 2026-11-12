@@ -391,6 +391,7 @@ UNIQUENESS: check with tools/solver.html`}\`
   function submitProblem(p) {
     if (!window.Online || !window.Online.ready) return "Puzzle submissions aren't open yet.";
     if (!draft.title.trim()) return "Give your puzzle a title first.";
+    if (window.Online.offensive(draft.title)) return "That title isn't allowed. Please choose another one.";
     const unmodeled = ZONES.flatMap((z) => draft.zones[z]).filter((x) => x.unmodeled);
     if (unmodeled.length) return `The game can't fully play ${unmodeled.map((x) => x.name).join(", ")}, so this puzzle can't be submitted.`;
     if (!verifiedNow()) return draft.verified ? "You changed the board after your play test: play-test it again and find lethal." :
@@ -422,6 +423,7 @@ UNIQUENESS: check with tools/solver.html`}\`
     const why = submitProblem(p);
     if (why) { $("cr-submit-msg").textContent = why; return; }
     const author = $("cr-author").value.trim().slice(0, 30);
+    if (window.Online.offensive(author)) { $("cr-submit-msg").textContent = "That name isn't allowed. Please choose another one."; return; }
     store(AUTHOR, author);
     const puzzleData = JSON.parse(JSON.stringify(p));
     delete puzzleData.custom;
